@@ -1,0 +1,21 @@
+{
+   "go.useLanguageServer": true,
+   "go.lintTool": "golangci-lint",
+   "editor.formatOnSave": true,
+   "files.exclude": {
+      "**/bin": true,
+      "**/vendor": true
+   },
+   "go.testFlags": [
+      "-v"
+   ],
+   "go.toolsManagement.autoUpdate": false,
+   "gopls": {
+      "ui.semanticTokens": false
+   },
+   "go.formatTool": "goimports",
+   "go.lintOnSave": "file",
+   "go.testOnSave": true,
+   "go.vetOnSave": "workspace",
+   "go.docsTool": "gogetdoc"
+}

@@ -1,0 +1,67 @@
+{{define "content"}}
+<div id="app">
+   <h1>{{.Title}}</h1>
+   <a href="/panel/users/new" class="btn btn-success mb-2">Add User</a>
+
+   <table class="table table-striped">
+      <thead>
+         <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Actions</th>
+         </tr>
+      </thead>
+      <tbody>
+         <template v-if="servers.length>0">
+            <tr v-for="user in users" :key="user.id">
+               <td>[[ user.id ]]</td>
+               <td>[[ user.username ]]</td>
+               <td>[[ user.email ]]</td>
+               <td>[[ user.status ]]</td>
+               <td>
+                  <a :href="`/panel/users/edit/${user.id}`" class="btn btn-sm btn-primary">Edit</a>
+                  <form :action="`/users/delete/${user.id}`" method="post" style="display: inline">
+                     <button type="submit" class="btn btn-sm btn-danger">
+                        Delete
+                     </button>
+                  </form>
+               </td>
+            </tr>
+         </template>
+         <tr v-else>
+            <td colspan="5" class="text-center">No users found</td>
+         </tr>
+      </tbody>
+   </table>
+</div>
+
+<script>
+   const app = new Vue({
+      delimiters: ["[[", "]]"],
+      mixins: [MediaQueryMixin],
+      el: "#app",
+      data() {
+         return {
+            users: []
+         }
+      },
+      methods: {
+         async fetchUsers() {
+            try {
+               const res = await fetch('/panel/api/users'); // создаем API /panel/api/users
+               if (!res.ok) return;
+               this.users = await res.json();
+            } catch (e) {
+               console.error('Fetch error:', e);
+            }
+         }
+      },
+      mounted() {
+         this.fetchUsers();
+         setInterval(this.fetchUsers, 5000); // обновляем каждые 5 секунд
+      }
+   });
+</script>
+{{end}}

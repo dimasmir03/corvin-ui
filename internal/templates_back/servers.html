@@ -1,0 +1,51 @@
+{{define "content"}}
+<h1>{{.Title}}</h1>
+<a href="/panel/servers/new" class="btn btn-success mb-2">Add Server</a>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>IP</th>
+      <th>Port</th>
+      <th>SecretWEbPath</th>
+      <th>Country</th>
+      <th>Status</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Servers}}
+    <tr id="server-{{.ID}}">
+      <td>{{.ID}}</td>
+      <td>{{.Name}}</td>
+      <td>{{.IP}}</td>
+      <td>{{.Port}}</td>
+      <td>{{.SecretWebPath}}</td>
+      <td>{{.Country}}</td>
+      <td class="online-count">0</td> <!-- начальное значение -->
+      <td>{{.Status}}</td>
+      <td>
+        <a href="/panel/servers/edit/{{.ID}}" class="btn btn-sm btn-primary">Edit</a>
+        <form action="/servers/delete/{{.ID}}" method="post" style="display:inline;">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+
+
+<script>
+  function updateOnlineCount(serverId, onlineCount) {
+    const serverRow = document.getElementById(`server-${serverId}`);
+    if (serverRow) {
+      const onlineCountCell = serverRow.querySelector('.online-count');
+      if (onlineCountCell) {
+        onlineCountCell.textContent = onlineCount;
+      }
+    }
+  }
+</script>
+{{end}}

@@ -1,0 +1,109 @@
+{{define "content"}}
+<div id="app">
+   <h1>{{.Title}}</h1>
+   <a href="/panel/servers/new" class="btn btn-success mb-2">Add Server</a>
+   <table class="table table-striped">
+      <thead>
+         <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>IP</th>
+            <th>Port</th>
+            <th>SecretWebPath</th>
+            <th>Country</th>
+            <th>Status</th>
+            <th>Online</th>
+            <th>Actions</th>
+         </tr>
+      </thead>
+      <tbody>
+         <template v-if="servers.length>0">
+            <tr v-for="(server,index) in servers" :key="server.id">
+               <td>[[ index+1 ]]</td>
+               <td>[[ server.name ]]</td>
+               <td>[[ server.ip ]]</td>
+               <td>[[ server.port ]]</td>
+               <td>[[ server.secretWebPath ]]</td>
+               <td>[[ server.country ]]</td>
+               <td>[[ server.status || "Checking" ]]</td>
+               <td>[[ server.onlineCount || "Checking" ]]</td>
+               <td>
+                  <a :href="`/panel/servers/edit/${server.id}`" class="btn btn-sm btn-primary">Edit</a>
+                  <form :action="`/api/servers/delete/${server.id}`" method="post" style="display: inline">
+                     <button type="submit" class="btn btn-sm btn-danger">
+                        Delete
+                     </button>
+                  </form>
+               </td>
+            </tr>
+         </template>
+         <tr v-else>
+            <td colspan="9" class="text-center">No servers found</td>
+         </tr>
+      </tbody>
+   </table>
+</div>
+
+<script>
+   
+
+   const app = new Vue({
+      delimiters: ["[[", "]]"],
+      el: "#app",
+      data() {
+         return {
+            servers: [
+                {
+                    id: 0,
+                    name: '',
+                    ip: '',
+                    port: 0,
+                    secretWebPath: '',
+                    country: '',
+                    status: '',
+                    onlineCount: 0,
+                },
+            ],
+            
+         };
+      },
+      methods: {
+         loadServers() {
+            console.log("Loading servers...");
+            axios
+               .get("/api/servers/list")
+               .then((response) => {
+                  console.log(response);
+                  this.servers = response.data;
+                  // this.servers = this.servers.map((s) => {
+                  //    s.status = "Checking...";
+                  //    return s;
+                  // });
+                  console.log(this.servers);
+                  // this.getOnlineUsers();
+               })
+               .catch((error) => {
+                  alert(error);
+               });
+         },
+         async getOnlineUsersServers() {
+            try {
+               const { data } = await axios.get("/api/servers/onlines");
+               this.servers = this.servers.map((s) => {
+                  s.onlineCount = data.obj[s.id];
+                  return s;
+               });
+            } catch (e) {
+               console.error("Fetch error:", e);
+            }
+         },
+      },
+
+      mounted() {
+         this.loadServers();
+         this.getOnlineUsersServers();
+         setInterval(this.getOnlineUsersServers, 5000);
+      },
+   });
+</script>
+{{end}}

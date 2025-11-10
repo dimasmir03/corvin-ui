@@ -1,0 +1,26 @@
+{{define "content"}}
+<h1>{{.Title}}</h1>
+<a href="/panel/users/new" class="btn btn-success mb-2">Add User</a>
+
+<table class="table table-striped">
+  <thead>
+    <tr><th>ID</th><th>Username</th><th>Email</th><th>Status</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {{range .Users}}
+    <tr>
+      <td>{{.ID}}</td>
+      <td>{{.Username}}</td>
+      <td>{{.Email}}</td>
+      <td>{{.Status}}</td>
+      <td>
+        <a href="/panel/users/edit/{{.ID}}" class="btn btn-sm btn-primary">Edit</a>
+        <form action="/users/delete/{{.ID}}" method="post" style="display:inline;">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

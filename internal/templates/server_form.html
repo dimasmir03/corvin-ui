@@ -1,0 +1,98 @@
+{{define "content"}}
+<div id="app">
+  <h1>{{.Title}}</h1>
+
+  <form>
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" v-model="server.Name" class="form-control" required>
+    </div>
+    <div class="form-group">
+      <label>IP</label>
+      <input type="text" v-model="server.IP" class="form-control" required>
+    </div>
+    <div class="form-group">
+      <label>Port</label>
+      <input type="number" v-model.number="server.Port" class="form-control" required>
+    </div>
+    <div class="form-group">
+      <label>Secret Web Path</label>
+      <input type="text" v-model="server.SecretWebPath" class="form-control" required>
+    </div>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="text" v-model="server.APIKey" class="form-control" required>
+    </div>
+    <div class="form-group">
+      <label>Country</label>
+      <input type="text" v-model="server.Country" class="form-control">
+    </div>
+    <div class="form-group">
+      <label>Status</label>
+      <select v-model="server.Status" class="form-control">
+        <option value="Online">Online</option>
+        <option value="Offline">Offline</option>
+      </select>
+    </div>
+
+    <button type="button" @click="createServer" class="btn btn-primary mt-2">Save</button>
+  </form>
+</div>
+
+
+<script>
+  const app = new Vue({
+    delimiters: ["[[", "]]"],
+    el: "#app",
+    data() {
+      return {
+        server: {
+          Name: "",
+          IP: "",
+          Port: "",
+          SecretWebPath: "",
+          APIKey: "",
+          Country: "",
+          Status: "Online"
+        }
+      };
+    },
+    methods: {
+      createServer() {
+        console.log("Creating server...");
+
+        let secretWebPath = this.server.SecretWebPath;
+        if (!secretWebPath.startsWith('/')) {
+          secretWebPath = '/' + secretWebPath;
+        }
+        if (!secretWebPath.endsWith('/')) {
+          secretWebPath = secretWebPath + '/';
+        }
+        this.server.SecretWebPath = secretWebPath;
+
+        if (this.server.Port < 1 || this.server.Port > 65354) {
+          alert("Port must be between 1 and 65354");
+          return;
+        }
+
+        axios.post("/api/servers/new", this.server)
+          .then(res => {
+            if (res.data.success == true) {
+              window.location.href = "/panel/servers";
+            } else {
+              alert(res.data.message);
+            }
+          })
+          .catch(error => {
+            alert("Error creating server:", error);
+          });
+      },
+
+    },
+
+    mounted() {
+
+    },
+  });
+</script>
+{{end}}

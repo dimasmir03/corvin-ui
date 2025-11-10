@@ -1,0 +1,38 @@
+{{define "content"}}
+<h1>{{.Title}}</h1>
+
+<form action="{{.Action}}" method="post">
+  <div class="form-group">
+    <label>Name</label>
+    <input type="text" name="name" class="form-control" value="{{with .Server}}{{.Name}}{{end}}" required>
+  </div>
+  <div class="form-group">
+    <label>IP</label>
+    <input type="text" name="ip" class="form-control" value="{{with .Server}}{{.IP}}{{end}}" required>
+  </div>
+  <div class="form-group">
+    <label>Port</label>
+    <input type="text" name="port" class="form-control" value="{{with .Server}}{{.Port}}{{end}}" required>
+  </div>
+  <div class="form-group">
+    <label>Secret Web Path</label>
+    <input type="text" name="secret_web_path" class="form-control" value="{{with .Server}}{{.SecretWebPath}}{{end}}" required>
+  </div>
+  <div class="form-group">
+    <label>API Key</label>
+    <input type="text" name="api_key" class="form-control" value="{{with .Server}}{{.APIKey}}{{end}}" required>
+  </div>
+  <div class="form-group">
+    <label>Country</label>
+    <input type="text" name="country" class="form-control" value="{{with .Server}}{{.Country}}{{end}}">
+  </div>
+  <div class="form-group">
+    <label>Status</label>
+    <select name="status" class="form-control">
+      <option value="Online" {{if eq .Server.Status "Online"}}selected{{end}}>Online</option>
+      <option value="Offline" {{if eq .Server.Status "Offline"}}selected{{end}}>Offline</option>
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary mt-2">Save</button>
+</form>
+{{end}}

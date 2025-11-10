@@ -1,0 +1,16 @@
+# golang
+/bin
+/vendor
+
+# vue
+/node_modules
+/dist
+
+# air
+/build
+/tmp
+
+# sqlite
+/db.sqlite3-journal
+db.sqlite3-wal
+data.db

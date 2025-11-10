@@ -1,0 +1,35 @@
+{{define "content"}}
+<h1>{{.Title}}</h1>
+
+<form action="{{.Action}}" method="post">
+  <div class="form-group">
+    <label>Username</label>
+    <input type="text" name="username" class="form-control" value="{{with .User}}{{.Username}}{{end}}" required>
+  </div>
+  <div class="form-group">
+    <label>Email</label>
+    <input type="email" name="email" class="form-control" value="{{with .User}}{{.Email}}{{end}}">
+  </div>
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" name="password" class="form-control" {{if not .User}}required{{end}}>
+    <small>{{if .User}}Оставьте пустым, если не менять{{end}}</small>
+  </div>
+  <div class="form-group">
+    <label>Status</label>
+    <select name="status" class="form-control">
+      <option value="Active" {{if eq .User.Status "Active"}}selected{{end}}>Active</option>
+      <option value="Inactive" {{if eq .User.Status "Inactive"}}selected{{end}}>Inactive</option>
+    </select>
+  </div>
+  <div class="form-group">
+  <label>Servers</label>
+  <select name="servers" class="form-control" multiple>
+    {{range .AllServers}}
+      <option value="{{.ID}}" {{if index $.Assigned .ID}}selected{{end}}>{{.Name}} ({{.IP}})</option>
+    {{end}}
+  </select>
+  </div>
+  <button type="submit" class="btn btn-primary mt-2">Save</button>
+</form>
+{{end}}

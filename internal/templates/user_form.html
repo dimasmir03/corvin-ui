@@ -1,0 +1,75 @@
+{{define "content"}}
+<div id="app"></div>
+<h1>{{.Title}}</h1>
+
+<form @submit.prevent="submitForm">
+  <div class="form-group">
+    <label>Username</label>
+    <input type="text" v-model="user.Username" class="form-control" required>
+  </div>
+
+  <div class="form-group">
+    <label>Email</label>
+    <input type="email" v-model="user.Email" class="form-control">
+  </div>
+
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" v-model="user.Password" class="form-control" :required="!isEdit">
+    <small v-if="isEdit">Оставьте пустым, если не менять</small>
+  </div>
+
+  <div class="form-group">
+    <label>Status</label>
+    <select v-model="user.Status" class="form-control">
+      <option value="Active">Active</option>
+      <option value="Inactive">Inactive</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>Servers</label>
+    <select v-model="user.AssignedServers" class="form-control" multiple>
+      <option v-for="server in allServers" :value="server.ID">
+        [[ server.Name ]] ([[ server.IP ]])
+      </option>
+    </select>
+  </div>
+
+  <button type="button" @click="submitForm" type="submit" class="btn btn-primary mt-2">Save</button>
+</form>
+</div>
+
+<script>
+  const app = new Vue({
+    el: "#app",
+    delimiters: ["[[", "]]"],
+    data() {
+      return {
+        user: {
+          Username: "",
+          Email: "",
+          Password: "",
+          Status: "",
+        },
+      };
+    },
+    methods: {
+      submitForm() {
+        axios.post("/api/users/new", formData)
+          .then(response => {
+            if (response.data.success) {
+              window.location.href = "/panel/users";
+            } else {
+              alert(response.data.message);
+            }
+          })
+          .catch(error => {
+            alert("Error saving user");
+            console.error(error);
+          });
+      }
+    }
+  });
+</script>
+{{end}}

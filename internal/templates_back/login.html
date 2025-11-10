@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login - VPN Panel</title>
+  <link rel="stylesheet" href="/static/adminlte/css/adminlte.min.css">
+</head>
+<body class="hold-transition login-page">
+
+<div class="login-box">
+  <div class="card card-outline card-primary">
+    <div class="card-header text-center">
+      <h1 class="h3"><b>VPN Panel</b> Login</h1>
+    </div>
+    <div class="card-body">
+      <form action="/login" method="post">
+        <div class="input-group mb-3">
+          <input type="text" name="username" class="form-control" placeholder="Username" required>
+          <div class="input-group-append">
+            <div class="input-group-text"><span class="fas fa-user"></span></div>
+          </div>
+        </div>
+
+        <div class="input-group mb-3">
+          <input type="password" name="password" class="form-control" placeholder="Password" required>
+          <div class="input-group-append">
+            <div class="input-group-text"><span class="fas fa-lock"></span></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="/static/adminlte/js/adminlte.min.js"></script>
+</body>
+</html>
