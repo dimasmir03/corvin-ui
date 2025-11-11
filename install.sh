@@ -2,11 +2,11 @@
 #bash <(curl -Ls https://raw.githubusercontent.com/dimasmir03/corvin-ui/main/install.sh)
 set -e
 
-echo "Installing panel..."
+echo "Installing panel CORVIN-UI..."
 
 ARCH=$(uname -m)
 VERSION=${1:-latest}
-INSTALL_DIR="/usr/local/panel"
+INSTALL_DIR="/usr/local/corvin-ui"
 
 mkdir -p $INSTALL_DIR
 
@@ -16,18 +16,18 @@ if [ "$VERSION" = "latest" ]; then
 fi
 
 echo "Version: $VERSION"
-wget -O /tmp/panel.tar.gz https://github.com/dimasmir03/corvin-ui/releases/download/${VERSION}/panel-linux-amd64.tar.gz
-tar -xzf /tmp/panel.tar.gz -C $INSTALL_DIR
-chmod +x $INSTALL_DIR/panel
+wget -O /tmp/corvin-ui.tar.gz https://github.com/dimasmir03/corvin-ui/releases/download/${VERSION}/corvin-ui-linux-amd64.tar.gz
+tar -xzf /tmp/corvin-ui.tar.gz -C $INSTALL_DIR
+chmod +x $INSTALL_DIR/corvin-ui
 
 # Systemd service
-cat >/etc/systemd/system/panel.service <<EOF
+cat >/etc/systemd/system/corvin-ui.service <<EOF
 [Unit]
-Description=Corvin Panel
+Description=Corvin-ui Panel
 After=network.target
 
 [Service]
-ExecStart=$INSTALL_DIR/panel
+ExecStart=$INSTALL_DIR/corvin-ui
 Restart=always
 User=root
 
@@ -36,7 +36,7 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable panel
-systemctl restart panel
+systemctl enable corvin-ui
+systemctl restart corvin-ui
 
 echo "✅ Installed successfully!"
