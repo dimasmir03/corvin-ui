@@ -27,7 +27,7 @@ Description=Corvin-ui Panel
 After=network.target
 
 [Service]
-ExecStart=$INSTALL_DIR/corvin-ui
+ExecStart=$INSTALL_DIR/corvin-ui/corvin-ui
 Restart=always
 User=root
 

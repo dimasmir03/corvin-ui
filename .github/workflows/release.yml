@@ -82,10 +82,7 @@ jobs:
           cp corvin-ui.sh corvin-ui/
           mv corvin-ui/corvinui-release corvin-ui/corvin-ui
           mkdir corvin-ui/bin
-          cd corvin-ui/bin
-          
-          
-          cd ../..
+          cd ..
           
       - name: Package
         run: tar -zcvf corvin-ui-linux-${{ matrix.platform }}.tar.gz corvin-ui

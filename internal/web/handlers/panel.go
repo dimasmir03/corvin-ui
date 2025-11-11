@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	ui "vpnpanel/internal"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/models"
 
@@ -50,9 +51,9 @@ func (s PanelController) DashboardHandler(c *gin.Context) {
 		TotalBandwidth: "1.2 TB",
 	}
 
-	tmpl, err := template.ParseFiles(
-		"internal/templates/layout.html",
-		"internal/templates/dashboard.html",
+	tmpl, err := template.ParseFS(ui.StaticFS,
+		"templates/layout.html",
+		"templates/dashboard.html",
 	)
 	if err != nil {
 		log.Println("Template parse error:", err)
@@ -74,7 +75,7 @@ func (s PanelController) DashboardHandler(c *gin.Context) {
 
 // ServersPage renders the servers management page.
 func (s PanelController) ServersPage(c *gin.Context) {
-	tmpl, err := template.ParseFiles("internal/templates/layout.html", "internal/templates/servers.html")
+	tmpl, err := template.ParseFS(ui.StaticFS, "internal/templates/layout.html", "internal/templates/servers.html")
 	if err != nil {
 		log.Println("Template parse error:", err)
 		c.Error(err)
@@ -96,7 +97,7 @@ func (s PanelController) ServersPage(c *gin.Context) {
 // The rendered page includes a form with fields for the server's name, IP, port, secret web path, and country.
 // The page also includes a submit button to send the form data to the server for processing.
 func (s PanelController) NewServerPage(c *gin.Context) {
-	tmpl, _ := template.ParseFiles("internal/templates/layout.html", "internal/templates/server_form.html")
+	tmpl, _ := template.ParseFS(ui.StaticFS, "internal/templates/layout.html", "internal/templates/server_form.html")
 	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
 		"Title":  "Add Server",
 		"Action": "/api/servers/new",
@@ -110,7 +111,7 @@ func (s PanelController) EditServerPage(c *gin.Context) {
 	var server models.Server
 	db.DB.First(&server, id)
 
-	tmpl, _ := template.ParseFiles("internal/templates/layout.html", "internal/templates/server_form.html")
+	tmpl, _ := template.ParseFS(ui.StaticFS, "internal/templates/layout.html", "internal/templates/server_form.html")
 	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
 		"Title":  "Edit Server",
 		"Action": fmt.Sprintf("/api/servers/edit/%s", id),
@@ -122,7 +123,7 @@ func (s PanelController) EditServerPage(c *gin.Context) {
 // The rendered page includes a table with columns for the user's username, email, and password hash.
 // The page also includes a link to add a new user and edit links for each user.
 func (s PanelController) UsersPage(c *gin.Context) {
-	tmpl, err := template.ParseFiles("internal/templates/layout.html", "internal/templates/users.html")
+	tmpl, err := template.ParseFS(ui.StaticFS, "internal/templates/layout.html", "internal/templates/users.html")
 
 	if err != nil {
 		log.Println("Template parse error:", err)
@@ -138,7 +139,7 @@ func (s PanelController) UsersPage(c *gin.Context) {
 // NewUserPage renders the user add page template, allowing the user to create a new user in the database.
 // The rendered page includes a form with fields for the user's username, email, and password.
 func (s PanelController) NewUserPage(c *gin.Context) {
-	tmpl, _ := template.ParseFiles("internal/templates/layout.html", "internal/templates/user_form.html")
+	tmpl, _ := template.ParseFS(ui.StaticFS, "internal/templates/layout.html", "internal/templates/user_form.html")
 	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
 		"Title":  "Add User",
 		"Action": "/api/users/new",
@@ -152,7 +153,7 @@ func (s PanelController) EditUserPage(c *gin.Context) {
 	var user models.User
 	db.DB.First(&user, id)
 
-	tmpl, _ := template.ParseFiles("internal/templates/layout.html", "internal/templates/user_form.html")
+	tmpl, _ := template.ParseFS(ui.StaticFS, "internal/templates/layout.html", "internal/templates/user_form.html")
 	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
 		"Title":  "Edit User",
 		"Action": "/api/users/edit/" + id,

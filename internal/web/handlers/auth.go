@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"net/http"
 	"path/filepath"
+	ui "vpnpanel/internal"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/sessions"
@@ -13,7 +14,7 @@ var Store = sessions.NewCookieStore([]byte("super-secret-key"))
 
 // --- Login Page ---
 func LoginPage(c *gin.Context) {
-	tmpl, err := template.New("login.html").ParseFiles(
+	tmpl, err := template.ParseFS(ui.StaticFS,
 		filepath.Join("internal", "templates", "login.html"),
 	)
 	if err != nil {

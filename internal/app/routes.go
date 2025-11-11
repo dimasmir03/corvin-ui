@@ -1,10 +1,10 @@
 package app
 
 import (
-	"vpnpanel/internal/handlers"
-	"vpnpanel/internal/middleware"
-
 	"net/http"
+	ui "vpnpanel/internal"
+	"vpnpanel/internal/web/handlers"
+	"vpnpanel/internal/web/middleware"
 
 	nice "github.com/ekyoung/gin-nice-recovery"
 	"github.com/gin-contrib/cors"
@@ -13,6 +13,7 @@ import (
 )
 
 func Routes() *gin.Engine {
+
 	r := gin.New()
 	r.Use(gin.Logger())
 	r.Use(nice.Recovery(recoveryHandler))
@@ -25,21 +26,25 @@ func Routes() *gin.Engine {
 		MaxAge:           300,
 	}))
 
-	r.StaticFS("/static", http.Dir("./static"))
+	r.StaticFS("/static", http.FS(ui.StaticFS))
 
 	// init session store
 	store := sessions.NewCookieStore([]byte("super-secret-key"))
 	middleware.Store = store
 	handlers.Store = store
 
+	// protected routes
+	g := r.Group("/")
+	g.Use(middleware.RequireAuth)
+
 	// public routes
 	r.GET("/login", handlers.LoginPage)
 	r.POST("/login", handlers.LoginHandler)
 	r.GET("/logout", handlers.LogoutHandler)
 
-	// protected routes
-	g := r.Group("/")
-	g.Use(middleware.RequireAuth)
+	g.GET("/", func(ctx *gin.Context) {
+		ctx.Redirect(http.StatusFound, "/panel")
+	})
 
 	// ==== Panel routes ====
 	panelRoutes := g.Group("/panel")
@@ -47,7 +52,6 @@ func Routes() *gin.Engine {
 
 	// подключаем контроллеры
 	apiRoutes := g.Group("/api")
-	
 	// Servers routes
 	serversRoutes := apiRoutes.Group("/servers")
 	handlers.NewServerController(serversRoutes)
