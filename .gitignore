@@ -14,3 +14,5 @@
 /db.sqlite3-journal
 db.sqlite3-wal
 data.db
+
+vpnpanel.log

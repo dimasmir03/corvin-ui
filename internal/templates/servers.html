@@ -2,6 +2,15 @@
 <div id="app">
    <h1>{{.Title}}</h1>
    <a href="/panel/servers/new" class="btn btn-success mb-2">Add Server</a>
+   <div class="info-box">
+      <div class="info-box-content">
+         <span class="info-box-text">Всего онлайна</span>
+         <span class="info-box-number">
+            [[ totalOnline ]]
+         </span>
+      </div>
+      <!-- /.info-box-content -->
+   </div>
    <table class="table table-striped">
       <thead>
          <tr>
@@ -26,7 +35,7 @@
                <td>[[ server.secretWebPath ]]</td>
                <td>[[ server.country ]]</td>
                <td>[[ server.status || "Checking" ]]</td>
-               <td>[[ server.onlineCount || "Checking" ]]</td>
+               <td>[[ server.online || "Checking" ]]</td>
                <td>
                   <a :href="`/panel/servers/edit/${server.id}`" class="btn btn-sm btn-primary">Edit</a>
                   <form :action="`/api/servers/delete/${server.id}`" method="post" style="display: inline">
@@ -45,7 +54,7 @@
 </div>
 
 <script>
-   
+
 
    const app = new Vue({
       delimiters: ["[[", "]]"],
@@ -53,18 +62,18 @@
       data() {
          return {
             servers: [
-                {
-                    id: 0,
-                    name: '',
-                    ip: '',
-                    port: 0,
-                    secretWebPath: '',
-                    country: '',
-                    status: '',
-                    onlineCount: 0,
-                },
+               {
+                  id: 0,
+                  name: '',
+                  ip: '',
+                  port: 0,
+                  secretWebPath: '',
+                  country: '',
+                  status: '',
+                  online: 0,
+               },
             ],
-            
+            totalOnline: 0
          };
       },
       methods: {
@@ -90,9 +99,10 @@
             try {
                const { data } = await axios.get("/api/servers/onlines");
                this.servers = this.servers.map((s) => {
-                  s.onlineCount = data.obj[s.id];
+                  s.online = data.obj[s.id];
                   return s;
                });
+               this.totalOnline = this.servers.reduce((acc, s) => acc + s.online, 0);
             } catch (e) {
                console.error("Fetch error:", e);
             }
