@@ -1,4 +1,4 @@
-name: Release 3X-UI
+name: Release CORVIN-UI
 
 on:
   workflow_dispatch:
@@ -76,7 +76,7 @@ jobs:
           file corvinui-release
           ldd corvinui-release || echo "Static binary confirmed"
           
-          mkdir x-ui
+          mkdir corvin-ui
           cp corvinui-release corvin-ui/
           cp corvin-ui.service corvin-ui/
           cp corvin-ui.sh corvin-ui/
@@ -88,7 +88,7 @@ jobs:
           cd ../..
           
       - name: Package
-        run: tar -zcvf corvin-ui-linux-${{ matrix.platform }}.tar.gz x-ui
+        run: tar -zcvf corvin-ui-linux-${{ matrix.platform }}.tar.gz corvin-ui
 
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@v4
