@@ -1,6 +1,7 @@
 package app
 
 import (
+	"io/fs"
 	"net/http"
 	ui "vpnpanel/internal"
 	"vpnpanel/internal/handlers"
@@ -26,7 +27,11 @@ func Routes() *gin.Engine {
 		MaxAge:           300,
 	}))
 
-	r.StaticFS("/static", http.FS(ui.StaticFS))
+	// 🔹 Подключаем статику из embed
+	staticFS, _ := fs.Sub(ui.StaticFS, "static")
+	r.StaticFS("/static", http.FS(staticFS))
+
+	// r.StaticFS("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	// init session store
 	store := sessions.NewCookieStore([]byte("super-secret-key"))

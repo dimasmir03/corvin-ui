@@ -104,7 +104,7 @@ jobs:
           file: corvin-ui-linux-${{ matrix.platform }}.tar.gz
           asset_name: corvin-ui-linux-${{ matrix.platform }}.tar.gz
           overwrite: true
-          prerelease: true
+          prerelease: false
 
   # =================================
   #  Windows Build
