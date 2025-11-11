@@ -3,8 +3,8 @@ package app
 import (
 	"net/http"
 	ui "vpnpanel/internal"
-	"vpnpanel/internal/web/handlers"
-	"vpnpanel/internal/web/middleware"
+	"vpnpanel/internal/handlers"
+	"vpnpanel/internal/middleware"
 
 	nice "github.com/ekyoung/gin-nice-recovery"
 	"github.com/gin-contrib/cors"
