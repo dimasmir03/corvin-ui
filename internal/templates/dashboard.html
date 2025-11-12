@@ -1,35 +1,166 @@
 {{define "content"}}
-<div class="content-header">
-    <h1>Dashboard</h1>
+<div id="app">
+    <div class="content-header">
+        <h1>Dashboard</h1>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-4 col-6">
+            <div class="small-box bg-info">
+                <div class="inner">
+                    <h3>[[ serversCount ]]</h3>
+                    <p>Servers</p>
+                </div>
+                <div class="icon"><i class="fas fa-server"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-4 col-6">
+            <div class="small-box bg-success">
+                <div class="inner">
+                    <h3>[[ onlineCount ]]</h3>
+                    <p>Active Users</p>
+                </div>
+                <div class="icon"><i class="fas fa-users"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-4 col-6">
+            <div class="small-box bg-warning">
+                <div class="inner">
+                    <h3>В разработке</h3>
+                    <p>Total Bandwidth</p>
+                </div>
+                <div class="icon"><i class="fas fa-network-wired"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📈 График истории онлайна -->
+    <div class="card">
+        <div class="card-header border-0">
+            <h3 class="card-title"><i class="fas fa-chart-line mr-1"></i> Online History</h3>
+        </div>
+        <div class="card-body" style="width: 100%; max-width: 100%;">
+            
+            <canvas id="onlineChart" width="1500" height="600"></canvas>
+            <div class="chart-dates">
+                <span>[[ startDate ]]</span>
+                <span style="float:right">[[ endDate ]]</span>
+            </div>
+        </div>
+    </div>
 </div>
 
-<div class="row">
-    <div class="col-lg-4 col-6">
-        <div class="small-box bg-info">
-            <div class="inner">
-                <h3>{{.ServerCount}}</h3>
-                <p>Servers</p>
-            </div>
-            <div class="icon"><i class="fas fa-server"></i></div>
-        </div>
-    </div>
-    <div class="col-lg-4 col-6">
-        <div class="small-box bg-success">
-            <div class="inner">
-                <h3>{{.ActiveUsers}}</h3>
-                <p>Active Users</p>
-            </div>
-            <div class="icon"><i class="fas fa-users"></i></div>
-        </div>
-    </div>
-    <div class="col-lg-4 col-6">
-        <div class="small-box bg-warning">
-            <div class="inner">
-                <h3>{{.TotalBandwidth}}</h3>
-                <p>Total Bandwidth</p>
-            </div>
-            <div class="icon"><i class="fas fa-network-wired"></i></div>
-        </div>
-    </div>
-</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    const app = new Vue({
+        delimiters: ["[[", "]]"],
+        el: "#app",
+        data() {
+            return {
+                serversCount: 0,
+                onlineCount: 0,
+                onlineHistory: [], // [{time: "12:00", online: 123}, ...]
+                chart: null,
+                startDate: '',
+                endDate: ''
+            }
+        },
+        methods: {
+            loadDefaultData() {
+                axios.get("/api/servers/list")
+                    .then((response) => {
+                        this.serversCount = response.data.length;
+                    })
+                    .catch((error) => {
+                        console.error("Error loading Server Count:", error);
+                        // alert(" Error loading Server Count:", error.message);
+                    });
+
+                axios.get("/api/servers/onlines")
+                    .then((response) => {
+                        if (response.data.success == false) {
+                            console.error("Error from api loading Server Count:", response.data.msg);
+                            return;
+                            // alert("Error from api loading Server Count:", response.mess);
+                        }
+                        // console.log(response)
+                        this.onlineCount = response.data.obj.total_online;
+                    })
+                    .catch((error) => {
+                        console.error("Error loading Server Count:", error);
+                        // alert("Error loading Online Count:", error.message);
+                    });
+
+                axios.get("/api/servers/online_history")
+                    .then((response) => {
+                        this.onlineHistory = response.data.map(item => ({
+                            online: item.online,
+                            created_at: item.created_at
+                        }));
+
+                        const first = new Date(this.onlineHistory[0].created_at);
+                        const last = new Date(this.onlineHistory[this.onlineHistory.length - 1].created_at);
+                        this.startDate = first.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+                        this.endDate = last.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+
+                        this.updateChart();
+                    })
+                    .catch((error) => {
+                        console.error("Error loading Online History:", error);
+                    });
+            },
+            initChart() {
+                const ctx = document.getElementById("onlineChart").getContext("2d");
+                this.chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Online Users',
+                            data: [],
+                            fill: false,
+                            borderColor: 'rgba(60,141,188,0.9)',
+                            backgroundColor: 'rgba(60,141,188,0.2)',
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: false,          
+                        maintainAspectRatio: false, 
+                        animation: false,
+                        scales: {
+                            x: {
+                                title: { display: true, text: 'Время' },
+                                ticks: { maxTicksLimit: 8 }
+                            },
+                            y: {
+                                min: 0,
+                                // max: 1000,
+                                title: { display: true, text: 'Пользователи' }
+                            }
+                        }
+                    }
+                });
+            },
+            updateChart() {
+                if (!this.chart) return;
+                this.chart.data.labels = this.onlineHistory.map(i => this.formatDate(i.created_at));
+                this.chart.data.datasets[0].data = this.onlineHistory.map(i => i.online);
+                this.chart.update('none');
+            },
+            formatDate(isoString) {
+                return new Date(isoString).toLocaleTimeString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                })
+            }
+        },
+        mounted() {
+            this.initChart();
+            this.loadDefaultData();
+            setInterval(this.loadDefaultData, 5000);
+        },
+    });
+</script>
 {{end}}

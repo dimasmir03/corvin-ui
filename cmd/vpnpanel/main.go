@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"vpnpanel/internal/app"
-	"vpnpanel/internal/db"
 )
 
 func main() {
@@ -20,10 +19,14 @@ func main() {
 	multi := io.MultiWriter(os.Stdout, f)
 	log.SetOutput(multi)
 
-	db.Init()
+	server := app.NewServer()
+	server.CronStart()
+	server.Cron.Start()
 
-	r := app.Routes()
+	defer func() {
+		server.Cron.Stop()
+	}()
 
 	log.Println("Server started on :8080")
-	http.ListenAndServe("localhost:8080", r)
+	http.ListenAndServe("localhost:8080", server.Router)
 }

@@ -21,6 +21,7 @@ func Init() {
 		&models.Server{},
 		&models.User{},
 		&models.UserServer{},
+		&models.ServerStat{},
 	)
 	if err != nil {
 		log.Fatal("failed migration:", err)

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -32,6 +31,7 @@ func (s ServerController) Routes(r *gin.RouterGroup) {
 	r.POST("/edit/:id", s.UpdateServer)
 	r.POST("/delete/:id", s.DeleteServer)
 	r.GET("/onlines", s.OnlineUsersServers)
+	r.GET("/online_history", s.OnlineHistory)
 }
 
 // AllServers retrieves all servers from the database and returns them as a JSON object.
@@ -108,60 +108,62 @@ func (s ServerController) DeleteServer(ctx *gin.Context) {
 }
 
 func (s ServerController) OnlineUsersServers(c *gin.Context) {
-	servers, err := s.Repo.GetAll()
+	// servers, err := s.Repo.GetAll()
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error get servers": err.Error()})
+	// 	return
+	// }
+
+	servers, total, err := s.Repo.GetAllWithLastStat()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error get servers": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	onlineCounts := make(map[int]int, len(servers))
-
-	client := &http.Client{}
-	for _, server := range servers {
-		url := fmt.Sprintf("http://%s:%d%spanel/api/inbounds/onlines", server.IP, server.Port, server.SecretWebPath)
-		req, err := http.NewRequest("POST", url, nil)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error new req": err.Error()})
-			return
-		}
-		req.Header.Add("X-API-KEY", server.APIKey)
-		resp, err := client.Do(req)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error do req": err.Error()})
-			return
-		}
-		defer resp.Body.Close()
-		// body, err := io.ReadAll(resp.Body)
-		// if err != nil {
-		// 	log.Printf("Failed to read response body: %v\n", err)
-		// 	c.JSON(http.StatusInternalServerError, gin.H{"Failed to read response body": err.Error()})
-		// 	return
-		// }
-		// // req url
-		// log.Println("Request URL:", req.URL.String())
-
-		// // req header X-API-KEY
-		// log.Println("Request Header X-API-KEY:", req.Header.Get("X-API-KEY"))
-
-		// log.Println("Response status code:", resp.StatusCode)
-		// response body as string
-		// log.Printf("Response body: %s\n", string(body))
-
-		var onlineResponse struct {
-			Success bool     `json:"success"`
-			Msg     string   `json:"msg"`
-			Obj     []string `json:"obj"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&onlineResponse); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"Failed to decode response body": err.Error()})
-			return
-		}
-		onlineCounts[server.Id] = len(onlineResponse.Obj)
+	// logs response
+	fmt.Printf("[INFO] Total online: %d\n", total)
+	for _, s := range servers {
+		fmt.Printf("[INFO] online servers:  %s, %d\n", s.Name, int(s.LastStat.Online))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"msg":     "",
-		"obj":     onlineCounts,
-	})
+	// if err != nil {
+	// 	http.Error(w, "failed to load servers", 500)
+	// 	return
+	// }
+	// json.NewEncoder(w).Encode(servers)
+
+	// c.JSON(http.StatusOK, gin.H{
+	// 	"total_online": total,
+	// 	"servers":      servers,
+	// })
+
+	type OnlineResponse struct {
+		Success bool   `json:"success"`
+		Msg     string `json:"msg"`
+		Obj     struct {
+			TotalOnline int             `json:"total_online"`
+			Servers     []models.Server `json:"servers"`
+		} `json:"obj"`
+	}
+
+	onlineResponse := OnlineResponse{
+		Success: true,
+		Msg:     "",
+		Obj: struct {
+			TotalOnline int             `json:"total_online"`
+			Servers     []models.Server `json:"servers"`
+		}{TotalOnline: total, Servers: servers},
+	}
+
+	c.JSON(http.StatusOK, onlineResponse)
+
+}
+
+// OnlineHistory
+func (s ServerController) OnlineHistory(c *gin.Context) {
+	history, err := s.Repo.GetOnlineHistory()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, history)
 }

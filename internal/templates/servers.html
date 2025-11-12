@@ -35,7 +35,7 @@
                <td>[[ server.secretWebPath ]]</td>
                <td>[[ server.country ]]</td>
                <td>[[ server.status || "Checking" ]]</td>
-               <td>[[ server.online || "Checking" ]]</td>
+               <td>[[ server.online == undefined ? "Error" : server.online ]]</td>
                <td>
                   <a :href="`/panel/servers/edit/${server.id}`" class="btn btn-sm btn-primary">Edit</a>
                   <form :action="`/api/servers/delete/${server.id}`" method="post" style="display: inline">
@@ -99,10 +99,13 @@
             try {
                const { data } = await axios.get("/api/servers/onlines");
                this.servers = this.servers.map((s) => {
-                  s.online = data.obj[s.id];
+                  const foundServer = data.obj.servers.find((server) => server.id === s.id);
+                  if (foundServer) {
+                     s.online = foundServer.lastStat.Online;
+                  }
                   return s;
                });
-               this.totalOnline = this.servers.reduce((acc, s) => acc + s.online, 0);
+               this.totalOnline = data.obj.total_online;
             } catch (e) {
                console.error("Fetch error:", e);
             }
