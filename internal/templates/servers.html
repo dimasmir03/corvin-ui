@@ -101,7 +101,7 @@
                this.servers = this.servers.map((s) => {
                   const foundServer = data.obj.servers.find((server) => server.id === s.id);
                   if (foundServer) {
-                     s.online = foundServer.lastStat.Online;
+                     s.online = foundServer.lastStat.online;
                   }
                   return s;
                });
