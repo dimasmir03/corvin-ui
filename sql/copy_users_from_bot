@@ -1,0 +1,1 @@
+INSERT INTO data.users(id,username,status) SELECT id,username,is_active FROM vpn.clients;

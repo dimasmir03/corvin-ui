@@ -3,64 +3,259 @@
    <h1>{{.Title}}</h1>
    <a href="/panel/users/new" class="btn btn-success mb-2">Add User</a>
 
+   <!-- 🔎 Панель фильтров -->
+   <div class="card mb-3">
+      <div class="card-body row">
+
+         <div class="col-md-4">
+            <input type="text" v-model="search" class="form-control" placeholder="Search username...">
+         </div>
+
+         <div class="col-md-3">
+            <select v-model="filterStatus" class="form-select">
+               <option value="all">All statuses</option>
+               <option value="active">Active</option>
+               <option value="inactive">Inactive</option>
+            </select>
+         </div>
+
+         <div class="col-md-3">
+            <select v-model="perPage" class="form-select">
+               <option value="10">10 per page</option>
+               <option value="25">25 per page</option>
+               <option value="50">50 per page</option>
+               <option value="100">100 per page</option>
+            </select>
+         </div>
+
+         <div class="col-md-2">
+            <button class="btn btn-secondary w-100" @click="resetFilters">Reset</button>
+         </div>
+
+      </div>
+   </div>
+
    <table class="table table-striped">
       <thead>
          <tr>
-            <th>ID</th>
-            <th>Username</th>
-            <th>Email</th>
-            <th>Status</th>
+            <th @click="setSort('id')" style="cursor:pointer">
+               ID
+               <span v-if="sortBy === 'id'">
+                  [[ sortDir === 'asc' ? '▲' : '▼' ]]
+               </span>
+            </th>
+
+            <th @click="setSort('username')" style="cursor:pointer">
+               Username
+               <span v-if="sortBy === 'username'">
+                  [[ sortDir === 'asc' ? '▲' : '▼' ]]
+               </span>
+            </th>
+
+            <th @click="setSort('status')" style="cursor:pointer">
+               Status
+               <span v-if="sortBy === 'status'">[[ sortDir === 'asc' ? '▲' : '▼' ]]</span>
+            </th>
+
+            <!-- <th>Email</th> -->
+            <!-- <th>Status</th> -->
             <th>Actions</th>
          </tr>
       </thead>
+
       <tbody>
-         <template v-if="servers.length>0">
-            <tr v-for="user in users" :key="user.id">
-               <td>[[ user.id ]]</td>
-               <td>[[ user.username ]]</td>
-               <td>[[ user.email ]]</td>
-               <td>[[ user.status ]]</td>
-               <td>
-                  <a :href="`/panel/users/edit/${user.id}`" class="btn btn-sm btn-primary">Edit</a>
-                  <form :action="`/users/delete/${user.id}`" method="post" style="display: inline">
-                     <button type="submit" class="btn btn-sm btn-danger">
-                        Delete
-                     </button>
-                  </form>
-               </td>
-            </tr>
-         </template>
-         <tr v-else>
-            <td colspan="5" class="text-center">No users found</td>
+         <tr v-for="(user, index) in paginated" :key="user.id">
+            <td>[[ index + 1 ]]</td>
+
+            <td v-html="highlight(user.username)"></td>
+
+            <td>
+               <label class="switch">
+                  <input type="checkbox" v-model="user.status" @change="toggleUser(user)">
+                  <span class="slider round"></span>
+               </label>
+            </td>
+
+            <td>
+               <a :href="`/panel/users/edit/${user.id}`" class="btn btn-sm btn-primary">Edit</a>
+               <form :action="`/users/delete/${user.id}`" method="post" style="display: inline">
+                  <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+               </form>
+            </td>
+         </tr>
+
+         <tr v-if="paginated.length === 0">
+            <td colspan="4" class="text-center">No users found</td>
          </tr>
       </tbody>
    </table>
+
+   <!-- 🔽 Пагинация -->
+   <nav>
+      <ul class="pagination">
+
+         <li class="page-item" :class="{disabled: page === 1}">
+            <a class="page-link" href="#" @click.prevent="page--">Prev</a>
+         </li>
+
+         <li class="page-item" v-for="p in totalPages" :key="p" :class="{active: page === p}">
+            <a class="page-link" href="#" @click.prevent="page = p">[[ p ]]</a>
+         </li>
+
+         <li class="page-item" :class="{disabled: page === totalPages}">
+            <a class="page-link" href="#" @click.prevent="page++">Next</a>
+         </li>
+
+      </ul>
+   </nav>
 </div>
+
+<!-- 💅 Стили переключателя -->
+<style>
+   .switch {
+      position: relative;
+      display: inline-block;
+      width: 46px;
+      height: 24px;
+   }
+
+   .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+   }
+
+   .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: 0.4s;
+      border-radius: 24px;
+   }
+
+   .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.4s;
+      border-radius: 50%;
+   }
+
+   input:checked+.slider {
+      background-color: #28a745;
+   }
+
+   input:checked+.slider:before {
+      transform: translateX(22px);
+   }
+</style>
 
 <script>
    const app = new Vue({
       delimiters: ["[[", "]]"],
-      mixins: [MediaQueryMixin],
       el: "#app",
       data() {
          return {
-            users: []
+            users: [],
+
+            // фильтры
+            search: "",
+            filterStatus: "all",
+
+            // сортировка
+            sortBy: "id",
+            sortDir: "asc",
+
+            // пагинация
+            perPage: 10,
+            page: 1,
+         }
+      },
+      computed: {
+         filtered() {
+            return this.users
+               .filter(u => {
+                  const nameMatch = u.username.toLowerCase().includes(this.search.toLowerCase());
+                  let statusMatch = true;
+
+                  if (this.filterStatus === "active") statusMatch = u.status === true;
+                  if (this.filterStatus === "inactive") statusMatch = u.status === false;
+
+                  return nameMatch && statusMatch;
+               })
+               .sort((a, b) => {
+                  let f = this.sortBy;
+
+                  if (this.sortDir === "asc") {
+                     if (a[f] < b[f]) return -1;
+                     if (a[f] > b[f]) return 1;
+                     return 0;
+                  } else {
+                     if (a[f] > b[f]) return -1;
+                     if (a[f] < b[f]) return 1;
+                     return 0;
+                  }
+               });
+         },
+         totalPages() {
+            return Math.ceil(this.filtered.length / this.perPage);
+         },
+         paginated() {
+            const start = (this.page - 1) * this.perPage;
+            return this.filtered.slice(start, start + this.perPage);
          }
       },
       methods: {
          async fetchUsers() {
             try {
-               const res = await fetch('/panel/api/users'); // создаем API /panel/api/users
-               if (!res.ok) return;
-               this.users = await res.json();
+               const { data } = await axios.get('/api/users/all'); // создаем API /panel/api/users
+               if (!data.success) throw new Error(data.msg);
+               this.users = data.obj;
             } catch (e) {
                console.error('Fetch error:', e);
             }
-         }
+         },
+         async toggleUser(user) {
+            try {
+               await axios.post(`/api/users/${user.id}/edit/status`, { status: user.status });
+            } catch (e) {
+               console.error('Status toggle error:', e);
+               // user.active = !user.active;
+            }
+         },
+         setSort(field) {
+            if (this.sortBy === field) {
+               this.sortDir = this.sortDir === "asc" ? "desc" : "asc";
+            } else {
+               this.sortBy = field;
+               this.sortDir = "asc";
+            }
+         },
+         resetFilters() {
+            this.search = "";
+            this.filterStatus = "all";
+            this.perPage = 10;
+            this.page = 1;
+            this.sortBy = "id";
+            this.sortDir = "asc";
+         },
+         highlight(text) {
+            if (!this.search) return text;
+            const regex = new RegExp(`(${this.search})`, 'gi');
+            return text.replace(regex, '<mark>$1</mark>');
+         },
       },
       mounted() {
          this.fetchUsers();
-         setInterval(this.fetchUsers, 5000); // обновляем каждые 5 секунд
+         // setInterval(this.fetchUsers, 5000); // обновляем каждые 5 секунд
       }
    });
 </script>

@@ -102,7 +102,7 @@ func getOnlineUsersServer(server *models.Server) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("X-API-KEY", server.APIKey)
+	req.Header.Set("X-API-KEY", server.ApiKey)
 
 	resp, err := client.Do(req)
 	if err != nil {

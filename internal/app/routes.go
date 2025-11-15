@@ -57,13 +57,30 @@ func Routes() *gin.Engine {
 
 	// подключаем контроллеры
 	apiRoutes := g.Group("/api")
+
 	// Servers routes
 	serversRoutes := apiRoutes.Group("/servers")
-	handlers.NewServerController(serversRoutes)
+	handlers.NewServersController(serversRoutes)
 
 	// Users routes
 	usersRoutes := apiRoutes.Group("/users")
 	handlers.NewUserController(usersRoutes)
+
+	// Auth routes
+	authRoutes := apiRoutes.Group("/auth")
+	handlers.NewAuthController(authRoutes)
+
+	// Server routes
+	serverRoutes := apiRoutes.Group("/server")
+	handlers.NewServerController(serverRoutes)
+
+	// VPN routes
+	vpnRoutes := apiRoutes.Group("/vpn")
+	handlers.NewVpnController(vpnRoutes)
+
+	// Telegram routes
+	telegramRoutes := apiRoutes.Group("/telegram")
+	handlers.NewTelegramController(telegramRoutes)
 
 	return r
 }

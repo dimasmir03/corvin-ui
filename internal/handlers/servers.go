@@ -13,30 +13,32 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type ServerController struct {
+type ServersController struct {
 	Repo *repository.ServerRepo
 	Tmpl *template.Template
 }
 
-func NewServerController(r *gin.RouterGroup) *ServerController {
-	serverController := &ServerController{}
+func NewServersController(r *gin.RouterGroup) *ServersController {
+	serverController := &ServersController{}
 	serverController.Repo = repository.NewServerRepo(db.DB)
 	serverController.Routes(r)
 	return serverController
 }
 
-func (s ServerController) Routes(r *gin.RouterGroup) {
+func (s ServersController) Routes(r *gin.RouterGroup) {
 	r.GET("/list", s.AllServers)
-	r.POST("/new", s.CreateServer)
-	r.POST("/edit/:id", s.UpdateServer)
-	r.POST("/delete/:id", s.DeleteServer)
+	r.POST("/create", s.CreateServer)
+	r.POST("/:id/status", s.GetServerStatus)
+	r.GET("/:id", s.GetServer)
+	r.POST("/:id/edit", s.UpdateServer)
+	r.POST("/:id/delete", s.DeleteServer)
 	r.GET("/onlines", s.OnlineUsersServers)
 	r.GET("/online_history", s.OnlineHistory)
 }
 
 // AllServers retrieves all servers from the database and returns them as a JSON object.
 // If the retrieval fails, it returns a JSON object with an internal server error.
-func (s ServerController) AllServers(c *gin.Context) {
+func (s ServersController) AllServers(c *gin.Context) {
 	servers, err := s.Repo.GetAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -50,7 +52,7 @@ func (s ServerController) AllServers(c *gin.Context) {
 // If the binding fails, it returns a JSON object with a bad request error.
 // If the creation fails, it returns a JSON object with an internal server error.
 // Otherwise, it redirects the client to the server list page.
-func (s ServerController) CreateServer(c *gin.Context) {
+func (s ServersController) CreateServer(c *gin.Context) {
 	var server models.Server
 	if err := c.Bind(&server); err != nil {
 		log.Printf("Failed to bind server data: %v\n", err)
@@ -72,7 +74,7 @@ func (s ServerController) CreateServer(c *gin.Context) {
 // UpdateServer updates a server by its ID.
 // It returns a JSON object with a success message if the server is updated successfully,
 // or an error message if the server ID is invalid or the update fails.
-func (s ServerController) UpdateServer(ctx *gin.Context) {
+func (s ServersController) UpdateServer(ctx *gin.Context) {
 	var server models.Server
 	if err := ctx.Bind(&server); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
@@ -90,7 +92,7 @@ func (s ServerController) UpdateServer(ctx *gin.Context) {
 // DeleteServer deletes a server by its ID.
 // It returns a JSON object with a success message if the server is deleted successfully,
 // or an error message if the server ID is invalid or the deletion fails.
-func (s ServerController) DeleteServer(ctx *gin.Context) {
+func (s ServersController) DeleteServer(ctx *gin.Context) {
 	id, err := strconv.Atoi(ctx.Param("id"))
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
@@ -107,7 +109,7 @@ func (s ServerController) DeleteServer(ctx *gin.Context) {
 	})
 }
 
-func (s ServerController) OnlineUsersServers(c *gin.Context) {
+func (s ServersController) OnlineUsersServers(c *gin.Context) {
 	// servers, err := s.Repo.GetAll()
 	// if err != nil {
 	// 	c.JSON(http.StatusInternalServerError, gin.H{"error get servers": err.Error()})
@@ -159,7 +161,7 @@ func (s ServerController) OnlineUsersServers(c *gin.Context) {
 }
 
 // OnlineHistory
-func (s ServerController) OnlineHistory(c *gin.Context) {
+func (s ServersController) OnlineHistory(c *gin.Context) {
 	history, err := s.Repo.GetOnlineHistory()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
