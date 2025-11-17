@@ -23,7 +23,7 @@ tar -xzf /tmp/corvin-ui.tar.gz -C $INSTALL_DIR
 chmod +x $INSTALL_DIR
 
 # 5) Install CLI wrapper
-wget -O /usr/bin/$APP_NAME https://raw.githubusercontent.com/вшьфыьшк03/corvin-ui/main/corvin-ui.sh
+wget -O /usr/bin/$APP_NAME https://raw.githubusercontent.com/dimasmir03/corvin-ui/main/corvin-ui.sh
 chmod +x /usr/bin/$APP_NAME
 
 # Systemd service
