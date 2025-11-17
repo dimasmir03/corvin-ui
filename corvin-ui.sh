@@ -133,6 +133,9 @@ case "$1" in
         systemctl daemon-reload
         echo -e "${green}Uninstalled.${plain}"
         ;;
+    update)
+        bash <(curl -Ls https://raw.githubusercontent.com/dimasmir03/corvin-ui/main/install.sh)
+        ;;
     start)
         systemctl start "${SERVICE_NAME}"
         ;;
