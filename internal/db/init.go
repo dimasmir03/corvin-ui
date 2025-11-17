@@ -26,6 +26,7 @@ func Init() {
 		&models.Telegram{},
 		&models.Vpn{},
 		&models.Complaint{},
+		&models.Settings{},
 		
 	)
 	if err != nil {
