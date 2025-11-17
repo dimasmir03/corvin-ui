@@ -31,8 +31,8 @@ func main() {
 	if err := InitDefaultSettings(settingsRepo); err != nil {
 		log.Fatalf("Failed to initialize default settings: %v", err)
 	}
-	fmt.Println(os.Args)
-	if len(os.Args) > 1 && os.Args[1] == "server" || os.Args[1] == "global" {
+	// fmt.Println(os.Args)
+	if len(os.Args) > 1 {
 		runCLI(os.Args[1:])
 		return
 	}
