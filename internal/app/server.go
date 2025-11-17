@@ -18,7 +18,7 @@ type Server struct {
 }
 
 func NewServer() *Server {
-	db.Init()
+	
 
 	// Подключение к RabbitMQ
 	// rmq, err := broker.NewProducer(cfg.RabbitMQURL, cfg.ExchangeName, cfg.QueueName, cfg.CertFilePath, cfg.KeyFilePath, cfg.CAFilePath)

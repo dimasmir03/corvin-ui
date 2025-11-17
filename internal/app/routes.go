@@ -2,6 +2,7 @@ package app
 
 import (
 	"io/fs"
+	"log"
 	"net/http"
 	ui "vpnpanel/internal"
 	"vpnpanel/internal/handlers"
@@ -16,7 +17,8 @@ import (
 func Routes() *gin.Engine {
 
 	r := gin.New()
-	r.Use(gin.Logger())
+
+	r.Use(gin.LoggerWithWriter(log.Writer()))
 	r.Use(nice.Recovery(recoveryHandler))
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"https://*", "http://*"},

@@ -70,3 +70,9 @@ type Complaint struct {
 	CreatedAt  time.Time `json:"created_at"`
 	UserID     uint       `gorm:"index;not null" json:"user_id" form:"user_id"`
 }
+
+type Settings struct {
+	ID    int    `gorm:"primary_key;autoIncrement" json:"id"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}

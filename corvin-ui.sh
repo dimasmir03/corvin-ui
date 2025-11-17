@@ -109,6 +109,7 @@ Usage: ${yellow}${SERVICE_NAME} <command>${plain}
 Commands:
   install       Install panel
   uninstall     Remove panel
+  update        Update panel
   start         Start service
   stop          Stop service
   restart       Restart service
