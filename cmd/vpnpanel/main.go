@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"vpnpanel/internal/app"
+	"vpnpanel/internal/broker"
 )
 
 func main() {
@@ -18,6 +19,22 @@ func main() {
 
 	multi := io.MultiWriter(os.Stdout, f)
 	log.SetOutput(multi)
+
+	
+	var url = "amqps://ravenvpn:ravenvpn@localhost:5671/"
+	var exchange = "vpn.complaints"
+	var queue = "complaints.reply"
+	var certFile = "/etc/corvin/cert.pem"
+	var keyFile = "/etc/corvin/key.pem"
+	var caFile = "/etc/corvin/ca.pem"
+
+	p, err := broker.NewProducer(url, exchange, queue, certFile, keyFile, caFile)
+
+	if err != nil {
+		log.Fatalf("Failed to init RabbitMQ producer: %v", err)
+	}
+
+	broker.GlobalProducer = p
 
 	server := app.NewServer()
 	server.CronStart()

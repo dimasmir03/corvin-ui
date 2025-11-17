@@ -23,8 +23,10 @@ func Init() {
 		&models.User{},
 		&models.Server{},
 		&models.ServerStat{},
-		&models.TelegramInfo{},
-		&models.VpnInfo{},
+		&models.Telegram{},
+		&models.Vpn{},
+		&models.Complaint{},
+		
 	)
 	if err != nil {
 		log.Fatal("failed migration:", err)

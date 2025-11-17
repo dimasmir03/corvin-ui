@@ -4,16 +4,11 @@ import (
 	"errors"
 	"net/http"
 	"vpnpanel/internal/db"
+	"vpnpanel/internal/handlers/response"
 	"vpnpanel/internal/models"
 
 	"github.com/gin-gonic/gin"
 )
-
-type Response struct {
-	Success bool   `json:"success"`
-	Msg     string `json:"msg"`
-	Obj     any    `json:"obj"`
-}
 
 type UserController struct{}
 
@@ -33,12 +28,12 @@ func (s *UserController) Routes(r *gin.RouterGroup) {
 }
 
 // GetAllUsers retrieves all users stored in the database and returns them as a JSON object.
-// The response will contain a single key 'users' with a value of an array of user objects.
+// The response.Response will contain a single key 'users' with a value of an array of user objects.
 func (s *UserController) GetAllUsers(c *gin.Context) {
 	var users []models.User
 	db.DB.Find(&users)
 
-	response := Response{
+	response := response.Response{
 		Success: true,
 		Obj:     users,
 	}
@@ -81,6 +76,11 @@ func (s *UserController) CreateUser(c *gin.Context) {
 	// }
 
 	// c.Redirect(http.StatusSeeOther, "/users")
+}
+
+// GetUser
+func (s *UserController) GetUser(c *gin.Context) {
+
 }
 
 // UpdateUser updates an existing user by ID, changing their username and password as well as their server associations.
@@ -132,7 +132,7 @@ func (s *UserController) UdateStatusUser(c *gin.Context) {
 	if id == "" {
 		c.JSON(
 			http.StatusBadRequest,
-			Response{
+			response.Response{
 				Success: false,
 				Msg:     "id is required",
 			},
@@ -145,7 +145,7 @@ func (s *UserController) UdateStatusUser(c *gin.Context) {
 	////////////////////////////
 	// body, err := io.ReadAll(c.Request.Body)
 	// if err != nil {
-	// 	log.Printf("Failed to read response body: %v\n", err)
+	// 	log.Printf("Failed to read response.Response body: %v\n", err)
 	// }
 	// // req url
 	// log.Println("Request URL:", c.Request.URL.String())
@@ -153,9 +153,9 @@ func (s *UserController) UdateStatusUser(c *gin.Context) {
 	// // req header X-API-KEY
 	// log.Println("Request Header X-API-KEY:", c.Request.Header.Get("X-API-KEY"))
 
-	// // log.Println("Response status code:", c.Request.StatusCode)
-	// // response body as string
-	// log.Printf("Response body: %s\n", string(body))
+	// // log.Println("response.Response status code:", c.Request.StatusCode)
+	// // response.Response body as string
+	// log.Printf("response.Response body: %s\n", string(body))
 	/////////////////////////////
 
 	var userStatus struct {
@@ -164,7 +164,7 @@ func (s *UserController) UdateStatusUser(c *gin.Context) {
 	if err := c.BindJSON(&userStatus); err != nil {
 		c.JSON(
 			http.StatusBadRequest,
-			Response{
+			response.Response{
 				Success: false,
 				Msg:     err.Error(),
 			},
@@ -176,7 +176,7 @@ func (s *UserController) UdateStatusUser(c *gin.Context) {
 	if user.ID == 0 {
 		c.JSON(
 			http.StatusBadRequest,
-			Response{
+			response.Response{
 				Success: false,
 				Msg:     "user not found",
 			},
@@ -185,7 +185,7 @@ func (s *UserController) UdateStatusUser(c *gin.Context) {
 	}
 	user.Status = userStatus.Status
 	db.DB.Save(&user)
-	c.JSON(http.StatusOK, Response{Success: true})
+	c.JSON(http.StatusOK, response.Response{Success: true})
 }
 
 // DeleteUser deletes a user by ID and redirects to the user list page.

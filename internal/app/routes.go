@@ -67,12 +67,12 @@ func Routes() *gin.Engine {
 	handlers.NewUserController(usersRoutes)
 
 	// Auth routes
-	authRoutes := apiRoutes.Group("/auth")
-	handlers.NewAuthController(authRoutes)
+	// authRoutes := apiRoutes.Group("/auth")
+	// handlers.NewAuthController(authRoutes)
 
 	// Server routes
-	serverRoutes := apiRoutes.Group("/server")
-	handlers.NewServerController(serverRoutes)
+	// serverRoutes := apiRoutes.Group("/server")
+	// handlers.NewServerController(serverRoutes)
 
 	// VPN routes
 	vpnRoutes := apiRoutes.Group("/vpn")
@@ -81,6 +81,10 @@ func Routes() *gin.Engine {
 	// Telegram routes
 	telegramRoutes := apiRoutes.Group("/telegram")
 	handlers.NewTelegramController(telegramRoutes)
+
+	//Complaints
+	complaintsRoutes := apiRoutes.Group("/complaints")
+	handlers.NewComplaintsController(complaintsRoutes)
 
 	return r
 }

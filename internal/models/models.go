@@ -12,8 +12,9 @@ type User struct {
 	Status    bool      `json:"status" form:"status"` // Active / Inactive
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	// gorm.Model
-	Telegram Telegram `json:"telegram" form:"telegram"`
-	Vpn      Vpn      `json:"vpn" form:"vpn"`
+	Telegram  Telegram    `json:"telegram" form:"telegram"`
+	Vpn       Vpn         `json:"vpn" form:"vpn"`
+	Complaint []Complaint `json:"complaint" form:"complaint"`
 }
 
 type Server struct {
@@ -39,20 +40,33 @@ type ServerStat struct {
 }
 
 type Telegram struct {
-	ID         int    `gorm:"primaryKey" json:"id" form:"-"`
-	TelegramID int64  `gorm:"unique" json:"telegram_id" form:"telegram_id"`
-	Username   string `gorm:"not null" json:"username" form:"username"`
-	// language   string `gorm:"not null" json:"language" form:"language"`
-	UserID int `gorm:"index;not null" json:"user_id" form:"user_id"`
+	ID        int    `gorm:"primaryKey" json:"id" form:"-"`
+	TgID      int64  `gorm:"unique" json:"telegram_id" form:"telegram_id"`
+	Username  string `gorm:"not null" json:"username" form:"username"`
+	Firstname string `gorm:"not null" json:"first_name" form:"first_name"`
+	Lastname  string `gorm:"not null" json:"last_name" form:"last_name"`
+	UserID    int    `gorm:"index;not null" json:"user_id" form:"user_id"`
 }
 
 type Vpn struct {
-	ID         int       `gorm:"primaryKey" json:"id" form:"-"`
-	UUID       string    `gorm:"unique;not null" json:"uuid" form:"uuid"`
-	Status     string    `gorm:"not null" json:"status" form:"status"`
-	VpnUser    string    `gorm:"unique;not null" json:"vpn_user" form:"vpn_user"`
-	VpnPass    string    `gorm:"not null" json:"vpn_pass" form:"vpn_pass"`
-	UserID     int       `gorm:"index;not null" json:"user_id" form:"user_id"`
+	ID     int    `gorm:"primaryKey" json:"id" form:"-"`
+	UUID   string `gorm:"unique;not null" json:"uuid" form:"uuid"`
+	Status string `gorm:"not null" json:"status" form:"status"`
+	// VpnUser    string    `gorm:"unique;not null" json:"vpn_user" form:"vpn_user"`
+	// VpnPass    string    `gorm:"not null" json:"vpn_pass" form:"vpn_pass"`
+	Link       string    `gorm:"not null" json:"link" form:"link"`
 	Created_at time.Time `gorm:"autoCreateTime" json:"created_at"`
 	Expires_at time.Time `gorm:"autoCreateTime" json:"expires_at"`
+	UserID     uint      `gorm:"index;not null" json:"user_id" form:"user_id"`
+}
+
+type Complaint struct {
+	ID         uint      `gorm:"primary_key;autoIncrement" json:"id"`
+	TgID       int64     `json:"telegram_id"`
+	Username   string    `json:"username"`
+	Text       string    `json:"text"`
+	AdminReply string    `json:"admin_reply"`
+	Status     string    `json:"status"` // pending, resolved, closed, processing
+	CreatedAt  time.Time `json:"created_at"`
+	UserID     uint       `gorm:"index;not null" json:"user_id" form:"user_id"`
 }

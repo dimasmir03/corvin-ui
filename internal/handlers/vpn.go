@@ -1,17 +1,23 @@
 package handlers
 
-import "github.com/gin-gonic/gin"
+import (
+	"vpnpanel/internal/db"
+	"vpnpanel/internal/repository"
 
-func NewAPIController(r *gin.RouterGroup) *APIController {
-	apiController := &APIController{}
+	"github.com/gin-gonic/gin"
+)
+
+type VpnController struct {
+	repo *repository.VpnRepo
+}
+
+func NewVpnController(r *gin.RouterGroup) *VpnController {
+	apiController := &VpnController{repo: repository.NewVpnRepo(db.DB)}
 	apiController.Routes(r)
 	return apiController
 }
 
-type APIController struct {
-}
-
-func (s APIController) Routes(r *gin.RouterGroup) {
+func (s VpnController) Routes(r *gin.RouterGroup) {
 	r.GET("/:user_id", s.GetVpn)
 	r.POST("/:user_id/create", s.CreateVpn)
 	r.POST("/:user_id/delete", s.DeleteVpn)
@@ -19,3 +25,29 @@ func (s APIController) Routes(r *gin.RouterGroup) {
 	r.POST("/:user_id/edit/status", s.UpdateVpnStatus)
 	r.POST("/:user_id/regenerate", s.RegenerateVpn)
 }
+
+func (s VpnController) GetVpn(c *gin.Context) {
+	// user_id, err := strconv.ParseInt(c.Param("user_id"))
+	// if err != nil {
+	// 	c.JSON(400, gin.H{"error": err.Error()})
+	// 	return
+	// }
+
+	// s.repo.GetVpn(user_id)
+
+}
+
+// CreateVpn
+func (s VpnController) CreateVpn(c *gin.Context) {}
+
+// DeleteVpn
+func (s VpnController) DeleteVpn(c *gin.Context) {}
+
+// UpdateVpn
+func (s VpnController) UpdateVpn(c *gin.Context) {}
+
+// UpdateVpnStatus
+func (s VpnController) UpdateVpnStatus(c *gin.Context) {}
+
+// UpdateVpnStatus
+func (s VpnController) RegenerateVpn(c *gin.Context) {}

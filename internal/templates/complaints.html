@@ -1,0 +1,196 @@
+{{define "content"}}
+<div id="app" class="container">
+
+    <h1 class="mb-4">Complaints</h1>
+
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th @click="sort('id')" style="cursor:pointer">ID</th>
+                <th @click="sort('tg_id')" style="cursor:pointer">Telegram ID</th>
+                <th @click="sort('username')" style="cursor:pointer">Username</th>
+                <th @click="sort('text')" style="cursor:pointer">Complaint</th>
+                <th @click="sort('status')" style="cursor:pointer">Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            <template v-if="complaints.length > 0">
+
+                <template v-for="(c,index) in complaints" :key="c.id">
+
+                    <!-- Основная строка жалобы -->
+                    <tr>
+                        <td>[[ index + 1 ]]</td>
+                        <td>[[ c.tg_id ]]</td>
+                        <td>[[ c.username ]]</td>
+                        <td style="max-width:300px">[[ c.text ]]</td>
+
+                        <td>
+                            <span class="badge" :class="{
+                                'bg-secondary': c.status === 'pending',
+                                'bg-success': c.status === 'resolved',
+                                'bg-danger': c.status === 'declined'
+                              }">
+                                [[ c.status ]]
+                            </span>
+                        </td>
+
+                        <td>
+                            <button class="btn btn-primary btn-sm" @click="toggleReply(c.id)">
+                                Reply
+                            </button>
+
+                            <button class="btn btn-success btn-sm" @click="quickResolve(c)">
+                                Resolve
+                            </button>
+
+                            <button class="btn btn-danger btn-sm" @click="quickDecline(c)">
+                                Decline
+                            </button>
+                        </td>
+                    </tr>
+
+                    <!-- Выпадающая форма ответа -->
+                    <tr v-if="activeReply === c.id">
+                        <td colspan="7">
+
+                            <div class="border rounded p-3 bg-light">
+
+                                <label class="form-label"><b>Reply to user:</b></label>
+
+                                <textarea class="form-control mb-2" rows="3" v-model="c.replyDraft"
+                                    placeholder="Type your reply..."></textarea>
+
+                                <button class="btn btn-success btn-sm" @click="sendReply(c)">
+                                    Send Reply
+                                </button>
+
+                                <button class="btn btn-secondary btn-sm" @click="toggleReply(null)">
+                                    Cancel
+                                </button>
+
+                            </div>
+
+                        </td>
+                    </tr>
+
+                </template>
+            </template>
+
+            <tr v-else>
+                <td colspan="7" class="text-center">No complaints found</td>
+            </tr>
+
+        </tbody>
+    </table>
+
+</div>
+
+<script>
+    const app = new Vue({
+        el: "#app",
+        delimiters: ["[[", "]]"],
+
+        data() {
+            return {
+                complaints: [],
+                sortColumn: null,
+                sortAsc: true,
+                activeReply: null // ID жалобы, у которой открыто поле ответа
+            }
+        },
+
+        methods: {
+
+            async fetchComplaints() {
+                try {
+                    const { data } = await axios.get('/api/complaints');
+                    if (!data.success) throw new Error(data.msg);
+
+                    this.complaints = data.obj;
+
+                    // добавляем локальное поле replyDraft
+                    this.complaints.forEach(c => {
+                        c.replyDraft = c.admin_reply || "";
+                    });
+
+                } catch (e) { console.error("get Complaints error:", e); }
+            },
+
+            sort(column) {
+                if (this.sortColumn === column) {
+                    this.sortAsc = !this.sortAsc;
+                } else {
+                    this.sortColumn = column;
+                    this.sortAsc = true;
+                }
+
+                this.complaints.sort((a, b) => {
+                    let A = a[column], B = b[column];
+
+                    if (typeof A === "string") A = A.toLowerCase();
+                    if (typeof B === "string") B = B.toLowerCase();
+
+                    if (A > B) return this.sortAsc ? 1 : -1;
+                    if (A < B) return this.sortAsc ? -1 : 1;
+                    return 0;
+                });
+            },
+
+            toggleReply(id) {
+                this.activeReply = this.activeReply === id ? null : id;
+            },
+
+            async sendReply(c) {
+                try {
+                    const { data } = await axios.post('/api/complaints/update', {
+                        id: c.id,
+                        status: 'resolved',
+                        admin_reply: c.replyDraft
+                    });
+
+                    if (!data.success) throw new Error(data.msg);
+
+                    this.activeReply = null;
+                    this.fetchComplaints();
+
+                } catch (e) {
+                    console.error("sendReply error:", e);
+                    alert("Failed to send reply");
+                }
+            },
+
+            async quickResolve(c) {
+                c.replyDraft = c.admin_reply;
+                await this.sendReply(c);
+            },
+
+            async quickDecline(c) {
+                try {
+                    const { data } = await axios.post('/api/complaints/update', {
+                        id: c.id,
+                        status: 'declined',
+                        admin_reply: c.replyDraft
+                    });
+
+                    if (!data.success) throw new Error(data.msg);
+
+                    this.fetchComplaints();
+
+                } catch (e) {
+                    console.error("quickDecline error:", e);
+                    alert("Failed to update");
+                }
+            }
+        },
+
+        mounted() {
+            this.fetchComplaints();
+        }
+    });
+</script>
+
+{{end}}

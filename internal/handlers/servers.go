@@ -71,6 +71,39 @@ func (s ServersController) CreateServer(c *gin.Context) {
 	})
 }
 
+// GetServerStatus
+func (s ServersController) GetServerStatus(c *gin.Context) {
+	// id, err := strconv.Atoi(c.Param("id"))
+	// if err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	// 	return
+	// }
+	// status, err := s.Repo.GetStatus(id)
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get server status"})
+	// 	return
+	// }
+	// c.JSON(http.StatusOK, status)
+
+	
+}
+
+//GetServer
+func (s ServersController) GetServer(c *gin.Context) {
+	// id, err := strconv.Atoi(c.Param("id"))
+	// if err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	// 	return
+	// }
+	// server, err := s.Repo.Get(id)
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get server"})
+	// 	return
+	// }
+	// c.JSON(http.StatusOK, server)
+}
+
+
 // UpdateServer updates a server by its ID.
 // It returns a JSON object with a success message if the server is updated successfully,
 // or an error message if the server ID is invalid or the update fails.

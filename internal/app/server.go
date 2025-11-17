@@ -20,6 +20,12 @@ type Server struct {
 func NewServer() *Server {
 	db.Init()
 
+	// Подключение к RabbitMQ
+	// rmq, err := broker.NewProducer(cfg.RabbitMQURL, cfg.ExchangeName, cfg.QueueName, cfg.CertFilePath, cfg.KeyFilePath, cfg.CAFilePath)
+	// if err != nil {
+	// 	log.Fatalf("Ошибка подключения к RabbitMQ: %v", err)
+	// }
+
 	return &Server{
 		Router:         Routes(),
 		ServersService: repository.NewServerRepo(db.DB),
@@ -28,7 +34,7 @@ func NewServer() *Server {
 }
 
 func (s *Server) CronStart() {
- 	s.Cron.AddJob("@every 5s", jobs.NewCollectTotalOnlineJob(*s.ServersService))
+	s.Cron.AddJob("@every 5s", jobs.NewCollectTotalOnlineJob(*s.ServersService))
 
 	s.Cron.AddFunc("@daily", func() {
 		s.ServersService.ClearStats()

@@ -30,6 +30,9 @@ func (s PanelController) Routes(r *gin.RouterGroup) {
 	r.GET("/users/new", s.NewUserPage) // форма добавления
 	r.GET("/users/edit/:id", s.EditUserPage)
 
+	//complaints
+	r.GET("/complaints", s.ComplaintsPage)
+
 }
 
 type DashboardData struct {
@@ -159,4 +162,13 @@ func (s PanelController) EditUserPage(c *gin.Context) {
 		"Action": "/api/users/edit/" + id,
 		"User":   user,
 	})
+}
+
+// complaintsPage
+func (s PanelController) ComplaintsPage(c *gin.Context) {
+	tmpl, _ := template.ParseFS(
+		ui.StaticFS,
+		"templates/layout.html",
+		"templates/complaints.html")
+	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{})
 }
