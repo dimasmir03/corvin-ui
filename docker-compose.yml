@@ -1,0 +1,40 @@
+services:
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:management-alpine
+    ports:
+      - "1765:5671" # AMQP over TLS
+      - "11765:15671" # RabbitMQ UI
+    environment:
+      RABBITMQ_DEFAULT_USER: corvinvpn
+      RABBITMQ_DEFAULT_PASS: corvinvpn
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - /etc/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+      - /etc/ssl/corvin-ui:/etc/rabbitmq/certs
+    command: [ "rabbitmq-server" ]
+    restart: always
+    networks:
+      - bot_net
+
+  bot:
+    container_name: bot
+    image: ghcr.io/dimasmir03/vpnbot:latest
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqps://ravenvpn:ravenvpn@rabbitmq:5671/
+    volumes:
+      - /etc/ssl/corvin-ui:/app/cert:ro
+      - /opt/bot/.env:/app/.env
+    restart: always
+    networks:
+      - bot_net
+
+volumes:
+  rabbitmq_data:
+
+
+networks:
+  bot_net:
+    driver: bridge
