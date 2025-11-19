@@ -3,7 +3,6 @@ module vpnpanel
 go 1.25.3
 
 require (
-	github.com/bytedance/gopkg v0.1.3
 	github.com/ekyoung/gin-nice-recovery v0.0.0-20160510022553-1654dca486db
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.11.0

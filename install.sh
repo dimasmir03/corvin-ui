@@ -37,7 +37,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/$APP_NAME
+ExecStart=$INSTALL_DIR/$APP_NAME/$APP_NAME
 Restart=always
 User=root
 

@@ -166,7 +166,7 @@ case "$1" in
     log)
         # journalctl -u "${SERVICE_NAME}" -f
         # less /var/log/${SERVICE_NAME}.log
-        less /var/log/${SERVICE_NAME}/vpnpanel.log
+        cat /var/log/${SERVICE_NAME}/vpnpanel.log
         ;;
     *)
         show_menu
