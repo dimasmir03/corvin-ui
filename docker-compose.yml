@@ -14,8 +14,8 @@ services:
       - /etc/ssl/corvin-ui:/etc/rabbitmq/certs
     command: [ "rabbitmq-server" ]
     restart: always
-    networks:
-      - bot_net
+    # networks:
+    #   - bot_net
 
   bot:
     container_name: bot
@@ -24,12 +24,16 @@ services:
       - rabbitmq
     environment:
       - RABBITMQ_URL=amqps://ravenvpn:ravenvpn@rabbitmq:5671/
+      - BASE_URL=http://host.docker.internal:8080
     volumes:
       - /etc/ssl/corvin-ui:/app/cert:ro
       - /opt/bot/.env:/app/.env
     restart: always
-    networks:
-      - bot_net
+    # networks:
+    #   - bot_net
+    network_mode: host
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
 volumes:
   rabbitmq_data:

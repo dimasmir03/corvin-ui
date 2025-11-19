@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strconv"
 	"vpnpanel/internal/models"
 
 	"gorm.io/gorm"
@@ -16,7 +17,17 @@ func NewTelegramRepo(db *gorm.DB) *TelegramRepo {
 
 // Create user
 func (c *TelegramRepo) CreateUser(m models.Telegram) (models.Telegram, error) {
-	err := c.DB.Create(&m).Error
+	var user models.User
+	err := c.DB.Transaction(func(tx *gorm.DB) error {
+		err := tx.Create(&m).Error
+		if err != nil {
+			return err
+		}
+		user.Username = m.Firstname + m.Lastname + strconv.FormatInt(m.TgID, 10)
+		user.Status = true
+		user.Telegram = m
+		return tx.Create(&user).Error
+	})
 	return m, err
 }
 
