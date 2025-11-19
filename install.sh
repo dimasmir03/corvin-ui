@@ -9,6 +9,9 @@ ARCH=$(uname -m)
 VERSION=${1:-latest}
 INSTALL_DIR="/usr/local/$APP_NAME"
 SERVICE_FILE="/etc/systemd/system/$APP_NAME.service"
+LOG_PATH="/var/log/$APP_NAME"
+
+mkdir -p $LOG_PATH
 
 mkdir -p $INSTALL_DIR
 
