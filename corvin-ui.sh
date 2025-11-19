@@ -7,7 +7,7 @@ plain='\033[0m'
 
 SERVICE_NAME="corvin-ui"
 INSTALL_DIR="/usr/local/${SERVICE_NAME}"
-BIN_PATH="${INSTALL_DIR}/${SERVICE_NAME}"
+BIN_PATH="${INSTALL_DIR}/${SERVICE_NAME}/${SERVICE_NAME}"
 SYSTEMD_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
 set -e
@@ -59,11 +59,11 @@ install_panel() {
 
     echo -e "${yellow}Downloading latest release...${plain}"
 
-    VERSION=$(curl -s "https://api.github.com/repos/YOUR_GITHUB_USER/YOUR_REPO/releases/latest" \
+    VERSION=$(curl -s "https://api.github.com/repos/dimasmir03/corvin-ui/releases/latest" \
         | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
     wget -O "${INSTALL_DIR}/${SERVICE_NAME}.tar.gz" \
-        "https://github.com/YOUR_GITHUB_USER/YOUR_REPO/releases/download/${VERSION}/${SERVICE_NAME}-linux-${ARCH}.tar.gz"
+        "https://github.com/dimasmir03/corvin-ui/releases/download/${VERSION}/${SERVICE_NAME}-linux-${ARCH}.tar.gz"
 
     tar -xzf "${INSTALL_DIR}/${SERVICE_NAME}.tar.gz" -C "${INSTALL_DIR}"
     rm -f "${INSTALL_DIR}/${SERVICE_NAME}.tar.gz"
@@ -114,6 +114,7 @@ Commands:
   stop          Stop service
   restart       Restart service
   status        View status
+  settings      Show settings
   log           Show logs
 "
 }
@@ -149,8 +150,23 @@ case "$1" in
     status)
         systemctl status "${SERVICE_NAME}"
         ;;
+    settings)
+        case "$2" in
+            show)
+                ${BIN_PATH} settings show
+                ;;
+            update)
+                ${BIN_PATH} settings update "$3" "$4"
+                ;;
+            *)
+                echo -e "${red}Unknown settings command.${plain}"
+                ;;
+        esac
+        ;;
     log)
-        journalctl -u "${SERVICE_NAME}" -f
+        # journalctl -u "${SERVICE_NAME}" -f
+        # less /var/log/${SERVICE_NAME}.log
+        less /var/log/${SERVICE_NAME}/vpnpanel.log
         ;;
     *)
         show_menu
