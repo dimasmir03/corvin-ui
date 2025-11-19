@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"vpnpanel/internal/db"
@@ -10,6 +11,7 @@ import (
 	"vpnpanel/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type TelegramController struct {
@@ -69,6 +71,14 @@ func (s TelegramController) GetUser(c *gin.Context) {
 	tgID := c.Param("tg_id")
 	user, err := s.repo.GetUser(tgID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, Response{
+				Success: true,
+				Msg:     err.Error(),
+				Obj:     nil,
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, Response{
 			Success: false,
 			Msg:     err.Error(),
