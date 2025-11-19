@@ -73,8 +73,8 @@ func (s TelegramController) GetUser(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, Response{
-				Success: true,
-				Msg:     err.Error(),
+				Success: false,
+				Msg:     "record not found",
 				Obj:     nil,
 			})
 			return
