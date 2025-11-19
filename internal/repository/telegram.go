@@ -23,7 +23,7 @@ func (c *TelegramRepo) CreateUser(m models.Telegram) (models.Telegram, error) {
 		if err != nil {
 			return err
 		}
-		user.Username = m.Firstname + m.Lastname + strconv.FormatInt(m.TgID, 10)
+		user.Username = m.Firstname + m.Lastname + "(" + strconv.FormatInt(m.TgID, 10) + ")"
 		user.Status = true
 		user.Telegram = m
 		return tx.Create(&user).Error
