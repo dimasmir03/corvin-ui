@@ -2,6 +2,7 @@
 package repository
 
 import (
+	"fmt"
 	"time"
 	"vpnpanel/internal/models"
 
@@ -128,11 +129,13 @@ func (r *ServerRepo) GetAllWithLastStat() ([]models.Server, int, error) {
 
 // GetOnlineHistory
 func (r *ServerRepo) GetOnlineHistory() ([]models.ServerStat, error) {
+	start := time.Now()
 	var stats []models.ServerStat
 	tx := r.DB.Select("created_at", "online").Where("server_id = 0").Find(&stats)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
+	fmt.Println("debug print time for sqlGetOnlineHistory :  ", time.Now().Sub(start))
 	return stats, nil
 }
 
