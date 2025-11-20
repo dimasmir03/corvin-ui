@@ -131,7 +131,7 @@ func (s TelegramController) GetVpn(c *gin.Context) {
 
 	vpn, err := s.repo.GetVpn(tgID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
+		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
 	}
 
