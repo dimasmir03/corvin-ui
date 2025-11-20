@@ -40,7 +40,7 @@
             <h3 class="card-title"><i class="fas fa-chart-line mr-1"></i> Online History</h3>
         </div>
         <div class="card-body" style="width: 100%; max-width: 100%;">
-            
+
             <canvas id="onlineChart" style="width: 100%;" height="600"></canvas>
             <div class="chart-dates">
                 <span>[[ startDate ]]</span>
@@ -68,6 +68,11 @@
         },
         methods: {
             loadDefaultData() {
+                this.fetchServersCount();
+                this.fetchOnlineCount();
+                this.fetchOnlineHistory();
+            },
+            fetchServersCount() {
                 axios.get("/api/servers/list")
                     .then((response) => {
                         this.serversCount = response.data.length;
@@ -76,7 +81,8 @@
                         console.error("Error loading Server Count:", error);
                         // alert(" Error loading Server Count:", error.message);
                     });
-
+            },
+            fetchOnlineCount() {
                 axios.get("/api/servers/onlines")
                     .then((response) => {
                         if (response.data.success == false) {
@@ -91,7 +97,8 @@
                         console.error("Error loading Server Count:", error);
                         // alert("Error loading Online Count:", error.message);
                     });
-
+            },
+            fetchOnlineHistory() {
                 axios.get("/api/servers/online_history")
                     .then((response) => {
                         this.onlineHistory = response.data.map(item => ({
@@ -126,8 +133,8 @@
                         }]
                     },
                     options: {
-                        responsive: false,          
-                        maintainAspectRatio: false, 
+                        responsive: false,
+                        maintainAspectRatio: false,
                         animation: false,
                         scales: {
                             x: {
@@ -159,7 +166,10 @@
         mounted() {
             this.initChart();
             this.loadDefaultData();
-            setInterval(this.loadDefaultData, 5000);
+            // setInterval(this.loadDefaultData, 5000);
+            setInterval(this.fetchOnlineHistory, 60000);
+            setInterval(this.fetchServersCount, 60000);
+            setInterval(this.fetchOnlineCount, 5000);
         },
     });
 </script>
