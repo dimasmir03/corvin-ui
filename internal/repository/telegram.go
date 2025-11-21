@@ -39,7 +39,7 @@ func (c *TelegramRepo) GetUser(tgID string) (models.Telegram, error) {
 }
 
 // Create VPN
-func (c *TelegramRepo) CreateVpn(tgID int64, link string) (models.Vpn, error) {
+func (c *TelegramRepo) CreateVpn(tgID int64, uuid, link string) (models.Vpn, error) {
 	var tg models.Telegram
 	err := c.DB.Where("tg_id = ?", tgID).First(&tg).Error
 	if err != nil {
@@ -47,6 +47,7 @@ func (c *TelegramRepo) CreateVpn(tgID int64, link string) (models.Vpn, error) {
 	}
 
 	var vpn = models.Vpn{
+		UUID:   uuid,
 		UserID: uint(tg.UserID),
 		Link:   link,
 	}

@@ -26,11 +26,12 @@ func GenVlessLink(tgID int64) VlessParams {
 
 	// ----------- GENERATE NAME FROM tgID -----------
 	// h := sha1.Sum([]byte(strconv.FormatInt(tgID, 10)))
-	h := sha1.Sum([]byte(uuid.New().String() + time.Now().String()))
+	uuid := uuid.New().String()
+	h := sha1.Sum([]byte(uuid))
 	name := fmt.Sprintf("vp-%x", h[:8]) // 10 hex chars (5 bytes)
 	//
 
-	uid := uuid.New().String()
+	uid := uuid
 	pbk := "sompOjrok5Nr0zdcLcgFKdE98YJFb0GthGkRUyaleXs"
 	sids := []string{"fd6546ec484b44", "4297", "f0f8698d", "157dae", "997b2ad79c", "3edb7ff0ea3a2696", "ecfcb9651147", "e5"}
 	sid := sids[rand.Intn(len(sids))]

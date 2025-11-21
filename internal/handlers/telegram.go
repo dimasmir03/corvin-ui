@@ -105,7 +105,7 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 	// link := "https://vpn.example.com/profile/" + fmt.Sprint(dto.TgID)
 
 	vlesParams := utils.GenVlessLink(dto.TgID)
-	vpn, err := s.repo.CreateVpn(dto.TgID, vlesParams.Link)
+	vpn, err := s.repo.CreateVpn(dto.TgID, vlesParams.UID, vlesParams.Link)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
