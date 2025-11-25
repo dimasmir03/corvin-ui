@@ -128,8 +128,7 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 	}
 
 	// сохраняем ответ в БД
-	complaint.AdminReply = body.Reply
-	if err := s.repo.UpdateComplaint(&complaint); err != nil {
+	if err := s.repo.UpdateReply(uint(id), body.Reply); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to update complaint"})
 		return
 	}

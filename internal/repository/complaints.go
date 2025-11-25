@@ -38,7 +38,7 @@ func (c *ComplaintRepository) UpdateReply(id uint, reply string) error {
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"reply":  reply,
-			"status": "answered",
+			"status": "resolved",
 		}).Error
 }
 
