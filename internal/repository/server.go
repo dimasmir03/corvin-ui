@@ -135,7 +135,7 @@ func (r *ServerRepo) GetOnlineHistory() ([]models.ServerStat, error) {
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
-	fmt.Println("debug print time for sqlGetOnlineHistory :  ", time.Now().Sub(start))
+	fmt.Println("debug print time for sqlGetOnlineHistory :  ", time.Since(start))
 	return stats, nil
 }
 

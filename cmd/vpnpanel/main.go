@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 
 	"vpnpanel/internal/app"
 	"vpnpanel/internal/broker"
@@ -14,7 +15,7 @@ import (
 )
 
 func main() {
-	f, err := os.OpenFile("/var/log/corvin-ui/vpnpanel.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	f, err := os.OpenFile(initLogPath()+"vpnpanel.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -59,7 +60,7 @@ func main() {
 		values["ca_file"],
 	)
 
-	if err != nil {
+	if err != nil && runtime.GOOS != "windows" {
 		log.Fatalf("Failed to init RabbitMQ producer: %v", err)
 	}
 
@@ -75,6 +76,14 @@ func main() {
 
 	log.Println("Server started on :8080")
 	http.ListenAndServe("localhost:8080", server.Router)
+}
+
+func initLogPath() string {
+	//check iw windows
+	if runtime.GOOS == "windows" {
+		return "./"
+	}
+	return "/var/log/corvin-ui/"
 }
 
 func InitDefaultSettings(repo *repository.SettingsRepo) error {

@@ -24,7 +24,7 @@ func NewComplaintsController(r *gin.RouterGroup) *CommplaintsController {
 }
 
 func (s CommplaintsController) Routes(r *gin.RouterGroup) {
-	r.GET("/list", s.getAllComplaints)
+	r.GET("/all", s.getAllComplaints)
 	r.GET("/:id", s.getComplaint)
 	r.POST("/create", s.createComplaint)
 	r.POST("/:id/delete", s.deleteComplaint)
