@@ -121,15 +121,15 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 		return
 	}
 
-	complaint, err := s.repo.GetByIDComplaint(uint(id))
-	if err != nil {
-		c.JSON(http.StatusNotFound, response.Response{Success: false, Msg: "Complaint not found"})
-		return
-	}
-
 	// сохраняем ответ в БД
 	if err := s.repo.UpdateReply(uint(id), body.Reply); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to update complaint"})
+		return
+	}
+
+	complaint, err := s.repo.GetByIDComplaint(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, response.Response{Success: false, Msg: "Complaint not found"})
 		return
 	}
 

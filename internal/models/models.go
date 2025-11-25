@@ -61,14 +61,14 @@ type Vpn struct {
 }
 
 type Complaint struct {
-	ID         uint      `gorm:"primary_key;autoIncrement" json:"id"`
-	TgID       int64     `json:"telegram_id"`
-	Username   string    `json:"username"`
-	Text       string    `json:"text"`
-	AdminReply string    `json:"admin_reply"`
-	Status     string    `json:"status"` // pending, resolved, closed, processing
-	CreatedAt  time.Time `json:"created_at"`
-	UserID     uint       `gorm:"index;not null" json:"user_id" form:"user_id"`
+	ID        uint      `gorm:"primary_key;autoIncrement" json:"id"`
+	TgID      int64     `json:"telegram_id"`
+	Username  string    `json:"username"`
+	Text      string    `json:"text"`
+	Reply     string    `json:"reply"`
+	Status    string    `json:"status"` // pending, resolved, closed, processing
+	CreatedAt time.Time `json:"created_at"`
+	UserID    uint      `gorm:"index;not null" json:"user_id" form:"user_id"`
 }
 
 type Settings struct {
