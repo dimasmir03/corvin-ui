@@ -28,7 +28,7 @@ func (s CommplaintsController) Routes(r *gin.RouterGroup) {
 	r.GET("/:id", s.getComplaint)
 	r.POST("/create", s.createComplaint)
 	r.POST("/:id/delete", s.deleteComplaint)
-	r.POST("/:id/edit", s.updateComplaint)
+	r.POST("/:id/update", s.updateComplaint)
 	r.POST("/:id/reply", s.replyComplaint)
 }
 

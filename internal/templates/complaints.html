@@ -7,7 +7,7 @@
         <thead>
             <tr>
                 <th @click="sort('id')" style="cursor:pointer">ID</th>
-                <th @click="sort('tg_id')" style="cursor:pointer">Telegram ID</th>
+                <th @click="sort('telegram_id')" style="cursor:pointer">Telegram ID</th>
                 <th @click="sort('username')" style="cursor:pointer">Username</th>
                 <th @click="sort('text')" style="cursor:pointer">Complaint</th>
                 <th @click="sort('status')" style="cursor:pointer">Status</th>
@@ -24,12 +24,13 @@
                     <!-- Основная строка жалобы -->
                     <tr>
                         <td>[[ index + 1 ]]</td>
-                        <td>[[ c.tg_id ]]</td>
+                        <td>[[ c.telegram_id ]]</td>
                         <td>[[ c.username ]]</td>
                         <td style="max-width:300px">[[ c.text ]]</td>
 
                         <td>
                             <span class="badge" :class="{
+                                'bg-primary': c.status === 'new',
                                 'bg-secondary': c.status === 'pending',
                                 'bg-success': c.status === 'resolved',
                                 'bg-danger': c.status === 'declined'
@@ -146,7 +147,7 @@
 
             async sendReply(c) {
                 try {
-                    const { data } = await axios.post('/api/complaints/update', {
+                    const { data } = await axios.post('/api/complaints/'+c.id+'/reply', {
                         id: c.id,
                         status: 'resolved',
                         admin_reply: c.replyDraft
