@@ -113,7 +113,7 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 	}
 
 	var body struct {
-		Reply string `json:"reply"`
+		Reply string `json:"admin_reply"`
 	}
 
 	if err := c.BindJSON(&body); err != nil {
@@ -150,5 +150,5 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "Reply sent"})
+	c.JSON(http.StatusOK, response.Response{Success: true})
 }
