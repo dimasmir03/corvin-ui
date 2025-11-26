@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -144,10 +145,12 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 	if err := broker.GlobalProducer.PublishComplaintReply(task); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Response{
 			Success: false,
-			Msg:     "Failed to send reply via broker",
+			Msg:     "Failed to send reply via broker:" + err.Error(),
 		})
 		return
 	}
+
+	log.Println("ответ вроде отправлен")
 
 	c.JSON(http.StatusOK, response.Response{Success: true})
 }

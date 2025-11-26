@@ -91,9 +91,9 @@ func InitDefaultSettings(repo *repository.SettingsRepo) error {
 		"amqp_url":                 "amqps://ravenvpn:ravenvpn@localhost:5671/",
 		"amqp_exchange_complaints": "vpn.complaints",
 		"amqp_exchange_users":      "vpn.users",
-		"cert_file":                "/etc/corvin/cert.pem",
-		"key_file":                 "/etc/corvin/key.pem",
-		"ca_file":                  "/etc/corvin/ca.pem",
+		"cert_file":                "/opt/corvin-ui/cert/cert.pem",
+		"key_file":                 "/opt/corvin-ui/cert/key.pem",
+		"ca_file":                  "/opt/corvin-ui/cert/ca.pem",
 	}
 
 	for key, value := range defaults {
