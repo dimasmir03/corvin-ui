@@ -90,7 +90,7 @@ func (p *Producer) PublishComplaintReply(msg any) error {
 
 	return p.publisherComplaints.Publish(
 		data,
-		[]string{},
+		[]string{""},
 		rabbitmq.WithPublishOptionsContentType("application/json"),
 		rabbitmq.WithPublishOptionsExchange(p.exchangeComplaints),
 	)
@@ -105,7 +105,7 @@ func (p *Producer) PublishCreateUser(msg any) error {
 
 	return p.publisherUsers.Publish(
 		data,
-		[]string{},
+		[]string{""},
 		rabbitmq.WithPublishOptionsContentType("application/json"),
 		rabbitmq.WithPublishOptionsExchange(p.exchangeUsers),
 	)
