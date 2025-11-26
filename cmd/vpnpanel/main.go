@@ -40,12 +40,11 @@ func main() {
 
 	// var url = "amqps://ravenvpn:ravenvpn@localhost:5671/"
 	// var exchange = "vpn.complaints"
-	// var queue = "complaints.reply"
 	// var certFile = "/etc/corvin/cert.pem"
 	// var keyFile = "/etc/corvin/key.pem"
 	// var caFile = "/etc/corvin/ca.pem"
 
-	keys := []string{"amqp_url", "amqp_exchange", "amqp_queue", "cert_file", "key_file", "ca_file"}
+	keys := []string{"amqp_url", "amqp_exchange_complaints", "amqp_exchange_users", "cert_file", "key_file", "ca_file"}
 	values, err := settingsRepo.GetKeys(keys...)
 	if err != nil {
 		log.Fatalf("Failed to get settings: %v", err)
@@ -53,8 +52,9 @@ func main() {
 	// p, err := broker.NewProducer(url, exchange, queue, certFile, keyFile, caFile)
 	p, err := broker.NewProducer(
 		values["amqp_url"],
-		values["amqp_exchange"],
-		values["amqp_queue"],
+		values["amqp_exchange_complaints"],
+		values["amqp_exchange_users"],
+		// values["amqp_queue"],
 		values["cert_file"],
 		values["key_file"],
 		values["ca_file"],
@@ -88,12 +88,12 @@ func initLogPath() string {
 
 func InitDefaultSettings(repo *repository.SettingsRepo) error {
 	defaults := map[string]string{
-		"amqp_url":      "amqps://ravenvpn:ravenvpn@localhost:5671/",
-		"amqp_exchange": "vpn.complaints",
-		"amqp_queue":    "complaints.reply",
-		"cert_file":     "/etc/corvin/cert.pem",
-		"key_file":      "/etc/corvin/key.pem",
-		"ca_file":       "/etc/corvin/ca.pem",
+		"amqp_url":                 "amqps://ravenvpn:ravenvpn@localhost:5671/",
+		"amqp_exchange_complaints": "vpn.complaints",
+		"amqp_exchange_users":      "vpn.users",
+		"cert_file":                "/etc/corvin/cert.pem",
+		"key_file":                 "/etc/corvin/key.pem",
+		"ca_file":                  "/etc/corvin/ca.pem",
 	}
 
 	for key, value := range defaults {
