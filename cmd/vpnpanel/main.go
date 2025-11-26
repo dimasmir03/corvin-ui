@@ -88,7 +88,7 @@ func initLogPath() string {
 
 func InitDefaultSettings(repo *repository.SettingsRepo) error {
 	defaults := map[string]string{
-		"amqp_url":                 "amqps://ravenvpn:ravenvpn@localhost:5671/",
+		"amqp_url":                 "amqps://corvinvpn:corvinvpn@localhost:5671/",
 		"amqp_exchange_complaints": "vpn.complaints",
 		"amqp_exchange_users":      "vpn.users",
 		"cert_file":                "/opt/corvin-ui/cert/cert.pem",
