@@ -113,7 +113,7 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 	}
 
 	var body struct {
-		Reply string `json:"admin_reply"`
+		Reply string `json:"reply"`
 	}
 
 	if err := c.BindJSON(&body); err != nil {
@@ -141,7 +141,7 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 		Reply:       body.Reply,
 	}
 
-	if err := broker.GlobalProducer.Publish(task); err != nil {
+	if err := broker.GlobalProducer.PublishComplaintReply(task); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Response{
 			Success: false,
 			Msg:     "Failed to send reply via broker",

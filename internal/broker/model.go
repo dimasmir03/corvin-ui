@@ -16,3 +16,14 @@ type ComplaintReplyTask struct {
 	UserID      uint   `json:"user_id"`
 	Reply       string `json:"reply"`
 }
+
+type CreateUserTask struct {
+	UserID     int64  `json:"user_id"`
+	Username   string `json:"username"`
+	UUID       string `json:"uuid"`
+	PBK        string `json:"pbk"`
+	SID        string `json:"sid"`
+	SPX        string `json:"spx"`
+	Flow       string `json:"flow"`
+	Encryption string `json:"encryption"`
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"vpnpanel/internal/broker"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers/response"
 	"vpnpanel/internal/models"
@@ -109,6 +110,26 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
+		return
+	}
+
+	// Отправляем в RabbitMQ
+	task := broker.CreateUserTask{
+		UserID:     dto.TgID,
+		Username:   vlesParams.Name,
+		UUID:       vlesParams.UID,
+		PBK:        vlesParams.PBK,
+		SID:        vlesParams.SID,
+		SPX:        vlesParams.SPX,
+		Flow:       vlesParams.Flow,
+		Encryption: vlesParams.Encryption,
+	}
+
+	if err := broker.GlobalProducer.PublishCreateUser(task); err != nil {
+		c.JSON(http.StatusInternalServerError, response.Response{
+			Success: false,
+			Msg:     "Failed to send user create task in broker:" + err.Error(),
+		})
 		return
 	}
 

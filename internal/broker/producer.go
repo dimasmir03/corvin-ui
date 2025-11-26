@@ -11,13 +11,14 @@ import (
 )
 
 type Producer struct {
-	publisher *rabbitmq.Publisher
-	conn      *rabbitmq.Conn
-	exchange  string
-	queue     string
+	publisherComplaints *rabbitmq.Publisher
+	publisherUsers      *rabbitmq.Publisher
+	conn                *rabbitmq.Conn
+	exchangeComplaints  string
+	exchangeUsers       string
 }
 
-func NewProducer(url, exchange, queue, certfile, keyfile, cafile string) (*Producer, error) {
+func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafile string) (*Producer, error) {
 	// return &Producer{
 	// 	queue:    queue,
 	// 	exchange: exchange,
@@ -49,10 +50,21 @@ func NewProducer(url, exchange, queue, certfile, keyfile, cafile string) (*Produ
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
 
-	publisher, err := rabbitmq.NewPublisher(
+	publisherComplaints, err := rabbitmq.NewPublisher(
 		conn,
-		rabbitmq.WithPublisherOptionsExchangeName(exchange),
-		rabbitmq.WithPublisherOptionsExchangeKind("fanout"),
+		rabbitmq.WithPublisherOptionsExchangeName(exchangeComplaints),
+		rabbitmq.WithPublisherOptionsExchangeKind("direct"),
+		rabbitmq.WithPublisherOptionsExchangeDeclare,
+		rabbitmq.WithPublisherOptionsLogging,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create publisher for complaints: %w", err)
+	}
+
+	publisherUsers, err := rabbitmq.NewPublisher(
+		conn,
+		rabbitmq.WithPublisherOptionsExchangeName(exchangeUsers),
+		rabbitmq.WithPublisherOptionsExchangeKind("direct"),
 		rabbitmq.WithPublisherOptionsExchangeDeclare,
 		rabbitmq.WithPublisherOptionsLogging,
 	)
@@ -61,32 +73,51 @@ func NewProducer(url, exchange, queue, certfile, keyfile, cafile string) (*Produ
 	}
 
 	return &Producer{
-		conn:      conn,
-		publisher: publisher,
-		exchange:  exchange,
-		queue:     queue,
+		conn:                conn,
+		publisherComplaints: publisherComplaints,
+		publisherUsers:      publisherUsers,
+		exchangeComplaints:  exchangeComplaints,
+		exchangeUsers:       exchangeUsers,
 	}, nil
 }
 
-func (p *Producer) Publish(msg any) error {
+func (p *Producer) PublishComplaintReply(msg any) error {
 	// return nil
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to serialize task: %w", err)
 	}
 
-	return p.publisher.Publish(
+	return p.publisherComplaints.Publish(
 		data,
-		[]string{p.queue},
+		[]string{},
 		rabbitmq.WithPublishOptionsContentType("application/json"),
-		rabbitmq.WithPublishOptionsExchange(p.exchange),
+		rabbitmq.WithPublishOptionsExchange(p.exchangeComplaints),
+	)
+}
+
+func (p *Producer) PublishCreateUser(msg any) error {
+	// return nil
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to serialize task: %w", err)
+	}
+
+	return p.publisherUsers.Publish(
+		data,
+		[]string{},
+		rabbitmq.WithPublishOptionsContentType("application/json"),
+		rabbitmq.WithPublishOptionsExchange(p.exchangeUsers),
 	)
 }
 
 func (p *Producer) Close() {
 	// return
-	if p.publisher != nil {
-		p.publisher.Close()
+	if p.publisherComplaints != nil {
+		p.publisherComplaints.Close()
+	}
+	if p.publisherUsers != nil {
+		p.publisherUsers.Close()
 	}
 	if p.conn != nil {
 		p.conn.Close()
@@ -95,7 +126,7 @@ func (p *Producer) Close() {
 
 func loadRootCAs(cafile string) (*x509.CertPool, error) {
 	rootCAs := x509.NewCertPool()
-	
+
 	caCert, err := os.ReadFile(cafile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load CA certificate: %w", err)

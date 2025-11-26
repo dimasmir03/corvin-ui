@@ -11,12 +11,14 @@ import (
 )
 
 type VlessParams struct {
-	Link string
-	UID  string
-	PBK  string
-	SID  string
-	SPX  string
-	Flow string
+	Link       string
+	UID        string
+	PBK        string
+	SID        string
+	SPX        string
+	Flow       string
+	Encryption string
+	Name       string
 }
 
 var rend *rand.Rand
@@ -46,14 +48,15 @@ func GenVlessLink(tgID int64) VlessParams {
 		User:   url.User(uid),
 		Host:   fmt.Sprintf("%s:443", ip),
 		RawQuery: url.Values{
-			"type":     []string{"tcp"},
-			"security": []string{"reality"},
-			"pbk":      []string{pbk},
-			"fp":       []string{"chrome"},
-			"sni":      []string{sni},
-			"sid":      []string{sid},
-			"spx":      []string{spx},
-			"flow":     []string{"xtls-rprx-vision"},
+			"type":       []string{"tcp"},
+			"security":   []string{"reality"},
+			"pbk":        []string{pbk},
+			"fp":         []string{"qq"},
+			"sni":        []string{sni},
+			"sid":        []string{sid},
+			"spx":        []string{spx},
+			"flow":       []string{"xtls-rprx-vision"},
+			"encryption": []string{"none"},
 		}.Encode(),
 		Fragment: name,
 	}
@@ -61,12 +64,14 @@ func GenVlessLink(tgID int64) VlessParams {
 	fmt.Println(u.User)
 
 	return VlessParams{
-		Link: u.String(),
-		UID:  uid,
-		PBK:  pbk,
-		SID:  sid,
-		SPX:  spx,
-		Flow: "xtls-rprx-vision",
+		Link:       u.String(),
+		UID:        uid,
+		PBK:        pbk,
+		SID:        sid,
+		SPX:        spx,
+		Flow:       "xtls-rprx-vision",
+		Encryption: "none",
+		Name:       name,
 	}
 }
 
