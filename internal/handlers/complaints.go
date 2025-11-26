@@ -60,14 +60,14 @@ func (s CommplaintsController) getComplaint(c *gin.Context) {
 func (s CommplaintsController) createComplaint(c *gin.Context) {
 	var complaint models.Complaint
 	if err := c.BindJSON(&complaint); err != nil {
-		c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "Invalid request body"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Invalid request body: " + err.Error()})
 		return
 	}
 	if err := s.repo.CreateComplaint(&complaint); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to create complaint"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to create complaint:" + err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, response.Response{Success: true, Msg: "", Obj: complaint})
+	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "", Obj: complaint})
 }
 
 func (s CommplaintsController) deleteComplaint(c *gin.Context) {
