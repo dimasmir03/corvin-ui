@@ -53,7 +53,7 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafi
 	publisherComplaints, err := rabbitmq.NewPublisher(
 		conn,
 		rabbitmq.WithPublisherOptionsExchangeName(exchangeComplaints),
-		rabbitmq.WithPublisherOptionsExchangeKind("direct"),
+		rabbitmq.WithPublisherOptionsExchangeKind("fanout"),
 		rabbitmq.WithPublisherOptionsExchangeDeclare,
 		rabbitmq.WithPublisherOptionsLogging,
 	)
