@@ -39,7 +39,7 @@ func (s CommplaintsController) getAllComplaints(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to get all complaints"})
 		return
 	}
-	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "", Obj: complaints})
+	c.JSON(http.StatusOK, response.Response{Success: true, Obj: complaints})
 }
 
 func (s CommplaintsController) getComplaint(c *gin.Context) {
@@ -54,7 +54,7 @@ func (s CommplaintsController) getComplaint(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to get complaint"})
 		return
 	}
-	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "", Obj: complaint})
+	c.JSON(http.StatusOK, response.Response{Success: true, Obj: complaint})
 }
 
 func (s CommplaintsController) createComplaint(c *gin.Context) {
@@ -67,7 +67,7 @@ func (s CommplaintsController) createComplaint(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to create complaint:" + err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "", Obj: complaint})
+	c.JSON(http.StatusOK, response.Response{Success: true, Obj: complaint})
 }
 
 func (s CommplaintsController) deleteComplaint(c *gin.Context) {
@@ -100,6 +100,7 @@ func (s CommplaintsController) updateComplaint(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to update complaint"})
 		return
 	}
+	fmt.Println()
 	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "", Obj: complaint})
 
 }
