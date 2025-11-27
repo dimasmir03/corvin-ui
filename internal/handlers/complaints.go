@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -100,8 +101,8 @@ func (s CommplaintsController) updateComplaint(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to update complaint"})
 		return
 	}
-	fmt.Println()
-	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "", Obj: complaint})
+	fmt.Println(complaint)
+	c.JSON(http.StatusOK, response.Response{Success: true, Obj: complaint})
 
 }
 
