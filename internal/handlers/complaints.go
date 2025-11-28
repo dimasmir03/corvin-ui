@@ -94,11 +94,11 @@ func (s CommplaintsController) updateComplaint(c *gin.Context) {
 	// }
 	var complaint models.Complaint
 	if err := c.BindJSON(&complaint); err != nil {
-		c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "Invalid request body"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Invalid request body"})
 		return
 	}
 	if err := s.repo.UpdateComplaint(&complaint); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to update complaint"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to update complaint"})
 		return
 	}
 	fmt.Println(complaint)
