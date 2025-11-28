@@ -83,16 +83,32 @@ func (c *TelegramRepo) CreateComplaint(tgID int64, username string, text string)
 		Text:     text,
 		Status:   "new",
 	}
-	err := c.DB.Create(&complaint).Error
-	return complaint, err
+	tx := c.DB.Create(&complaint)
+	if tx.Error != nil {
+		return models.Complaint{}, tx.Error
+	}
+
+	complaint.ID = uint(tx.RowsAffected)
+	return complaint, nil
 }
 
 // Update complaint
-func (c *TelegramRepo) UpdateComplaint(id uint, reply string, status string) error {
-	return c.DB.Model(&models.Complaint{}).
+func (c *TelegramRepo) UpdateComplaint(id uint, reply string, status string) (*models.Complaint, error) {
+	tx := c.DB.Model(&models.Complaint{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"reply":  reply,
 			"status": status,
-		}).Error
+		})
+
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+
+	var complaint models.Complaint
+	if err := c.DB.First(&complaint, id).Error; err != nil {
+		return nil, err
+	}
+
+	return &complaint, nil
 }

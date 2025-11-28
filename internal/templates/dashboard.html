@@ -67,12 +67,12 @@
             }
         },
         methods: {
-            loadDefaultData() {
+            async loadDefaultData() {
                 this.fetchServersCount();
                 this.fetchOnlineCount();
                 this.fetchOnlineHistory();
             },
-            fetchServersCount() {
+            async fetchServersCount() {
                 axios.get("/api/servers/list")
                     .then((response) => {
                         this.serversCount = response.data.length;
@@ -82,7 +82,7 @@
                         // alert(" Error loading Server Count:", error.message);
                     });
             },
-            fetchOnlineCount() {
+            async fetchOnlineCount() {
                 axios.get("/api/servers/onlines")
                     .then((response) => {
                         if (response.data.success == false) {

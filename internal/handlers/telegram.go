@@ -205,7 +205,7 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 		Success: true,
 		Msg:     "complaint created",
 		Obj: map[string]uint{
-			"complaintId": com.ID,
+			"complaint_id": com.ID,
 		},
 	})
 }
@@ -218,9 +218,25 @@ func (s TelegramController) UpdateComplaint(c *gin.Context) {
 		return
 	}
 
-	err := s.repo.UpdateComplaint(dto.ComplaintID, dto.AdminReply, dto.Status)
+	complaint,err := s.repo.UpdateComplaint(dto.ComplaintID, dto.AdminReply, dto.Status)
 	if err != nil {
 		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
+		return
+	}
+
+	// Отправляем в RabbitMQ
+	task := broker.ComplaintReplyTask{
+		ComplaintID: complaint.ID,
+		TgID:        complaint.TgID,
+		UserID:      complaint.UserID,
+		Reply:       complaint.Reply,
+	}
+
+	if err := broker.GlobalProducer.PublishComplaintReply(task); err != nil {
+		c.JSON(http.StatusInternalServerError, response.Response{
+			Success: false,
+			Msg:     "Failed to send reply via broker:" + err.Error(),
+		})
 		return
 	}
 
