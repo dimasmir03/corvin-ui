@@ -32,7 +32,7 @@ func (s TelegramController) Routes(r *gin.RouterGroup) {
 	r.GET("/vpn/:tg_id", s.GetVpn)
 	r.GET("/allusers", s.GetAllUsers)
 	r.POST("/complaints/create", s.CreateComplaint)
-	r.POST("/complaints/update", s.UpdateComplaint)
+	r.POST("/complaints/:id/update", s.UpdateComplaint)
 }
 
 func (s TelegramController) CreateUser(c *gin.Context) {
@@ -226,7 +226,6 @@ func (s TelegramController) UpdateComplaint(c *gin.Context) {
 
 	c.JSON(http.StatusOK, Response{
 		Success: true,
-		Msg:     "complaint updated",
 		Obj: map[string]uint{
 			"complaintId": dto.ComplaintID,
 		},
