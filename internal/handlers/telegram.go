@@ -190,20 +190,19 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 	var dto response.CreateComplaintDTO
 
 	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, Response{false, err.Error(), nil})
+		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
 	}
 
 	com, err := s.repo.CreateComplaint(dto.TgID, dto.Username, dto.Text)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
+		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
 	}
 
 	c.JSON(http.StatusOK, Response{
 		Success: true,
-		Msg:     "complaint created",
 		Obj: map[string]uint{
 			"complaint_id": com.ID,
 		},

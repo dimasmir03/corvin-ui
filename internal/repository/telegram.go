@@ -88,7 +88,6 @@ func (c *TelegramRepo) CreateComplaint(tgID int64, username string, text string)
 		return models.Complaint{}, tx.Error
 	}
 
-	complaint.ID = uint(tx.RowsAffected)
 	return complaint, nil
 }
 
