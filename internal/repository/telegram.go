@@ -92,7 +92,7 @@ func (c *TelegramRepo) UpdateComplaint(id uint, reply string, status string) err
 	return c.DB.Model(&models.Complaint{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
-			"admin_reply": reply,
-			"status":      status,
+			"reply":  reply,
+			"status": status,
 		}).Error
 }
