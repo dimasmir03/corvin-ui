@@ -214,13 +214,13 @@ func (s TelegramController) UpdateComplaint(c *gin.Context) {
 	var dto response.UpdateComplaintDTO
 
 	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, Response{false, err.Error(), nil})
+		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
 	}
 
 	err := s.repo.UpdateComplaint(dto.ComplaintID, dto.AdminReply, dto.Status)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
+		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
 	}
 

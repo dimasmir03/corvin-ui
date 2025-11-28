@@ -40,7 +40,7 @@ type CreateComplaintDTO struct {
 }
 
 type UpdateComplaintDTO struct {
-	ComplaintID uint   `json:"complaint_id" binding:"required"`
+	ComplaintID uint   `json:"complaint_id"`
 	AdminReply  string `json:"admin_reply"`
 	Status      string `json:"status"`
 }
