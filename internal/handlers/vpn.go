@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"vpnpanel/internal/db"
 	"vpnpanel/internal/repository"
 
 	"github.com/gin-gonic/gin"
@@ -11,13 +10,11 @@ type VpnController struct {
 	repo *repository.VpnRepo
 }
 
-func NewVpnController(r *gin.RouterGroup) *VpnController {
-	apiController := &VpnController{repo: repository.NewVpnRepo(db.DB)}
-	apiController.Routes(r)
-	return apiController
+func NewVpnController(repo *repository.VpnRepo) *VpnController {
+	return &VpnController{repo: repo}
 }
 
-func (s VpnController) Routes(r *gin.RouterGroup) {
+func (s VpnController) Register(r *gin.RouterGroup) {
 	r.GET("/:user_id", s.GetVpn)
 	r.POST("/:user_id/create", s.CreateVpn)
 	r.POST("/:user_id/delete", s.DeleteVpn)
@@ -37,17 +34,12 @@ func (s VpnController) GetVpn(c *gin.Context) {
 
 }
 
-// CreateVpn
 func (s VpnController) CreateVpn(c *gin.Context) {}
 
-// DeleteVpn
 func (s VpnController) DeleteVpn(c *gin.Context) {}
 
-// UpdateVpn
 func (s VpnController) UpdateVpn(c *gin.Context) {}
 
-// UpdateVpnStatus
 func (s VpnController) UpdateVpnStatus(c *gin.Context) {}
 
-// UpdateVpnStatus
 func (s VpnController) RegenerateVpn(c *gin.Context) {}

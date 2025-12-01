@@ -1,32 +1,26 @@
 package handlers
 
 import (
-	"html/template"
 	"net/http"
-	"path/filepath"
-	ui "vpnpanel/internal"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/sessions"
 )
 
-var Store = sessions.NewCookieStore([]byte("super-secret-key"))
+var (
+	Store       = sessions.NewCookieStore([]byte("super-secret-key"))
+	SessionName = "vpn-session"
+	AuthKey     = "authenticated"
+	DefaultUser = "admin"
+	DefaultPass = "admin"
+)
 
 // --- Login Page ---
 func LoginPage(c *gin.Context) {
-	tmpl, err := template.ParseFS(ui.StaticFS,
-		filepath.Join("internal", "templates", "login.html"),
-	)
-	if err != nil {
-		c.Error(err)
-		return
-	}
-
-	err = tmpl.Execute(c.Writer, nil)
-	if err != nil {
-		c.Error(err)
-		return
-	}
+	c.HTML(http.StatusOK, "login.html", gin.H{
+		"title": "Login",
+		"error": c.Query("error") == "1",
+	})
 }
 
 // --- Handle Login ---
@@ -34,11 +28,10 @@ func LoginHandler(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
 
-	// Простая проверка — позже заменим на БД
-	if username == "admin" && password == "admin" {
-		session, _ := Store.Get(c.Request, "vpn-session")
-		session.Values["authenticated"] = true
-		session.Save(c.Request, c.Writer)
+	if authenticateUser(username, password) {
+		session, _ := Store.Get(c.Request, SessionName)
+		session.Values[AuthKey] = true
+		_ = session.Save(c.Request, c.Writer)
 		c.Redirect(http.StatusFound, "/")
 		return
 	}
@@ -48,8 +41,13 @@ func LoginHandler(c *gin.Context) {
 
 // --- Logout ---
 func LogoutHandler(c *gin.Context) {
-	session, _ := Store.Get(c.Request, "vpn-session")
-	session.Values["authenticated"] = false
-	session.Save(c.Request, c.Writer)
+	session, _ := Store.Get(c.Request, SessionName)
+	session.Values[AuthKey] = false
+	_ = session.Save(c.Request, c.Writer)
 	c.Redirect(http.StatusFound, "/login")
+}
+
+func authenticateUser(username, password string) bool {
+	// TODO позже замменить на проверку в DB
+	return username == DefaultUser && password == DefaultPass
 }

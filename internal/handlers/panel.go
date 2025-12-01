@@ -14,25 +14,37 @@ import (
 
 type PanelController struct{}
 
-func NewPanelController(r *gin.RouterGroup) *PanelController {
-	panelController := &PanelController{}
-	panelController.Routes(r)
-	return panelController
+func NewPanelController() *PanelController {
+	return &PanelController{}
 }
 
-func (s PanelController) Routes(r *gin.RouterGroup) {
+func (s PanelController) Register(r *gin.RouterGroup) {
 	r.GET("/", s.DashboardHandler)
-	r.GET("/servers", s.ServersPage)             // список серверов
-	r.GET("/servers/new", s.NewServerPage)       // форма добавления
-	r.GET("/servers/edit/:id", s.EditServerPage) // форма редактирования
+	r.GET("/servers", s.ServersPage)
+	r.GET("/servers/new", s.NewServerPage)
+	r.GET("/servers/edit/:id", s.EditServerPage)
 
-	r.GET("/users", s.UsersPage)       // список пользователей
-	r.GET("/users/new", s.NewUserPage) // форма добавления
+	r.GET("/users", s.UsersPage)
+	r.GET("/users/new", s.NewUserPage)
 	r.GET("/users/edit/:id", s.EditUserPage)
 
-	//complaints
 	r.GET("/complaints", s.ComplaintsPage)
+}
 
+func renderTemplate(c *gin.Context, files []string, data any) {
+	tmpl, err := template.ParseFS(ui.StaticFS, files...)
+	if err != nil {
+		log.Println("Template parse error:", err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.ExecuteTemplate(c.Writer, "layout", data)
+	if err != nil {
+		log.Println("Template execute error:", err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
 }
 
 type DashboardData struct {
@@ -46,7 +58,6 @@ type DashboardData struct {
 // The rendered page includes a table with columns for the server count, active users, and total bandwidth.
 // The page also includes links to add a new server and edit links for each server.
 func (s PanelController) DashboardHandler(c *gin.Context) {
-	log.Println("Dashboard handler started")
 	data := DashboardData{
 		Title:          "Dashboard",
 		ServerCount:    3,
@@ -54,26 +65,7 @@ func (s PanelController) DashboardHandler(c *gin.Context) {
 		TotalBandwidth: "1.2 TB",
 	}
 
-	tmpl, err := template.ParseFS(ui.StaticFS,
-		"templates/layout.html",
-		"templates/dashboard.html",
-	)
-	if err != nil {
-		log.Println("Template parse error:", err)
-		c.Error(err)
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-
-	err = tmpl.ExecuteTemplate(c.Writer, "layout", data)
-	if err != nil {
-		log.Println("Template execute error:", err)
-		c.Error(err)
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-
-	log.Println("Dashboard rendered successfully")
+	renderTemplate(c, []string{"templates/layout.html", "templates/dashboard.html"}, data)
 }
 
 // ServersPage renders the servers management page.
@@ -112,10 +104,12 @@ func (s PanelController) NewServerPage(c *gin.Context) {
 func (s PanelController) EditServerPage(c *gin.Context) {
 	id := c.Param("id")
 	var server models.Server
-	db.DB.First(&server, id)
+	if err := db.DB.First(&server, id).Error; err != nil {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+		return
+	}
 
-	tmpl, _ := template.ParseFS(ui.StaticFS, "templates/layout.html", "templates/server_form.html")
-	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
+	renderTemplate(c, []string{"template/layout.html", "templates/server_form.html"}, map[string]any{
 		"Title":  "Edit Server",
 		"Action": fmt.Sprintf("/api/servers/edit/%s", id),
 		"Server": server,
@@ -126,15 +120,7 @@ func (s PanelController) EditServerPage(c *gin.Context) {
 // The rendered page includes a table with columns for the user's username, email, and password hash.
 // The page also includes a link to add a new user and edit links for each user.
 func (s PanelController) UsersPage(c *gin.Context) {
-	tmpl, err := template.ParseFS(ui.StaticFS, "templates/layout.html", "templates/users.html")
-
-	if err != nil {
-		log.Println("Template parse error:", err)
-		c.Error(err)
-		return
-	}
-
-	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
+	renderTemplate(c, []string{"templates/layout.html", "templates/users.html"}, map[string]any{
 		"Title": "Users",
 	})
 }
@@ -142,8 +128,7 @@ func (s PanelController) UsersPage(c *gin.Context) {
 // NewUserPage renders the user add page template, allowing the user to create a new user in the database.
 // The rendered page includes a form with fields for the user's username, email, and password.
 func (s PanelController) NewUserPage(c *gin.Context) {
-	tmpl, _ := template.ParseFS(ui.StaticFS, "templates/layout.html", "templates/user_form.html")
-	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
+	renderTemplate(c, []string{"templates/layout.html", "templates/user_form.html"}, map[string]any{
 		"Title":  "Add User",
 		"Action": "/api/users/new",
 	})
@@ -156,19 +141,31 @@ func (s PanelController) EditUserPage(c *gin.Context) {
 	var user models.User
 	db.DB.First(&user, id)
 
-	tmpl, _ := template.ParseFS(ui.StaticFS, "templates/layout.html", "templates/user_form.html")
-	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
-		"Title":  "Edit User",
-		"Action": "/api/users/edit/" + id,
-		"User":   user,
-	})
+	if user.ID == 0 {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	renderTemplate(c, []string{
+		"templates/layout.html",
+		"templates/user_form.html",
+	},
+		map[string]any{
+			"Title":  "Edit User",
+			"Action": "/api/users/edit/" + id,
+			"User":   user,
+		})
 }
 
 // complaintsPage
 func (s PanelController) ComplaintsPage(c *gin.Context) {
-	tmpl, _ := template.ParseFS(
-		ui.StaticFS,
-		"templates/layout.html",
-		"templates/complaints.html")
-	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{})
+	renderTemplate(c,
+		[]string{
+			"templates/layout.html",
+			"templates/complaints.html",
+		},
+		map[string]any{
+			"Title": "Complaints",
+		},
+	)
 }

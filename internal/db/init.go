@@ -2,6 +2,8 @@ package db
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 	"runtime"
 	"vpnpanel/internal/models"
 
@@ -12,14 +14,39 @@ import (
 var DB *gorm.DB
 
 func Init() {
-	var err error
+	dbPath := resolveDBpath()
 
-	DB, err = gorm.Open(sqlite.Open(initdbpath() + "data.db"), &gorm.Config{})
+	if err := ensureDir(filepath.Dir(dbPath)); err != nil {
+		log.Fatal("failed to create db dir:", err)
+	}
+
+	var err error
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		log.Fatal("failed to connect database:", err)
 	}
 
-	err = DB.AutoMigrate(
+	if err := migrate();err != nil {
+		log.Fatal("failed migration:", err)
+	}
+}
+
+func resolveDBpath() string {
+	if runtime.GOOS == "windows" {
+		return "./data.db"
+	}
+	return "/etc/corvin-ui/data.db"
+}
+
+func ensureDir(dir string) error {
+	if dir == "" || dir == "," {
+		return nil
+	}
+	return os.MkdirAll(dir, 0755)
+}
+
+func migrate() error {
+	return DB.AutoMigrate(
 		&models.User{},
 		&models.Server{},
 		&models.ServerStat{},
@@ -27,16 +54,5 @@ func Init() {
 		&models.Vpn{},
 		&models.Complaint{},
 		&models.Settings{},
-		
 	)
-	if err != nil {
-		log.Fatal("failed migration:", err)
-	}
-}
-
-func initdbpath() string {
-	if runtime.GOOS == "windows" {
-		return "./"
-	}
-	return "/etc/corvin-ui/"
 }

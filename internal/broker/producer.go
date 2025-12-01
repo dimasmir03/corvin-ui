@@ -11,18 +11,16 @@ import (
 )
 
 type Producer struct {
+	conn *rabbitmq.Conn
+
 	publisherComplaints *rabbitmq.Publisher
 	publisherUsers      *rabbitmq.Publisher
-	conn                *rabbitmq.Conn
-	exchangeComplaints  string
-	exchangeUsers       string
+
+	exchangeComplaints string
+	exchangeUsers      string
 }
 
 func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafile string) (*Producer, error) {
-	// return &Producer{
-	// 	queue:    queue,
-	// 	exchange: exchange,
-	// }, nil
 	rootCAs, err := loadRootCAs(cafile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load root CAs: %w", err)
@@ -42,9 +40,9 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafi
 	conn, err := rabbitmq.NewConn(
 		url,
 		rabbitmq.WithConnectionOptionsLogging,
-		rabbitmq.WithConnectionOptionsConfig(
-			rabbitmq.Config{TLSClientConfig: tlsConfig},
-		),
+		rabbitmq.WithConnectionOptionsConfig(rabbitmq.Config{
+				TLSClientConfig: tlsConfig,
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
@@ -82,37 +80,28 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafi
 }
 
 func (p *Producer) PublishComplaintReply(msg any) error {
-	// return nil
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("failed to serialize task: %w", err)
-	}
-
-	return p.publisherComplaints.Publish(
-		data,
-		[]string{""},
-		rabbitmq.WithPublishOptionsContentType("application/json"),
-		rabbitmq.WithPublishOptionsExchange(p.exchangeComplaints),
-	)
+	return p.publish(p.publisherComplaints, p.exchangeComplaints, msg)
 }
 
 func (p *Producer) PublishCreateUser(msg any) error {
-	// return nil
+	return p.publish(p.publisherUsers, p.exchangeUsers, msg)
+}
+
+func (p *Producer) publish(pub *rabbitmq.Publisher, exchange string, msg any) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to serialize task: %w", err)
 	}
 
-	return p.publisherUsers.Publish(
+	return pub.Publish(
 		data,
 		[]string{""},
 		rabbitmq.WithPublishOptionsContentType("application/json"),
-		rabbitmq.WithPublishOptionsExchange(p.exchangeUsers),
+		rabbitmq.WithPublishOptionsExchange(exchange),
 	)
 }
 
 func (p *Producer) Close() {
-	// return
 	if p.publisherComplaints != nil {
 		p.publisherComplaints.Close()
 	}

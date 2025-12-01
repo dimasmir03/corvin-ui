@@ -45,7 +45,7 @@ type Telegram struct {
 	Username  string `gorm:"not null" json:"username" form:"username"`
 	Firstname string `gorm:"not null" json:"first_name" form:"first_name"`
 	Lastname  string `gorm:"not null" json:"last_name" form:"last_name"`
-	UserID    int    `gorm:"index;not null" json:"user_id" form:"user_id"`
+	UserID    uint    `gorm:"index;not null" json:"user_id" form:"user_id"`
 }
 
 type Vpn struct {
@@ -61,14 +61,16 @@ type Vpn struct {
 }
 
 type Complaint struct {
-	ID        uint      `gorm:"primary_key;autoIncrement" json:"id"`
-	TgID      int64     `json:"telegram_id"`
-	Username  string    `json:"username"`
-	Text      string    `json:"text"`
-	Reply     string    `json:"reply"`
-	Status    string    `json:"status"` // pending, resolved, closed, processing
+	ID        uint      `gorm:"primary_key;autoIncrement" json:"id" `
+	TgID      int64     `json:"telegram_id" `
+	Username  string    `json:"username" `
+	Text      string    `json:"text" `
+	Reply     string    `json:"reply" `
+	Status    string    `json:"status" `
 	CreatedAt time.Time `json:"created_at"`
 	UserID    uint      `gorm:"index;not null" json:"user_id" form:"user_id"`
+	Photo     bool      `json:"photo" `
+	PhotoURL  string    `json:"photo_url" `
 }
 
 type Settings struct {

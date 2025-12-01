@@ -2,10 +2,10 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"vpnpanel/internal/broker"
-	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers/response"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
@@ -16,16 +16,21 @@ import (
 )
 
 type TelegramController struct {
-	repo *repository.TelegramRepo
+	teleRepo *repository.TelegramRepo
+	storage  *repository.StorageRepo
 }
 
-func NewTelegramController(r *gin.RouterGroup) *TelegramController {
-	telegramController := &TelegramController{repo: repository.NewTelegramRepo(db.DB)}
-	telegramController.Routes(r)
-	return telegramController
+func NewTelegramController(
+	repo *repository.StorageRepo,
+	teleRepo *repository.TelegramRepo,
+) *TelegramController {
+	return &TelegramController{
+		storage:  repo,
+		teleRepo: teleRepo,
+	}
 }
 
-func (s TelegramController) Routes(r *gin.RouterGroup) {
+func (s TelegramController) Register(r *gin.RouterGroup) {
 	r.POST("/user/create", s.CreateUser)
 	r.GET("/user/:tg_id", s.GetUser)
 	r.POST("/vpn/create", s.CreateVpn)
@@ -42,8 +47,7 @@ func (s TelegramController) CreateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, Response{false, err.Error(), nil})
 		return
 	}
-
-	user, err := s.repo.CreateUser(models.Telegram{
+	user, err := s.teleRepo.CreateUser(models.Telegram{
 		TgID:      dto.TgID,
 		Username:  dto.Username,
 		Firstname: dto.Firstname,
@@ -70,7 +74,7 @@ func (s TelegramController) CreateUser(c *gin.Context) {
 
 func (s TelegramController) GetUser(c *gin.Context) {
 	tgID := c.Param("tg_id")
-	user, err := s.repo.GetUser(tgID)
+	user, err := s.teleRepo.GetUser(tgID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, Response{
@@ -106,7 +110,7 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 	// link := "https://vpn.example.com/profile/" + fmt.Sprint(dto.TgID)
 
 	vlesParams := utils.GenVlessLink(dto.TgID)
-	vpn, err := s.repo.CreateVpn(dto.TgID, vlesParams.UID, vlesParams.Link)
+	vpn, err := s.teleRepo.CreateVpn(dto.TgID, vlesParams.UID, vlesParams.Link)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
@@ -150,7 +154,7 @@ func (s TelegramController) GetVpn(c *gin.Context) {
 		return
 	}
 
-	vpn, err := s.repo.GetVpn(tgID)
+	vpn, err := s.teleRepo.GetVpn(tgID)
 	if err != nil {
 		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
@@ -167,7 +171,7 @@ func (s TelegramController) GetVpn(c *gin.Context) {
 }
 
 func (s TelegramController) GetAllUsers(c *gin.Context) {
-	users, err := s.repo.GetAllUsers()
+	users, err := s.teleRepo.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
 		return
@@ -189,13 +193,49 @@ func (s TelegramController) GetAllUsers(c *gin.Context) {
 func (s TelegramController) CreateComplaint(c *gin.Context) {
 	var dto response.CreateComplaintDTO
 
-	if err := c.ShouldBindJSON(&dto); err != nil {
+	if err := c.ShouldBind(&dto); err != nil {
 		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
 	}
 
-	com, err := s.repo.CreateComplaint(dto.TgID, dto.Username, dto.Text)
+	// Парсим файл
+	fileHeader, err := c.FormFile("photo")
+	if err != nil && err != http.ErrMissingFile {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"msg":     "failed to read photo",
+		})
+		return
+	}
 
+	var photoURL string
+
+	com, err := s.teleRepo.CreateComplaint(dto.TgID, dto.Username, dto.Text)
+
+	if err != nil {
+		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
+		return
+	}
+
+	// Если фото есть — загружаем в MinIO
+	if fileHeader != nil {
+		src, err := fileHeader.Open()
+		if err != nil {
+			c.JSON(http.StatusOK, Response{false, err.Error(), nil})
+			return
+		}
+		defer src.Close()
+
+		objectName := fmt.Sprintf("complaints/%d_%s", com.ID, fileHeader.Filename)
+
+		photoURL, err = s.storage.UploadFile(src, objectName, fileHeader.Header.Get("Content-Type"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": err.Error()})
+			return
+		}
+	}
+
+	err = s.teleRepo.UpdateComplaintPhotoURL(com.ID, photoURL)
 	if err != nil {
 		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
@@ -217,7 +257,7 @@ func (s TelegramController) UpdateComplaint(c *gin.Context) {
 		return
 	}
 
-	complaint,err := s.repo.UpdateComplaint(dto.ComplaintID, dto.AdminReply, dto.Status)
+	complaint, err := s.teleRepo.UpdateComplaint(dto.ComplaintID, dto.AdminReply, dto.Status)
 	if err != nil {
 		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return

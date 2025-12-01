@@ -1,7 +1,8 @@
 package repository
 
 import (
-	"strconv"
+	"errors"
+	"fmt"
 	"vpnpanel/internal/models"
 
 	"gorm.io/gorm"
@@ -17,17 +18,23 @@ func NewTelegramRepo(db *gorm.DB) *TelegramRepo {
 
 // Create user
 func (c *TelegramRepo) CreateUser(m models.Telegram) (models.Telegram, error) {
-	var user models.User
 	err := c.DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Create(&m).Error
-		if err != nil {
+		if err := tx.Create(&m).Error; err != nil {
 			return err
 		}
-		user.Username = m.Firstname + m.Lastname + "(" + strconv.FormatInt(m.TgID, 10) + ")"
-		user.Status = true
-		user.Telegram = m
-		return tx.Create(&user).Error
+
+		user := models.User{
+			Username: fmt.Sprintf("%s%s(%d)", m.Firstname, m.Lastname, m.TgID),
+			Status:   true,
+		}
+
+		if err := tx.Create(&user).Error; err != nil {
+			return err
+		}
+
+		return tx.Model(&m).Update("user_id", user.ID).Error
 	})
+
 	return m, err
 }
 
@@ -41,30 +48,32 @@ func (c *TelegramRepo) GetUser(tgID string) (models.Telegram, error) {
 // Create VPN
 func (c *TelegramRepo) CreateVpn(tgID int64, uuid, link string) (models.Vpn, error) {
 	var tg models.Telegram
-	err := c.DB.Where("tg_id = ?", tgID).First(&tg).Error
-	if err != nil {
+	if err := c.DB.Where("tg_id = ?", tgID).First(&tg).Error; err != nil {
 		return models.Vpn{}, err
 	}
 
-	var vpn = models.Vpn{
+	vpn := models.Vpn{
 		UUID:   uuid,
-		UserID: uint(tg.UserID),
+		UserID: tg.UserID,
 		Link:   link,
 	}
-	err = c.DB.Create(&vpn).Error
-	return vpn, err
+
+	if err := c.DB.Create(&vpn).Error; err != nil {
+		return models.Vpn{}, err
+	}
+
+	return vpn, nil
 }
 
 // GetVpn
 func (c *TelegramRepo) GetVpn(tgID int64) (models.Vpn, error) {
 	var tg models.Telegram
-	err := c.DB.Where("tg_id = ?", tgID).First(&tg).Error
-	if err != nil {
+	if err := c.DB.Where("tg_id = ?", tgID).First(&tg).Error; err != nil {
 		return models.Vpn{}, err
 	}
 
 	var vpn models.Vpn
-	err = c.DB.Where("user_id = ?", tg.UserID).First(&vpn).Error
+	err := c.DB.Where("user_id = ?", tg.UserID).First(&vpn).Error
 	return vpn, err
 }
 
@@ -76,19 +85,26 @@ func (c *TelegramRepo) GetAllUsers() ([]models.Telegram, error) {
 }
 
 // Create complaint
-func (c *TelegramRepo) CreateComplaint(tgID int64, username string, text string) (models.Complaint, error) {
-	var complaint = models.Complaint{
+func (c *TelegramRepo) CreateComplaint(tgID int64, username, text string) (models.Complaint, error) {
+	complaint := models.Complaint{
 		TgID:     tgID,
 		Username: username,
 		Text:     text,
 		Status:   "new",
+		Photo:    true,
 	}
-	tx := c.DB.Create(&complaint)
-	if tx.Error != nil {
-		return models.Complaint{}, tx.Error
+	if err := c.DB.Create(&complaint).Error; err != nil {
+		return models.Complaint{}, err
 	}
 
 	return complaint, nil
+}
+
+func (c *TelegramRepo) UpdateComplaintPhotoURL(id uint, photoURL string) error {
+	return c.DB.Model(&models.Complaint{}).
+		Where("id = ?", id).
+		Update("photo_url", photoURL).
+		Error
 }
 
 // Update complaint
@@ -102,6 +118,9 @@ func (c *TelegramRepo) UpdateComplaint(id uint, reply string, status string) (*m
 
 	if tx.Error != nil {
 		return nil, tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return nil, errors.New("complaint not found")
 	}
 
 	var complaint models.Complaint

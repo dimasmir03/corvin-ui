@@ -14,86 +14,76 @@ import (
 	"github.com/gorilla/sessions"
 )
 
-func Routes() *gin.Engine {
-
+func (s *Server) Routes() *gin.Engine {
 	r := gin.New()
 
 	r.Use(gin.LoggerWithWriter(log.Writer()))
 	r.Use(nice.Recovery(recoveryHandler))
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"https://*", "http://*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposeHeaders:    []string{"Link"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
+	r.Use(cors.Default())
 
-	// 🔹 Подключаем статику из embed
-	staticFS, _ := fs.Sub(ui.StaticFS, "static")
-	r.StaticFS("/static", http.FS(staticFS))
+	initSessionStore()
 
-	// r.StaticFS("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-
-	// init session store
-	store := sessions.NewCookieStore([]byte("super-secret-key"))
-	middleware.Store = store
-	handlers.Store = store
-
-	// protected routes
-	g := r.Group("/")
-	g.Use(middleware.RequireAuth)
+	if err := mountStatic(r); err != nil {
+		log.Printf("WARN: failed to mount static files: %v", err)
+	}
 
 	// public routes
 	r.GET("/login", handlers.LoginPage)
 	r.POST("/login", handlers.LoginHandler)
-	r.GET("/logout", handlers.LogoutHandler)
 
-	g.GET("/", func(ctx *gin.Context) {
+	// protected routes
+	auth := r.Group("/")
+	auth.Use(middleware.RequireAuth)
+
+	auth.GET("/", func(ctx *gin.Context) {
 		ctx.Redirect(http.StatusFound, "/panel")
 	})
 
 	// ==== Panel routes ====
-	panelRoutes := g.Group("/panel")
-	handlers.NewPanelController(panelRoutes)
+	panel := auth.Group("/panel")
+	s.PanelController.Register(panel)
 
-	// подключаем контроллеры
-	apiRoutes := g.Group("/api")
+	api := auth.Group("/api")
 
-	// Servers routes
-	serversRoutes := apiRoutes.Group("/servers")
-	handlers.NewServersController(serversRoutes)
-
-	// Users routes
-	usersRoutes := apiRoutes.Group("/users")
-	handlers.NewUserController(usersRoutes)
-
-	// Auth routes
-	// authRoutes := apiRoutes.Group("/auth")
-	// handlers.NewAuthController(authRoutes)
-
-	// Server routes
-	// serverRoutes := apiRoutes.Group("/server")
-	// handlers.NewServerController(serverRoutes)
-
-	// VPN routes
-	vpnRoutes := apiRoutes.Group("/vpn")
-	handlers.NewVpnController(vpnRoutes)
-
-	// Telegram routes
-	telegramRoutes := apiRoutes.Group("/telegram")
-	handlers.NewTelegramController(telegramRoutes)
-
-	//Complaints
-	complaintsRoutes := apiRoutes.Group("/complaints")
-	handlers.NewComplaintsController(complaintsRoutes)
+	s.ServersController.Register(api.Group("/servers"))
+	s.UserController.Register(api.Group("/users"))
+	s.VpnController.Register(api.Group("/vpn"))
+	s.TelegramController.Register(api.Group("/telegram"))
+	s.ComplaintsController.Register(api.Group("/complaints"))
 
 	return r
+}
+
+func mountStatic(r *gin.Engine) error {
+	staticFS, err := fs.Sub(ui.StaticFS, "static")
+	if err != nil {
+		return err
+	}
+
+	r.StaticFS("/static", http.FS(staticFS))
+	return nil
+}
+
+func initSessionStore() {
+	store := sessions.NewCookieStore([]byte("super-secret-key"))
+	middleware.Store = store
+	handlers.Store = store
 }
 
 func recoveryHandler(c *gin.Context, err interface{}) {
 	c.HTML(500, "error.tmpl", gin.H{
 		"title": "Error",
 		"err":   err,
+	})
+}
+
+func defaultCORS() gin.HandlerFunc {
+	return cors.New(cors.Config{
+		AllowOrigins:     []string{"http://*", "https://*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposeHeaders:    []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
 	})
 }

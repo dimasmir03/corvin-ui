@@ -2,7 +2,6 @@
 package repository
 
 import (
-	"fmt"
 	"time"
 	"vpnpanel/internal/models"
 
@@ -19,48 +18,36 @@ func NewServerRepo(db *gorm.DB) *ServerRepo {
 
 func (r *ServerRepo) GetAll() ([]models.Server, error) {
 	var servers []models.Server
-	tx := r.DB.Find(&servers)
-	if tx.Error != nil {
-		return nil, tx.Error
+	if err := r.DB.Find(&servers).Error; err != nil {
+		return nil, err
 	}
 	return servers, nil
 }
 
 func (r *ServerRepo) GetByID(id int) (*models.Server, error) {
 	var s models.Server
-	tx := r.DB.Where("id = ?", id).Take(&s)
-	if tx.Error != nil {
-		return nil, tx.Error
+	if err := r.DB.Where("id = ?", id).Take(&s).Error; err != nil {
+		return nil, err
 	}
 	return &s, nil
 }
 
 func (r *ServerRepo) Create(s *models.Server) error {
-	tx := r.DB.Create(s)
-	if tx.Error != nil {
-		return tx.Error
-	}
-	return nil
+	return r.DB.Create(s).Error
 }
 
 func (r *ServerRepo) Update(s *models.Server) error {
-	tx := r.DB.Save(s)
-	if tx.Error != nil {
-		return tx.Error
-	}
-	return nil
+	return r.DB.Save(s).Error
 }
 
 func (r *ServerRepo) Delete(id int) error {
-	var s models.Server
-	tx := r.DB.Where("id = ?", id).Delete(&s)
-	return tx.Error
+	return r.DB.Delete(&models.Server{}, id).Error
 }
 
 // SaveTotalOnline
 func (r *ServerRepo) SaveTotalOnline(totalOnline int) error {
 	stat := models.ServerStat{
-		ServerID:  0, // 0 = общий онлайн
+		ServerID:  0,
 		Online:    totalOnline,
 		CreatedAt: time.Now(),
 	}
@@ -76,16 +63,13 @@ func (r *ServerRepo) UpdateOnline(serverId int, serverCount int) error {
 
 // CreateStat
 func (r *ServerRepo) CreateStat(s *models.ServerStat) error {
-	tx := r.DB.Create(s)
-	if tx.Error != nil {
-		return tx.Error
-	}
-	return nil
+	return r.DB.Create(s).Error
 }
 
 // GetAllWithLastStat
 func (r *ServerRepo) GetAllWithLastStat() ([]models.Server, int, error) {
 	var servers []models.Server
+
 	if err := r.DB.Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -109,6 +93,7 @@ func (r *ServerRepo) GetAllWithLastStat() ([]models.Server, int, error) {
 	// Формируем мапу server_id → stat
 	statMap := make(map[int]models.ServerStat, len(stats))
 	totalOnline := 0
+
 	for _, st := range stats {
 		statMap[st.ServerID] = st
 		if st.ServerID == 0 {
@@ -129,21 +114,14 @@ func (r *ServerRepo) GetAllWithLastStat() ([]models.Server, int, error) {
 
 // GetOnlineHistory
 func (r *ServerRepo) GetOnlineHistory() ([]models.ServerStat, error) {
-	start := time.Now()
+	// start := time.Now()
 	var stats []models.ServerStat
-	tx := r.DB.Select("created_at", "online").Where("server_id = 0").Find(&stats)
-	if tx.Error != nil {
-		return nil, tx.Error
-	}
-	fmt.Println("debug print time for sqlGetOnlineHistory :  ", time.Since(start))
-	return stats, nil
+	err := r.DB.Select("created_at", "online").Where("server_id = 0").Find(&stats).Error
+	// fmt.Println("debug print time for sqlGetOnlineHistory :  ", time.Since(start))
+	return stats, err
 }
 
 // clear stats
 func (r *ServerRepo) ClearStats() error {
-	tx := r.DB.Delete(&models.ServerStat{})
-	if tx.Error != nil {
-		return tx.Error
-	}
-	return nil
+	return r.DB.Delete(&models.ServerStat{}).Error
 }

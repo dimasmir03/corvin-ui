@@ -1,13 +1,10 @@
 package handlers
 
 import (
-	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 
 	"vpnpanel/internal/broker"
-	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers/response"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
@@ -15,103 +12,70 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type CommplaintsController struct {
+type ComplaintsController struct {
 	repo *repository.ComplaintRepository
 }
 
-func NewComplaintsController(r *gin.RouterGroup) *CommplaintsController {
-	apiController := &CommplaintsController{repo: repository.NewComplaintRepo(db.DB)}
-	apiController.Routes(r)
-	return apiController
+func NewComplaintsController(repo *repository.ComplaintRepository) *ComplaintsController {
+	return &ComplaintsController{repo: repo}
 }
 
-func (s CommplaintsController) Routes(r *gin.RouterGroup) {
-	r.GET("/all", s.getAllComplaints)
-	r.GET("/:id", s.getComplaint)
-	r.POST("/create", s.createComplaint)
-	r.POST("/:id/delete", s.deleteComplaint)
-	r.POST("/:id/update", s.updateComplaint)
-	r.POST("/:id/reply", s.replyComplaint)
+func (s ComplaintsController) Register(r *gin.RouterGroup) {
+	r.GET("/all", s.getAll)
+	r.GET("/:id", s.getByID)
+	r.POST("/create", s.create)
+	r.POST("/:id/delete", s.delete)
+	// r.POST("/:id/update", s.update)
+	r.POST("/:id/reply", s.reply)
 }
 
-func (s CommplaintsController) getAllComplaints(c *gin.Context) {
-	complaints, err := s.repo.GetAllComplaints()
+func (s ComplaintsController) getAll(c *gin.Context) {
+	complaints, err := s.repo.GetAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to get all complaints"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to get all complaints"})
 		return
 	}
 	c.JSON(http.StatusOK, response.Response{Success: true, Obj: complaints})
 }
 
-func (s CommplaintsController) getComplaint(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
+func (s ComplaintsController) getByID(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "Invalid ID"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Invalid ID"})
 		return
 	}
-	complaint, err := s.repo.GetByIDComplaint(uint(id))
+	complaint, err := s.repo.GetByID(uint(id))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to get complaint"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to get complaint"})
 		return
 	}
 	c.JSON(http.StatusOK, response.Response{Success: true, Obj: complaint})
 }
 
-func (s CommplaintsController) createComplaint(c *gin.Context) {
-	var complaint models.Complaint
-	if err := c.BindJSON(&complaint); err != nil {
+func (s ComplaintsController) create(c *gin.Context) {
+	var dto response.CreateComplaintDTO
+	if err := c.ShouldBindJSON(&dto); err != nil {
 		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Invalid request body: " + err.Error()})
 		return
 	}
-	if err := s.repo.CreateComplaint(&complaint); err != nil {
+
+	complaint := &models.Complaint{
+		TgID:     dto.TgID,
+		Username: dto.Username,
+		Text:     dto.Text,
+		Status:   "new",
+	}
+	if err := s.repo.Create(complaint); err != nil {
 		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to create complaint:" + err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, response.Response{Success: true, Obj: complaint})
 }
 
-func (s CommplaintsController) deleteComplaint(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
+func (s ComplaintsController) reply(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "Invalid ID"})
-		return
-	}
-	if err := s.repo.DeleteComplaint(uint(id)); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to delete complaint"})
-		return
-	}
-	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "Complaint deleted successfully", Obj: nil})
-}
-
-func (s CommplaintsController) updateComplaint(c *gin.Context) {
-	// idStr := c.Param("id")
-	// id, err := strconv.ParseUint(idStr, 10, 64)
-	// if err != nil {
-	// 	c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "Invalid ID"})
-	// 	return
-	// }
-	var complaint models.Complaint
-	if err := c.BindJSON(&complaint); err != nil {
-		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Invalid request body"})
-		return
-	}
-	if err := s.repo.UpdateComplaint(&complaint); err != nil {
-		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to update complaint"})
-		return
-	}
-	fmt.Println(complaint)
-	c.JSON(http.StatusOK, response.Response{Success: true, Obj: complaint})
-
-}
-
-// replyComplaint
-func (s CommplaintsController) replyComplaint(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "Invalid ID"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Invalid ID"})
 		return
 	}
 
@@ -119,24 +83,17 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 		Reply string `json:"reply"`
 	}
 
-	if err := c.BindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "Invalid body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Invalid body"})
 		return
 	}
 
-	// сохраняем ответ в БД
 	if err := s.repo.UpdateReply(uint(id), body.Reply); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "Failed to update complaint"})
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to update complaint"})
 		return
 	}
 
-	complaint, err := s.repo.GetByIDComplaint(uint(id))
-	if err != nil {
-		c.JSON(http.StatusNotFound, response.Response{Success: false, Msg: "Complaint not found"})
-		return
-	}
-
-	// Отправляем в RabbitMQ
+	complaint, _ := s.repo.GetByID(uint(id))
 	task := broker.ComplaintReplyTask{
 		ComplaintID: complaint.ID,
 		TgID:        complaint.TgID,
@@ -145,14 +102,26 @@ func (s CommplaintsController) replyComplaint(c *gin.Context) {
 	}
 
 	if err := broker.GlobalProducer.PublishComplaintReply(task); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{
+		c.JSON(http.StatusOK, response.Response{
 			Success: false,
 			Msg:     "Failed to send reply via broker:" + err.Error(),
 		})
 		return
 	}
 
-	log.Println("ответ вроде отправлен")
-
 	c.JSON(http.StatusOK, response.Response{Success: true})
+}
+
+func (s ComplaintsController) delete(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Invalid ID"})
+		return
+	}
+	if err := s.repo.Delete(uint(id)); err != nil {
+		c.JSON(http.StatusOK, response.Response{Success: false, Msg: "Failed to delete complaint"})
+		return
+	}
+	c.JSON(http.StatusOK, response.Response{Success: true, Msg: "Complaint deleted successfully", Obj: nil})
 }

@@ -1,40 +1,89 @@
 package app
 
 import (
+	"log"
 	"vpnpanel/internal/db"
+	"vpnpanel/internal/handlers"
 	"vpnpanel/internal/jobs"
 	"vpnpanel/internal/repository"
+	"vpnpanel/internal/storage"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/sessions"
 	"github.com/robfig/cron/v3"
 )
 
 type Server struct {
-	Router         *gin.Engine
-	Store          *sessions.CookieStore
+	Router *gin.Engine
+
+	StorageRepo    *repository.StorageRepo
 	ServersService *repository.ServerRepo
-	Cron           *cron.Cron
+
+	TelegramController   *handlers.TelegramController
+	ComplaintsController *handlers.ComplaintsController
+	UserController       *handlers.UserController
+	ServersController    *handlers.ServersController
+	PanelController      *handlers.PanelController
+	VpnController        *handlers.VpnController
+
+	Cron *cron.Cron
 }
 
 func NewServer() *Server {
-	
+	settingsRepo := repository.NewSettingsRepo(db.DB)
 
-	// Подключение к RabbitMQ
-	// rmq, err := broker.NewProducer(cfg.RabbitMQURL, cfg.ExchangeName, cfg.QueueName, cfg.CertFilePath, cfg.KeyFilePath, cfg.CAFilePath)
-	// if err != nil {
-	// 	log.Fatalf("Ошибка подключения к RabbitMQ: %v", err)
-	// }
-
-	return &Server{
-		Router:         Routes(),
-		ServersService: repository.NewServerRepo(db.DB),
-		Cron:           cron.New(cron.WithSeconds()),
+	keys := []string{
+		"minio_endpoint",
+		"mini_access_key",
+		"minio_secret_key",
 	}
+
+	values, err := settingsRepo.GetKeys(keys...)
+	if err != nil {
+		log.Fatalf("Failed to get settings: %v", err)
+	}
+
+	minioClient, err := storage.NewMinioClient(
+		values["minio_endpoint"],
+		values["mini_access_key"],
+		values["minio_secret_key"],
+		"complaints",
+		true,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	storageRepo := repository.NewStorageRepo(minioClient)
+	teleRepo := repository.NewTelegramRepo(db.DB)
+	complaintRepo := repository.NewComplaintRepo(db.DB)
+	userRepo := repository.NewUserRepo(db.DB)
+	serversRepo := repository.NewServerRepo(db.DB)
+	vpnRepo := repository.NewVpnRepo(db.DB)
+
+	s := &Server{
+		StorageRepo: storageRepo,
+
+		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo),
+		ComplaintsController: handlers.NewComplaintsController(complaintRepo),
+		UserController:       handlers.NewUserController(userRepo),
+		ServersController:    handlers.NewServersController(serversRepo),
+		PanelController:      handlers.NewPanelController(),
+		VpnController:        handlers.NewVpnController(vpnRepo),
+
+		Cron: cron.New(cron.WithSeconds()),
+	}
+
+	s.Router = s.Routes()
+	return s
 }
 
 func (s *Server) CronStart() {
-	s.Cron.AddJob("@every 5s", jobs.NewCollectTotalOnlineJob(*s.ServersService))
+	if s.ServersService == nil {
+		log.Println("⚠️ ServersService is nil — Cron jobs skipped")
+		return
+	}
+
+	s.Cron.AddJob("@every 5s", jobs.NewCollectTotalOnlineJob(*&s.ServersService))
 
 	s.Cron.AddFunc("@daily", func() {
 		s.ServersService.ClearStats()

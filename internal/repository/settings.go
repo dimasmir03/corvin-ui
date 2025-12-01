@@ -8,10 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// func init() {
-
-// }
-
 type SettingsRepo struct {
 	db *gorm.DB
 }
@@ -33,6 +29,7 @@ func (r *SettingsRepo) GetAll() ([]models.Settings, error) {
 // Получение значения по ключу
 func (r *SettingsRepo) GetByKey(key string) (string, error) {
 	var s models.Settings
+
 	if err := r.db.Where("key = ?", key).First(&s).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", errors.New("setting not found")
@@ -45,6 +42,7 @@ func (r *SettingsRepo) GetByKey(key string) (string, error) {
 // Получение нескольких ключей
 func (r *SettingsRepo) GetKeys(keys ...string) (map[string]string, error) {
 	var settings []models.Settings
+
 	if err := r.db.Where("key IN ?", keys).Find(&settings).Error; err != nil {
 		return nil, err
 	}
@@ -59,10 +57,10 @@ func (r *SettingsRepo) GetKeys(keys ...string) (map[string]string, error) {
 // Обновление или добавление ключа
 func (r *SettingsRepo) Set(key, value string) error {
 	var s models.Settings
+
 	err := r.db.Where("key = ?", key).First(&s).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		s = models.Settings{Key: key, Value: value}
-		return r.db.Create(&s).Error
+		return r.db.Create(&models.Settings{Key: key, Value: value}).Error
 	} else if err != nil {
 		return err
 	}

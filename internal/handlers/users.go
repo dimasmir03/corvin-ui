@@ -6,44 +6,41 @@ import (
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers/response"
 	"vpnpanel/internal/models"
+	"vpnpanel/internal/repository"
 
 	"github.com/gin-gonic/gin"
 )
 
-type UserController struct{}
-
-func NewUserController(r *gin.RouterGroup) *UserController {
-	userController := &UserController{}
-	userController.Routes(r)
-	return userController
+type UserController struct {
+	users *repository.UserRepo
 }
 
-func (s *UserController) Routes(r *gin.RouterGroup) {
+func NewUserController(users *repository.UserRepo) *UserController {
+	return &UserController{users: users}
+}
+
+func (s *UserController) Register(r *gin.RouterGroup) {
 	r.GET("/all", s.GetAllUsers)
 	r.POST("/create", s.CreateUser)
 	r.GET("/:id", s.GetUser)
 	r.POST("/:id/edit", s.UpdateUser)
-	r.POST("/:id/edit/status", s.UdateStatusUser)
+	r.POST("/:id/edit/status", s.UpdateStatusUser)
 	r.POST("/:id/delete", s.DeleteUser)
 }
 
-// GetAllUsers retrieves all users stored in the database and returns them as a JSON object.
-// The response.Response will contain a single key 'users' with a value of an array of user objects.
 func (s *UserController) GetAllUsers(c *gin.Context) {
-	var users []models.User
-	db.DB.Find(&users)
+	users, err := s.users.GetAllUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: err.Error()})
+		return
+	}
 
-	response := response.Response{
+	c.JSON(http.StatusOK, response.Response{
 		Success: true,
 		Obj:     users,
-	}
-	c.JSON(http.StatusOK, response)
+	})
 }
 
-// CreateUser creates a new user in the database, hashing the provided password and associating the user with the provided server IDs.
-// The user information is passed as a JSON object in the request body.
-// The server IDs are passed as a JSON array in the 'servers' key of the request context.
-// The function returns a JSON object with the error message if an error occurs during user creation or server association.
 func (s *UserController) CreateUser(c *gin.Context) {
 	// var user models.User
 	// if err := c.Bind(&user); err != nil {
@@ -78,14 +75,10 @@ func (s *UserController) CreateUser(c *gin.Context) {
 	// c.Redirect(http.StatusSeeOther, "/users")
 }
 
-// GetUser
 func (s *UserController) GetUser(c *gin.Context) {
 
 }
 
-// UpdateUser updates an existing user by ID, changing their username and password as well as their server associations.
-// The ID of the user to be updated is passed as a URL parameter.
-// The updated user information is passed as a JSON object in the request body.
 func (s *UserController) UpdateUser(c *gin.Context) {
 	// id, exists := c.Get("id")
 	// if !exists {
@@ -126,19 +119,8 @@ func (s *UserController) UpdateUser(c *gin.Context) {
 	// c.Redirect(http.StatusSeeOther, "/users")
 }
 
-// UdateStatusUser
-func (s *UserController) UdateStatusUser(c *gin.Context) {
+func (s *UserController) UpdateStatusUser(c *gin.Context) {
 	id := c.Param("id")
-	if id == "" {
-		c.JSON(
-			http.StatusBadRequest,
-			response.Response{
-				Success: false,
-				Msg:     "id is required",
-			},
-		)
-		return
-	}
 
 	///////////////////////////
 	// DEBUG BLOCK ////////////
@@ -162,8 +144,7 @@ func (s *UserController) UdateStatusUser(c *gin.Context) {
 		Status bool `json:"status"`
 	}
 	if err := c.BindJSON(&userStatus); err != nil {
-		c.JSON(
-			http.StatusBadRequest,
+		c.JSON(http.StatusOK,
 			response.Response{
 				Success: false,
 				Msg:     err.Error(),
@@ -188,8 +169,6 @@ func (s *UserController) UdateStatusUser(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Response{Success: true})
 }
 
-// DeleteUser deletes a user by ID and redirects to the user list page.
-// The ID of the user to be deleted is passed as a URL parameter.
 func (s *UserController) DeleteUser(c *gin.Context) {
 	id, exists := c.Get("id")
 	if !exists {

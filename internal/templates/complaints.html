@@ -11,7 +11,9 @@
                 <th @click="sort('username')" style="cursor:pointer">Username</th>
                 <th @click="sort('text')" style="cursor:pointer">Complaint</th>
                 <th @click="sort('reply')" style="cursor:pointer">Reply</th>
+                <th>Photo </th>
                 <th @click="sort('status')" style="cursor:pointer">Status</th>
+
                 <th>Actions</th>
             </tr>
         </thead>
@@ -29,6 +31,17 @@
                         <td>[[ c.username ]]</td>
                         <td style="max-width:300px">[[ c.text ]]</td>
                         <td style="max-width:300px">[[ c.reply ]]</td>
+                        <td>
+                            <span v-if="c.photo">
+                                <button class="btn btn-outline-secondary btn-sm" @click="togglePhoto(c.id)">
+                                    📷 View
+                                </button>
+                            </span>
+                            <span v-else>—</span>
+                        </td>
+
+
+
                         <td>
                             <span class="badge" :class="{
                                 'bg-primary': c.status === 'new',
@@ -52,6 +65,26 @@
                             <button class="btn btn-danger btn-sm" @click="quickDecline(c)">
                                 Decline
                             </button>
+                        </td>
+                    </tr>
+
+                    <tr v-if="activePhoto === c.id">
+                        <td colspan="8">
+
+                            <div class="border rounded p-3 bg-light">
+
+                                <h6><b>Attached Photo:</b></h6>
+
+                                <img :src="'/api/media/' + c.photo" class="img-fluid rounded" alt="photo"
+                                    style="max-height: 400px; object-fit: contain;">
+
+                                <div class="mt-2">
+                                    <button class="btn btn-secondary btn-sm" @click="togglePhoto(null)">
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+
                         </td>
                     </tr>
 
@@ -101,7 +134,8 @@
                 complaints: [],
                 sortColumn: null,
                 sortAsc: true,
-                activeReply: null // ID жалобы, у которой открыто поле ответа
+                activeReply: null,
+                activePhoto: null
             }
         },
 
@@ -145,10 +179,13 @@
             toggleReply(id) {
                 this.activeReply = this.activeReply === id ? null : id;
             },
+            togglePhoto(id) {
+                this.activePhoto = this.activePhoto === id ? null : id;
+            },
 
             async sendReply(c) {
                 try {
-                    const { data } = await axios.post('/api/complaints/'+c.id+'/reply', {
+                    const { data } = await axios.post('/api/complaints/' + c.id + '/reply', {
                         id: c.id,
                         status: 'resolved',
                         reply: c.replyDraft
