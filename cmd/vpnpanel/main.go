@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 
 	"vpnpanel/internal/app"
 	"vpnpanel/internal/broker"
@@ -16,7 +17,6 @@ import (
 
 func main() {
 	initLogger()
-	db.Init()
 
 	settingsRepo := repository.NewSettingsRepo(db.DB)
 
@@ -24,6 +24,33 @@ func main() {
 		log.Fatalf("Failed to initialize default settings: %v", err)
 	}
 
+	keys := []string{
+		"db_host",
+		"db_port",
+		"db_user",
+		"db_pass",
+		"db_name",
+		"db_ssl_mode",
+	}
+
+	values, err := settingsRepo.GetKeys(keys...)
+	if err != nil {
+		log.Fatalf("Failed to get settings: %v", err)
+	}
+	v, err := strconv.Atoi(values["db_port"])
+	if err != nil {
+		log.Fatalf("Failed to parse db_port to int: %v", err)
+	}
+	dbOptions := db.DBOptions{
+		Host:    values["db_host"],
+		Port:    v,
+		User:    values["db_user"],
+		Pass:    values["db_pass"],
+		DBName:  values["db_name"],
+		SSLMode: values["db_ssl_mode"],
+	}
+
+	db.Init(dbOptions)
 	// CLI mode
 	if len(os.Args) > 1 {
 		runCLI(os.Args[1:])
