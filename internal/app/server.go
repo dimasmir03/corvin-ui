@@ -32,6 +32,8 @@ type Server struct {
 func NewServer() *Server {
 	settingsRepo := repository.NewSettingsRepo(db.DB)
 
+	serverService := repository.NewServerRepo(db.DB)
+
 	keys := []string{
 		"minio_endpoint",
 		"mini_access_key",
@@ -66,7 +68,8 @@ func NewServer() *Server {
 	vpnRepo := repository.NewVpnRepo(db.DB)
 
 	s := &Server{
-		StorageRepo: storageRepo,
+		ServersService: serverService,
+		StorageRepo:    storageRepo,
 
 		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo),
 		ComplaintsController: handlers.NewComplaintsController(complaintRepo),
@@ -88,7 +91,7 @@ func (s *Server) CronStart() {
 		return
 	}
 
-	s.Cron.AddJob("@every 5s", jobs.NewCollectTotalOnlineJob(*&s.ServersService))
+	s.Cron.AddJob("@every 5s", jobs.NewCollectTotalOnlineJob(s.ServersService))
 
 	s.Cron.AddFunc("@daily", func() {
 		s.ServersService.ClearStats()
