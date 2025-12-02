@@ -103,8 +103,8 @@ func InitDefaultSettings(repo *repository.SettingsRepo) error {
 		"key_file":  "/opt/corvin-ui/cert/key.pem",
 		"ca_file":   "/opt/corvin-ui/cert/ca.pem",
 
-		"minio_access_key": "minio",
-		"minio_secret_key": "minio123",
+		"minio_access_key": "corvinvpn",
+		"minio_secret_key": "corvinvpn",
 		"minio_bucket":     "vpn",
 		"minio_endpoint":   "localhost:9000",
 		"minio_ssl":        "true",

@@ -2,6 +2,7 @@ package app
 
 import (
 	"log"
+	"strconv"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers"
 	"vpnpanel/internal/jobs"
@@ -35,19 +36,23 @@ func NewServer() *Server {
 		"minio_endpoint",
 		"mini_access_key",
 		"minio_secret_key",
+		"minio_ssl",
 	}
 
 	values, err := settingsRepo.GetKeys(keys...)
 	if err != nil {
 		log.Fatalf("Failed to get settings: %v", err)
 	}
-
+	minioSSL, err := strconv.ParseBool(values["minio_ssl"])
+	if err != nil {
+		log.Fatalf("Failed to parse minio_ssl to bool: %v", err)
+	}
 	minioClient, err := storage.NewMinioClient(
 		values["minio_endpoint"],
 		values["mini_access_key"],
 		values["minio_secret_key"],
 		"complaints",
-		true,
+		minioSSL,
 	)
 	if err != nil {
 		log.Fatal(err)
