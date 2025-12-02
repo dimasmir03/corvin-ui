@@ -68,7 +68,7 @@
         },
         methods: {
             async loadDefaultData() {
-                this.fetchServersCount();
+                // this.fetchServersCount();
                 this.fetchOnlineCount();
                 this.fetchOnlineHistory();
             },
@@ -92,6 +92,7 @@
                         }
                         // console.log(response)
                         this.onlineCount = response.data.obj.total_online;
+                        this.serversCount = response.data.obj.servers.length;
                     })
                     .catch((error) => {
                         console.error("Error loading Server Count:", error);
@@ -168,7 +169,7 @@
             this.loadDefaultData();
             // setInterval(this.loadDefaultData, 5000);
             setInterval(this.fetchOnlineHistory, 60000);
-            setInterval(this.fetchServersCount, 60000);
+            // setInterval(this.fetchServersCount, 60000);
             setInterval(this.fetchOnlineCount, 5000);
         },
     });
