@@ -36,7 +36,7 @@ func NewServer() *Server {
 
 	keys := []string{
 		"minio_endpoint",
-		"mini_access_key",
+		"minio_access_key",
 		"minio_secret_key",
 		"minio_ssl",
 	}
@@ -51,7 +51,7 @@ func NewServer() *Server {
 	}
 	minioClient, err := storage.NewMinioClient(
 		values["minio_endpoint"],
-		values["mini_access_key"],
+		values["minio_access_key"],
 		values["minio_secret_key"],
 		"complaints",
 		minioSSL,
