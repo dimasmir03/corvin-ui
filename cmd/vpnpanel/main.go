@@ -136,6 +136,13 @@ func InitDefaultSettings(repo *repository.SettingsRepo) error {
 		"minio_endpoint":   "localhost:9000",
 		"minio_ssl":        "true",
 		"minio_region":     "us-east-1",
+
+		"db_host": "localhost",
+		"db_port": "5432",
+		"db_user": "corvinvpn",
+		"db_pass": "corvinvpn",
+		"db_name": "corvinvpn",
+		"db_ssl_mode": "disable",
 	}
 
 	for key, value := range defaults {
