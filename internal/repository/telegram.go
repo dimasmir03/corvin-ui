@@ -86,13 +86,23 @@ func (c *TelegramRepo) GetAllUsers() ([]models.Telegram, error) {
 
 // Create complaint
 func (c *TelegramRepo) CreateComplaint(tgID int64, username, text string) (models.Complaint, error) {
+	// 1. Ищем user_id через таблицу telegrams
+    var telegram models.Telegram
+    err := c.DB.Where("tg_id = ?", tgID).First(&telegram).Error
+    if err != nil {
+        return models.Complaint{}, fmt.Errorf("telegram user not found: %w", err)
+    }
+
+	// 2. Заполняем complaint
 	complaint := models.Complaint{
 		TgID:     tgID,
 		Username: username,
 		Text:     text,
 		Status:   "new",
 		Photo:    true,
+		UserID:   telegram.UserID,
 	}
+	
 	if err := c.DB.Create(&complaint).Error; err != nil {
 		return models.Complaint{}, err
 	}
