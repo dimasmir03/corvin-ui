@@ -201,9 +201,10 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 	// Парсим файл
 	fileHeader, err := c.FormFile("photo")
 	if err != nil && err != http.ErrMissingFile {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"msg":     "failed to read photo",
+		c.JSON(http.StatusOK, Response{
+			false,
+			"failed to read photo",
+			nil,
 		})
 		return
 	}
@@ -230,7 +231,7 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 
 		photoURL, err = s.storage.UploadFile(src, objectName, fileHeader.Header.Get("Content-Type"))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": err.Error()})
+			c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 			return
 		}
 	}
