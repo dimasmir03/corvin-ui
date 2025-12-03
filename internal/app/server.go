@@ -61,12 +61,12 @@ func NewServer() *Server {
 		log.Fatal(err)
 	}
 
-	storageRepo := repository.NewStorageRepo(minioClient)
 	teleRepo := repository.NewTelegramRepo(db.DB)
 	complaintRepo := repository.NewComplaintRepo(db.DB)
 	userRepo := repository.NewUserRepo(db.DB)
 	serversRepo := repository.NewServerRepo(db.DB)
 	vpnRepo := repository.NewVpnRepo(db.DB)
+	storageRepo := repository.NewStorageRepo(minioClient)
 
 	s := &Server{
 		ServersService: serverService,
@@ -78,6 +78,7 @@ func NewServer() *Server {
 		ServersController:    handlers.NewServersController(serversRepo),
 		PanelController:      handlers.NewPanelController(),
 		VpnController:        handlers.NewVpnController(vpnRepo),
+		MediaController:      handlers.NewMediaController(storageRepo),
 
 		Cron: cron.New(cron.WithSeconds()),
 	}
