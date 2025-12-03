@@ -214,7 +214,7 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 	com, err := s.teleRepo.CreateComplaint(dto.TgID, dto.Username, dto.Text)
 
 	if err != nil {
-		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
+		c.JSON(http.StatusOK, Response{false, "failed create complaint in db:" + err.Error(), nil})
 		return
 	}
 
@@ -222,7 +222,7 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 	if fileHeader != nil {
 		src, err := fileHeader.Open()
 		if err != nil {
-			c.JSON(http.StatusOK, Response{false, err.Error(), nil})
+			c.JSON(http.StatusOK, Response{false, "failed to open:" + err.Error(), nil})
 			return
 		}
 		defer src.Close()
@@ -231,14 +231,14 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 
 		photoURL, err = s.storage.UploadFile(src, objectName, fileHeader.Header.Get("Content-Type"))
 		if err != nil {
-			c.JSON(http.StatusOK, Response{false, err.Error(), nil})
+			c.JSON(http.StatusOK, Response{false, "failed to upload photo:" + err.Error(), nil})
 			return
 		}
 	}
 
 	err = s.teleRepo.UpdateComplaintPhotoURL(com.ID, photoURL)
 	if err != nil {
-		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
+		c.JSON(http.StatusOK, Response{false, "failed to update photo url:" + err.Error(), nil})
 		return
 	}
 
