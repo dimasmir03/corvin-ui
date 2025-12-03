@@ -99,7 +99,7 @@ func (c *TelegramRepo) CreateComplaint(tgID int64, username, text string) (model
 		Username: username,
 		Text:     text,
 		Status:   "new",
-		Photo:    true,
+		Photo:    false,
 		UserID:   telegram.UserID,
 	}
 	
@@ -113,6 +113,7 @@ func (c *TelegramRepo) CreateComplaint(tgID int64, username, text string) (model
 func (c *TelegramRepo) UpdateComplaintPhotoURL(id uint, photoURL string) error {
 	return c.DB.Model(&models.Complaint{}).
 		Where("id = ?", id).
+		Update("photo", true).
 		Update("photo_url", photoURL).
 		Error
 }

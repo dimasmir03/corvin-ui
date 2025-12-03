@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/minio/minio-go/v7"
@@ -22,18 +23,18 @@ func NewMinioClient(endpoint, accessKey, secretKey, bucket string, useSSL bool) 
 		return nil, fmt.Errorf("failed to init minio client: %w", err)
 	}
 
-	// ctx := context.Background()
+	ctx := context.Background()
 
 	// Проверяем наличие бакета, если нет — создаём
-	// exists, err := cli.BucketExists(ctx, bucket)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to check bucket existence: %w", err)
-	// }
-	// if !exists {
-	// 	if err := cli.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
-	// 		return nil, fmt.Errorf("failed to create bucket %s: %w", bucket, err)
-	// 	}
-	// }
+	exists, err := cli.BucketExists(ctx, bucket)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check bucket existence: %w", err)
+	}
+	if !exists {
+		if err := cli.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
+			return nil, fmt.Errorf("failed to create bucket %s: %w", bucket, err)
+		}
+	}
 
 	return &MinioClient{
 		Client:     cli,
