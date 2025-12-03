@@ -39,7 +39,7 @@ func (s *StorageRepo) UploadFile(r io.Reader, objectName string, contentType str
 	}
 
 	// Возвращаем внутренний путь (который храним в БД)
-	return fmt.Sprintf("%s/%s", s.minio.BucketName, objectName), nil
+	return fmt.Sprintf("%s-%s", s.minio.BucketName, objectName), nil
 }
 
 func (s *StorageRepo) GetFile(objectName string) (io.ReadCloser, string, int64, error) {

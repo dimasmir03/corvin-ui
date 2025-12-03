@@ -22,16 +22,27 @@ func (s MediaController) Register(r *gin.RouterGroup) {
 	r.GET("/:path", s.GetFile)
 }
 
+type MediaPath struct {
+	Path string
+}
+
 func (c *MediaController) GetFile(ctx *gin.Context) {
 	path := strings.TrimPrefix(ctx.Param("path"), "/")
 	if path == "" {
-		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "file path required"})
+		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "failed get path param"})
 		return
 	}
 
+	// get path from body
+	// var path string
+	// if err := ctx.ShouldBindJSON(&path); err != nil {
+	// 	ctx.JSON(http.StatusOK, Response{Success: false, Msg: "failed get path param:" + err.Error()})
+	// 	return
+	// }
+
 	obj, contentType, size, err := c.repo.GetFile(path)
 	if err != nil {
-		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "file not found"})
+		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "failed get file:" + err.Error()})
 		return
 	}
 	defer obj.Close()

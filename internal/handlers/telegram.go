@@ -227,7 +227,7 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 		}
 		defer src.Close()
 
-		objectName := fmt.Sprintf("complaints/%d_%s", com.ID, fileHeader.Filename)
+		objectName := fmt.Sprintf("%d_%s", com.ID, fileHeader.Filename)
 
 		photoURL, err = s.storage.UploadFile(src, objectName, fileHeader.Header.Get("Content-Type"))
 		if err != nil {

@@ -25,6 +25,7 @@ type Server struct {
 	ServersController    *handlers.ServersController
 	PanelController      *handlers.PanelController
 	VpnController        *handlers.VpnController
+	MediaController      *handlers.MediaController
 
 	Cron *cron.Cron
 }

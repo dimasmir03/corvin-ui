@@ -50,6 +50,7 @@ func (s *Server) Routes() *gin.Engine {
 	s.VpnController.Register(api.Group("/vpn"))
 	s.TelegramController.Register(api.Group("/telegram"))
 	s.ComplaintsController.Register(api.Group("/complaints"))
+	s.MediaController.Register(api.Group("/media"))
 
 	return r
 }
