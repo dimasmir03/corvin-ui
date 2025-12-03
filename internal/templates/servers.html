@@ -98,6 +98,7 @@
          async getOnlineUsersServers() {
             try {
                const { data } = await axios.get("/api/servers/onlines");
+               this.servers = data.obj.servers;
                this.servers = this.servers.map((s) => {
                   const foundServer = data.obj.servers.find((server) => server.id === s.id);
                   if (foundServer) {
