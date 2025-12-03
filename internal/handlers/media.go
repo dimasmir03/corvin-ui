@@ -39,7 +39,7 @@ func (c *MediaController) GetFile(ctx *gin.Context) {
 	// 	ctx.JSON(http.StatusOK, Response{Success: false, Msg: "failed get path param:" + err.Error()})
 	// 	return
 	// }
-
+	// path = strings.Split(path, "-")[0]+"/"+strings.Split(path, "-")[0]
 	obj, contentType, size, err := c.repo.GetFile(path)
 	if err != nil {
 		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "failed get file:" + err.Error()})
