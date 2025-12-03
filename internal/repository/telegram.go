@@ -19,10 +19,6 @@ func NewTelegramRepo(db *gorm.DB) *TelegramRepo {
 // Create user
 func (c *TelegramRepo) CreateUser(m models.Telegram) (models.Telegram, error) {
 	err := c.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&m).Error; err != nil {
-			return err
-		}
-
 		user := models.User{
 			Username: fmt.Sprintf("%s%s(%d)", m.Firstname, m.Lastname, m.TgID),
 			Status:   true,
@@ -32,7 +28,14 @@ func (c *TelegramRepo) CreateUser(m models.Telegram) (models.Telegram, error) {
 			return err
 		}
 
-		return tx.Model(&m).Update("user_id", user.ID).Error
+		m.UserID = user.ID
+
+		if err := tx.Create(&m).Error; err != nil {
+			return err
+		}
+
+		// return tx.Model(&m).Update("user_id", user.ID).Error
+		return nil
 	})
 
 	return m, err
@@ -87,11 +90,11 @@ func (c *TelegramRepo) GetAllUsers() ([]models.Telegram, error) {
 // Create complaint
 func (c *TelegramRepo) CreateComplaint(tgID int64, username, text string) (models.Complaint, error) {
 	// 1. Ищем user_id через таблицу telegrams
-    var telegram models.Telegram
-    err := c.DB.Where("tg_id = ?", tgID).First(&telegram).Error
-    if err != nil {
-        return models.Complaint{}, fmt.Errorf("telegram user not found: %w", err)
-    }
+	var telegram models.Telegram
+	err := c.DB.Where("tg_id = ?", tgID).First(&telegram).Error
+	if err != nil {
+		return models.Complaint{}, fmt.Errorf("telegram user not found: %w", err)
+	}
 
 	// 2. Заполняем complaint
 	complaint := models.Complaint{
@@ -102,7 +105,7 @@ func (c *TelegramRepo) CreateComplaint(tgID int64, username, text string) (model
 		Photo:    false,
 		UserID:   telegram.UserID,
 	}
-	
+
 	if err := c.DB.Create(&complaint).Error; err != nil {
 		return models.Complaint{}, err
 	}
