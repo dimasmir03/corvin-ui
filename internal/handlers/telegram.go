@@ -198,19 +198,6 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 		return
 	}
 
-	// Парсим файл
-	fileHeader, err := c.FormFile("photo")
-	if err != nil && err != http.ErrMissingFile {
-		c.JSON(http.StatusOK, Response{
-			false,
-			"failed to read photo",
-			nil,
-		})
-		return
-	}
-
-	var photoURL string
-
 	com, err := s.teleRepo.CreateComplaint(dto.TgID, dto.Username, dto.Text)
 
 	if err != nil {
@@ -218,28 +205,41 @@ func (s TelegramController) CreateComplaint(c *gin.Context) {
 		return
 	}
 
-	// Если фото есть — загружаем в MinIO
-	if fileHeader != nil {
-		src, err := fileHeader.Open()
-		if err != nil {
-			c.JSON(http.StatusOK, Response{false, "failed to open:" + err.Error(), nil})
+	if dto.HasPhoto {
+		fileHeader, err := c.FormFile("photo")
+		if err != nil && err != http.ErrMissingFile {
+			c.JSON(http.StatusOK, Response{
+				false,
+				"failed to read photo",
+				nil,
+			})
 			return
 		}
-		defer src.Close()
 
-		objectName := fmt.Sprintf("%d_%s", com.ID, fileHeader.Filename)
+		var photoURL string
+		// Если фото есть — загружаем в MinIO
+		if fileHeader != nil {
+			src, err := fileHeader.Open()
+			if err != nil {
+				c.JSON(http.StatusOK, Response{false, "failed to open:" + err.Error(), nil})
+				return
+			}
+			defer src.Close()
 
-		photoURL, err = s.storage.UploadFile(src, objectName, fileHeader.Header.Get("Content-Type"))
+			objectName := fmt.Sprintf("%d_%s", com.ID, fileHeader.Filename)
+
+			photoURL, err = s.storage.UploadFile(src, objectName, fileHeader.Header.Get("Content-Type"))
+			if err != nil {
+				c.JSON(http.StatusOK, Response{false, "failed to upload photo:" + err.Error(), nil})
+				return
+			}
+		}
+
+		err = s.teleRepo.UpdateComplaintPhotoURL(com.ID, photoURL)
 		if err != nil {
-			c.JSON(http.StatusOK, Response{false, "failed to upload photo:" + err.Error(), nil})
+			c.JSON(http.StatusOK, Response{false, "failed to update photo url:" + err.Error(), nil})
 			return
 		}
-	}
-
-	err = s.teleRepo.UpdateComplaintPhotoURL(com.ID, photoURL)
-	if err != nil {
-		c.JSON(http.StatusOK, Response{false, "failed to update photo url:" + err.Error(), nil})
-		return
 	}
 
 	c.JSON(http.StatusOK, Response{

@@ -43,6 +43,7 @@ type CreateComplaintDTO struct {
 	TgID     int64  `json:"tg_id" binding:"required" form:"tg_id"`
 	Username string `json:"username,omitempty" form:"username"`
 	Text     string `json:"text" binding:"required" form:"text"`
+	HasPhoto bool   `json:"has_photo,omitempty" form:"has_photo"`
 }
 
 type UpdateComplaintDTO struct {
