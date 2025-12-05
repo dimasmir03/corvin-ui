@@ -75,7 +75,7 @@
           return;
         }
 
-        axios.post("/api/servers/new", this.server)
+        axios.post("/api/servers/create", this.server)
           .then(res => {
             if (res.data.success == true) {
               window.location.href = "/panel/servers";
