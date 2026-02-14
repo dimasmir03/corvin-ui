@@ -8,12 +8,22 @@ type ComplaintReplyTask struct {
 }
 
 type CreateUserTask struct {
-	UserID     int64  `json:"user_id"`
-	Username   string `json:"username"`
-	UUID       string `json:"uuid"`
-	PBK        string `json:"pbk"`
-	SID        string `json:"sid"`
-	SPX        string `json:"spx"`
-	Flow       string `json:"flow"`
-	Encryption string `json:"encryption"`
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+
+	// vless params
+	UUID       string `json:"uuid,omitempty"`
+	PBK        string `json:"pbk,omitempty"`
+	SID        string `json:"sid,omitempty"`
+	SPX        string `json:"spx,omitempty"`
+	Flow       string `json:"flow,omitempty"`
+	Encryption string `json:"encryption,omitempty"`
+
+	// trojan params
+	Type     string `json:"type,omitempty"`
+	Security string `json:"security,omitempty"`
+	Fp       string `json:"fp,omitempty"`
+	Alpn     string `json:"alpn,omitempty"`
+	Sni      string `json:"sni,omitempty"`
+	Password string `json:"password,omitempty"`
 }

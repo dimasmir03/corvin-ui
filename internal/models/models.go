@@ -5,7 +5,7 @@ import (
 )
 
 type User struct {
-	ID       uint    `gorm:"primary_key;autoIncrement" json:"id" form:"id"`
+	ID       uint   `gorm:"primary_key;autoIncrement" json:"id" form:"id"`
 	Username string `json:"username" form:"username"`
 	// Password  string    `json:"-" form:"password"` // bcrypt hash
 	// Email     string    `json:"email" form:"email"`
@@ -45,16 +45,22 @@ type Telegram struct {
 	Username  string `gorm:"not null" json:"username" form:"username"`
 	Firstname string `gorm:"not null" json:"first_name" form:"first_name"`
 	Lastname  string `gorm:"not null" json:"last_name" form:"last_name"`
-	UserID    uint    `gorm:"index;not null" json:"user_id" form:"user_id"`
+	UserID    uint   `gorm:"index;not null" json:"user_id" form:"user_id"`
 }
 
 type Vpn struct {
 	ID     int    `gorm:"primaryKey" json:"id" form:"-"`
 	UUID   string `gorm:"unique;not null" json:"uuid" form:"uuid"`
 	Status string `gorm:"not null" json:"status" form:"status"`
+
 	// VpnUser    string    `gorm:"unique;not null" json:"vpn_user" form:"vpn_user"`
 	// VpnPass    string    `gorm:"not null" json:"vpn_pass" form:"vpn_pass"`
+	
 	Link       string    `gorm:"not null" json:"link" form:"link"`
+
+	VlessLink  string    `json:"vless_link" form:"vless_link"`
+	TrojanLink string    `json:"trojan_link" form:"trojan_link"`
+	
 	Created_at time.Time `gorm:"autoCreateTime" json:"created_at"`
 	Expires_at time.Time `gorm:"autoCreateTime" json:"expires_at"`
 	UserID     uint      `gorm:"index;not null" json:"user_id" form:"user_id"`

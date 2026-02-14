@@ -48,17 +48,29 @@ func (c *TelegramRepo) GetUser(tgID string) (models.Telegram, error) {
 	return tg, err
 }
 
+type CreateVpnParams struct {
+	UserID     uint
+	TgID       int64
+	UUID       string
+	Status     string
+	VlessLink  string
+	TrojanLink string
+}
+
 // Create VPN
-func (c *TelegramRepo) CreateVpn(tgID int64, uuid, link string) (models.Vpn, error) {
+func (c *TelegramRepo) CreateVpn(params CreateVpnParams) (models.Vpn, error) {
 	var tg models.Telegram
-	if err := c.DB.Where("tg_id = ?", tgID).First(&tg).Error; err != nil {
+	if err := c.DB.Where("tg_id = ?", params.TgID).First(&tg).Error; err != nil {
 		return models.Vpn{}, err
 	}
 
 	vpn := models.Vpn{
-		UUID:   uuid,
-		UserID: tg.UserID,
-		Link:   link,
+		UUID:       params.UUID,
+		UserID:     tg.UserID,
+		Status:     params.Status,
+		Link:       params.VlessLink,
+		VlessLink:  params.VlessLink,
+		TrojanLink: params.TrojanLink,
 	}
 
 	if err := c.DB.Create(&vpn).Error; err != nil {
@@ -79,6 +91,24 @@ func (c *TelegramRepo) GetVpn(tgID int64) (models.Vpn, error) {
 	err := c.DB.Where("user_id = ?", tg.UserID).First(&vpn).Error
 	return vpn, err
 }
+
+func (c *TelegramRepo) UpdateVlessLink(vpnID uint, link string) error {
+    return c.DB.Model(&models.Vpn{}).
+        Where("id = ?", vpnID).
+        Update("vless_link", link).Error
+}
+
+func (c *TelegramRepo) UpdateTrojanLink(vpnID uint, link string) error {
+    return c.DB.Model(&models.Vpn{}).
+        Where("id = ?", vpnID).
+        Update("trojan_link", link).Error
+}
+
+func (c *TelegramRepo) GetTelegramByTgID(tgID int64) (models.Telegram, error) {
+    var tg models.Telegram
+    return tg, c.DB.Where("tg_id = ?", tgID).First(&tg).Error
+}
+
 
 // GetAllUsers
 func (c *TelegramRepo) GetAllUsers() ([]models.Telegram, error) {

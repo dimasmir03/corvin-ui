@@ -21,7 +21,7 @@ type VlessParams struct {
 	Name       string
 }
 
-var rend *rand.Rand
+// var rend *rand.Rand
 
 func GenVlessLink(tgID int64) VlessParams {
 	rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -75,20 +75,71 @@ func GenVlessLink(tgID int64) VlessParams {
 	}
 }
 
-func randomHex(n int) string {
-	letters := []rune("abcdef0123456789")
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
+type TrojanParams struct {
+	Link     string
+	Password string
+	Type     string
+	Security string
+	Fp       string
+	Alpn     string
+	Sni      string
+	Name     string
 }
 
-func randomString(n int) string {
-	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+func GenTrojanLink(tgID int64) TrojanParams {
+	//trojan://<password>@<address>:443?type=tcp&security=tls&fp=chrome&alpn=h2%2Chttp%2F1.1&sni=lofin.raven.net.ru#<inbound_name>-<user_email>
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// ----------- GENERATE NAME FROM tgID -----------
+	password := uuid.New().String()
+	h := sha1.Sum([]byte(password))
+	//name := fmt.Sprintf("vp-%x", h[:8]) // 10 hex chars (5 bytes)
+	name := fmt.Sprintf("brvp-%x", h[:8]) // 10 hex chars (5 bytes)
+
+	ip := "br.raven.net.ru"
+
+	u := url.URL{
+		Scheme: "trojan",
+		User:   url.User(password),
+		Host:   fmt.Sprintf("%s:443", ip),
+		RawQuery: url.Values{
+			"type":     []string{"tcp"},
+			"security": []string{"tls"},
+			"fp":       []string{"chrome"},
+			"alpn":     []string{"h2", "http/1.1"},
+			"sni":      []string{"lofin.raven.net.ru"},
+		}.Encode(),
+		Fragment: name,
 	}
-	return string(b)
+
+	fmt.Println(u.User)
+
+	return TrojanParams{
+		Link:     u.String(),
+		Password: password,
+		Type:     "tcp",
+		Security: "tls",
+		Fp:       "chrome",
+		Alpn:     "h2,http/1.1",
+		Sni:      "lofin.raven.net.ru",
+		Name:     name,
+	}
 }
+
+// func randomHex(n int) string {
+// 	letters := []rune("abcdef0123456789")
+// 	b := make([]rune, n)
+// 	for i := range b {
+// 		b[i] = letters[rand.Intn(len(letters))]
+// 	}
+// 	return string(b)
+// }
+
+// func randomString(n int) string {
+// 	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+// 	b := make([]rune, n)
+// 	for i := range b {
+// 		b[i] = letters[rand.Intn(len(letters))]
+// 	}
+// 	return string(b)
+// }

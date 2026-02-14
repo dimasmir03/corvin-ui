@@ -29,8 +29,9 @@ type CreateVpnDTO struct {
 }
 
 type VpnResult struct {
-	TgID int64  `json:"tg_id"`
-	Link string `json:"link"`
+	TgID       int64  `json:"tg_id"`
+	VlessLink  string `json:"vless_link"`
+	TrojanLink string `json:"trojan_link"`
 }
 
 type VpnDTO struct {

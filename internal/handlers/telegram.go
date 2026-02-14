@@ -34,7 +34,8 @@ func (s TelegramController) Register(r *gin.RouterGroup) {
 	r.POST("/user/create", s.CreateUser)
 	r.GET("/user/:tg_id", s.GetUser)
 	r.POST("/vpn/create", s.CreateVpn)
-	r.GET("/vpn/:tg_id", s.GetVpn)
+	r.GET("/vpn/:tg_id/", s.GetVpn)
+	r.GET("/vpn/:tg_id/:protocol", s.GetVpnLinkByProtocol)
 	r.GET("/allusers", s.GetAllUsers)
 	r.POST("/complaints/create", s.CreateComplaint)
 	r.POST("/complaints/:id/update", s.UpdateComplaint)
@@ -109,8 +110,23 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 	// link generation (заглушка)
 	// link := "https://vpn.example.com/profile/" + fmt.Sprint(dto.TgID)
 
-	vlesParams := utils.GenVlessLink(dto.TgID)
-	vpn, err := s.teleRepo.CreateVpn(dto.TgID, vlesParams.UID, vlesParams.Link)
+	vlessParams := utils.GenVlessLink(dto.TgID)
+
+	trojanParams := utils.GenTrojanLink(dto.TgID)
+
+	telegram, err := s.teleRepo.GetTelegramByTgID(dto.TgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
+		return
+	}
+
+	vpn, err := s.teleRepo.CreateVpn(repository.CreateVpnParams{
+		UserID:     telegram.UserID,
+		UUID:       vlessParams.UID,
+		Status:     "active",
+		VlessLink:  vlessParams.Link,
+		TrojanLink: trojanParams.Link,
+	})
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
@@ -120,19 +136,26 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 	// Отправляем в RabbitMQ
 	task := broker.CreateUserTask{
 		UserID:     dto.TgID,
-		Username:   vlesParams.Name,
-		UUID:       vlesParams.UID,
-		PBK:        vlesParams.PBK,
-		SID:        vlesParams.SID,
-		SPX:        vlesParams.SPX,
-		Flow:       vlesParams.Flow,
-		Encryption: vlesParams.Encryption,
+		Username:   vlessParams.Name,
+		UUID:       vlessParams.UID,
+		PBK:        vlessParams.PBK,
+		SID:        vlessParams.SID,
+		SPX:        vlessParams.SPX,
+		Flow:       vlessParams.Flow,
+		Encryption: vlessParams.Encryption,
+
+		Type:     trojanParams.Type,
+		Security: trojanParams.Security,
+		Fp:       trojanParams.Fp,
+		Alpn:     trojanParams.Alpn,
+		Sni:      trojanParams.Sni,
+		Password: trojanParams.Password,
 	}
 
 	if err := broker.GlobalProducer.PublishCreateUser(task); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Response{
 			Success: false,
-			Msg:     "Failed to send user create task in broker:" + err.Error(),
+			Msg:     "Failed to send create user task in broker:" + err.Error(),
 		})
 		return
 	}
@@ -141,8 +164,9 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 		Success: true,
 		Msg:     "vpn created",
 		Obj: response.VpnResult{
-			TgID: dto.TgID,
-			Link: vpn.Link,
+			TgID:       dto.TgID,
+			VlessLink:  vpn.VlessLink,
+			TrojanLink: vpn.TrojanLink,
 		},
 	})
 }
@@ -164,8 +188,53 @@ func (s TelegramController) GetVpn(c *gin.Context) {
 		Success: true,
 		Msg:     "",
 		Obj: response.VpnResult{
-			TgID: tgID,
-			Link: vpn.Link,
+			TgID:       tgID,
+			VlessLink:  vpn.VlessLink,
+			TrojanLink: vpn.TrojanLink,
+		},
+	})
+}
+
+func (s TelegramController) GetVpnLinkByProtocol(c *gin.Context) {
+	tgID, err := strconv.ParseInt(c.Param("tg_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Response{false, "invalid tg_id", nil})
+		return
+	}
+
+	protocol := c.Param("protocol")
+
+	vpn, err := s.teleRepo.GetVpn(tgID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, Response{
+			false,
+			"user not found",
+			nil,
+		})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			false,
+			"error",
+			nil,
+		})
+		return
+	}
+
+	link := ""
+	switch protocol {
+	case "vless":
+		link = vpn.VlessLink
+	case "trojan":
+		link = vpn.TrojanLink
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Success: true,
+		Msg:     "",
+		Obj: map[string]interface{}{
+			"link": link, // "" или ссылка
 		},
 	})
 }
