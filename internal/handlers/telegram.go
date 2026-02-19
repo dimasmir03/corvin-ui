@@ -199,6 +199,7 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 	switch protocol {
 	case "vless":
 		_, err := s.teleRepo.CreateVpnProtocol(repository.CreateVpnParams{
+			TgID:      telegram.TgID,
 			UserID:    telegram.UserID,
 			VlessLink: vlessParams.Link,
 		}, protocol)
@@ -210,6 +211,7 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 
 	case "trojan":
 		_, err := s.teleRepo.CreateVpnProtocol(repository.CreateVpnParams{
+			TgID:      telegram.TgID,
 			UserID:     telegram.UserID,
 			TrojanLink: trojanParams.Link,
 		}, protocol)
