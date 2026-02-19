@@ -34,6 +34,7 @@ func (s TelegramController) Register(r *gin.RouterGroup) {
 	r.POST("/user/create", s.CreateUser)
 	r.GET("/user/:tg_id", s.GetUser)
 	r.POST("/vpn/create", s.CreateVpn)
+	r.POST("/vpn/create/protocol", s.CreateVpnProtocol)
 	r.GET("/vpn/:tg_id/", s.GetVpn)
 	r.GET("/vpn/:tg_id/:protocol", s.GetVpnLinkByProtocol)
 	r.GET("/allusers", s.GetAllUsers)
@@ -168,6 +169,88 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 			VlessLink:  vpn.VlessLink,
 			TrojanLink: vpn.TrojanLink,
 		},
+	})
+}
+
+func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
+	protocol := c.Param("protocol")
+	var dto response.CreateVpnDTO
+
+	if err := c.ShouldBindJSON(&dto); err != nil {
+		c.JSON(http.StatusBadRequest, Response{false, err.Error(), nil})
+		return
+	}
+
+	var vlessParams utils.VlessParams
+	var trojanParams utils.TrojanParams
+	switch protocol {
+	case "vless":
+		vlessParams = utils.GenVlessLink(dto.TgID)
+	case "trojan":
+		trojanParams = utils.GenTrojanLink(dto.TgID)
+	}
+
+	telegram, err := s.teleRepo.GetTelegramByTgID(dto.TgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
+		return
+	}
+
+	switch protocol {
+	case "vless":
+		_, err := s.teleRepo.CreateVpnProtocol(repository.CreateVpnParams{
+			UserID:    telegram.UserID,
+			VlessLink: vlessParams.Link,
+		}, protocol)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
+			return
+		}
+
+	case "trojan":
+		_, err := s.teleRepo.CreateVpnProtocol(repository.CreateVpnParams{
+			UserID:     telegram.UserID,
+			TrojanLink: trojanParams.Link,
+		}, protocol)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
+			return
+		}
+
+	}
+
+	// Отправляем в RabbitMQ
+	task := broker.CreateUserTask{
+		UserID:     dto.TgID,
+		Username:   vlessParams.Name,
+		UUID:       vlessParams.UID,
+		PBK:        vlessParams.PBK,
+		SID:        vlessParams.SID,
+		SPX:        vlessParams.SPX,
+		Flow:       vlessParams.Flow,
+		Encryption: vlessParams.Encryption,
+
+		Type:     trojanParams.Type,
+		Security: trojanParams.Security,
+		Fp:       trojanParams.Fp,
+		Alpn:     trojanParams.Alpn,
+		Sni:      trojanParams.Sni,
+		Password: trojanParams.Password,
+	}
+
+	if err := broker.GlobalProducer.PublishCreateUser(task); err != nil {
+		c.JSON(http.StatusInternalServerError, response.Response{
+			Success: false,
+			Msg:     "Failed to send create user task in broker:" + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Success: true,
+		Msg:     "vpn created",
 	})
 }
 

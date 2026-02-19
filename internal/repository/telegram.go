@@ -80,6 +80,50 @@ func (c *TelegramRepo) CreateVpn(params CreateVpnParams) (models.Vpn, error) {
 	return vpn, nil
 }
 
+func (c *TelegramRepo) CreateVpnProtocol(params CreateVpnParams, protocol string) (models.Vpn, error) {
+	var tg models.Telegram
+	if err := c.DB.Where("tg_id = ?", params.TgID).First(&tg).Error; err != nil {
+		return models.Vpn{}, err
+	}
+	var vpn models.Vpn
+
+	err := c.DB.Where("user_id = ?", tg.UserID).First(&vpn).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// создаём
+		vpn = models.Vpn{
+			UUID:   params.UUID,
+			UserID: tg.UserID,
+		}
+
+		if protocol == "vless" {
+			vpn.VlessLink = params.VlessLink
+		} else if protocol == "trojan" {
+			vpn.TrojanLink = params.TrojanLink
+		}
+
+		if err := c.DB.Create(&vpn).Error; err != nil {
+			return models.Vpn{}, err
+		}
+
+	} else if err == nil {
+		// обновляем
+		if protocol == "vless" {
+			vpn.VlessLink = params.VlessLink
+		} else if protocol == "trojan" {
+			vpn.TrojanLink = params.TrojanLink
+		}
+
+		if err := c.DB.Save(&vpn).Error; err != nil {
+			return models.Vpn{}, err
+		}
+	} else {
+		return models.Vpn{}, err
+	}
+
+	return vpn, nil
+}
+
 // GetVpn
 func (c *TelegramRepo) GetVpn(tgID int64) (models.Vpn, error) {
 	var tg models.Telegram
@@ -93,22 +137,21 @@ func (c *TelegramRepo) GetVpn(tgID int64) (models.Vpn, error) {
 }
 
 func (c *TelegramRepo) UpdateVlessLink(vpnID uint, link string) error {
-    return c.DB.Model(&models.Vpn{}).
-        Where("id = ?", vpnID).
-        Update("vless_link", link).Error
+	return c.DB.Model(&models.Vpn{}).
+		Where("id = ?", vpnID).
+		Update("vless_link", link).Error
 }
 
 func (c *TelegramRepo) UpdateTrojanLink(vpnID uint, link string) error {
-    return c.DB.Model(&models.Vpn{}).
-        Where("id = ?", vpnID).
-        Update("trojan_link", link).Error
+	return c.DB.Model(&models.Vpn{}).
+		Where("id = ?", vpnID).
+		Update("trojan_link", link).Error
 }
 
 func (c *TelegramRepo) GetTelegramByTgID(tgID int64) (models.Telegram, error) {
-    var tg models.Telegram
-    return tg, c.DB.Where("tg_id = ?", tgID).First(&tg).Error
+	var tg models.Telegram
+	return tg, c.DB.Where("tg_id = ?", tgID).First(&tg).Error
 }
-
 
 // GetAllUsers
 func (c *TelegramRepo) GetAllUsers() ([]models.Telegram, error) {
