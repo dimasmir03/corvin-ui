@@ -1,4 +1,32 @@
 services:
+  pg:
+    container_name: postgres
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: corvinvpn
+      POSTGRES_PASSWORD: corvinvpn
+      POSTGRES_DB: corvinvpn
+    volumes:
+      - pgdata:/var/lib/postgresql
+    restart: unless-stopped
+
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: corvinvpn
+      MINIO_ROOT_PASSWORD: corvinvpn
+    volumes:
+      - minio_data:/data
+      # - /etc/ssl/corvin-ui:/etc/minio/certs
+    command: [ "minio", "server", "/data", "--console-address", ":9001" ]
+    restart: unless-stopped
+
   rabbitmq:
     container_name: rabbitmq
     image: rabbitmq:management-alpine
@@ -22,6 +50,8 @@ services:
     image: ghcr.io/dimasmir03/vpnbot:latest
     depends_on:
       - rabbitmq
+      - minio
+      - pg
     environment:
       - RABBITMQ_URL=amqps://ravenvpn:ravenvpn@rabbitmq:5671/
       - BASE_URL=http://host.docker.internal:8080
@@ -37,6 +67,8 @@ services:
 
 volumes:
   rabbitmq_data:
+  minio_data:
+  pgdata:
 
 
 networks:

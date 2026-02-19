@@ -34,7 +34,7 @@ func (s TelegramController) Register(r *gin.RouterGroup) {
 	r.POST("/user/create", s.CreateUser)
 	r.GET("/user/:tg_id", s.GetUser)
 	r.POST("/vpn/create", s.CreateVpn)
-	r.POST("/vpn/create/protocol", s.CreateVpnProtocol)
+	r.POST("/vpn/create/:protocol", s.CreateVpnProtocol)
 	r.GET("/vpn/:tg_id/", s.GetVpn)
 	r.GET("/vpn/:tg_id/:protocol", s.GetVpnLinkByProtocol)
 	r.GET("/allusers", s.GetAllUsers)
