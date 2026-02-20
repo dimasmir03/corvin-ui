@@ -222,9 +222,12 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 		}
 
 	}
-	
+
 	var Username string
-	if Username = vlessParams.Name; Username != "" {
+	switch protocol {
+	case "vless":
+		Username = vlessParams.Name
+	case "trojan":
 		Username = trojanParams.Name
 	}
 
