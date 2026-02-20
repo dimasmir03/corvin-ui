@@ -211,7 +211,7 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 
 	case "trojan":
 		_, err := s.teleRepo.CreateVpnProtocol(repository.CreateVpnParams{
-			TgID:      telegram.TgID,
+			TgID:       telegram.TgID,
 			UserID:     telegram.UserID,
 			TrojanLink: trojanParams.Link,
 		}, protocol)
@@ -222,11 +222,16 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 		}
 
 	}
+	
+	var Username string
+	if Username = vlessParams.Name; Username != "" {
+		Username = trojanParams.Name
+	}
 
 	// Отправляем в RabbitMQ
 	task := broker.CreateUserTask{
 		UserID:     dto.TgID,
-		Username:   vlessParams.Name,
+		Username:   Username,
 		UUID:       vlessParams.UID,
 		PBK:        vlessParams.PBK,
 		SID:        vlessParams.SID,
