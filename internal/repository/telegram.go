@@ -59,14 +59,14 @@ type CreateVpnParams struct {
 
 // Create VPN
 func (c *TelegramRepo) CreateVpn(params CreateVpnParams) (models.Vpn, error) {
-	var tg models.Telegram
-	if err := c.DB.Where("tg_id = ?", params.TgID).First(&tg).Error; err != nil {
-		return models.Vpn{}, err
-	}
+	// var tg models.Telegram
+	// if err := c.DB.Where("tg_id = ?", params.TgID).First(&tg).Error; err != nil {
+	// 	return models.Vpn{}, err
+	// }
 
 	vpn := models.Vpn{
 		UUID:       params.UUID,
-		UserID:     tg.UserID,
+		UserID:     params.UserID,
 		Status:     params.Status,
 		Link:       params.VlessLink,
 		VlessLink:  params.VlessLink,
