@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	initLogger()
+	mw := initLogger()
 
 	dbOptions := db.DBOptions{
 		Host:    "localhost",
@@ -26,7 +26,7 @@ func main() {
 		SSLMode: "disable",
 	}
 
-	db.Init(dbOptions)
+	db.Init(dbOptions, mw)
 
 	settingsRepo := repository.NewSettingsRepo(db.DB)
 
@@ -55,14 +55,21 @@ func main() {
 	}
 }
 
-func initLogger() {
+func initLogger() io.Writer {
 	path := initLogPath()
-	f, err := os.OpenFile(path+"vpnpanel.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+
+	f, err := os.OpenFile(
+		path+"vpnpanel.log",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.SetOutput(io.MultiWriter(os.Stdout, f))
+	mw := io.MultiWriter(os.Stdout, f)
+	log.SetOutput(mw)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	return mw
 }
 
 func initLogPath() string {

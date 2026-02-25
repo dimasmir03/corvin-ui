@@ -96,9 +96,10 @@ func (c *TelegramRepo) CreateVpnProtocol(params CreateVpnParams, protocol string
 			UserID: tg.UserID,
 		}
 
-		if protocol == "vless" {
+		switch protocol {
+		case "vless":
 			vpn.VlessLink = params.VlessLink
-		} else if protocol == "trojan" {
+		case "trojan":
 			vpn.TrojanLink = params.TrojanLink
 		}
 
@@ -108,9 +109,10 @@ func (c *TelegramRepo) CreateVpnProtocol(params CreateVpnParams, protocol string
 
 	} else if err == nil {
 		// обновляем
-		if protocol == "vless" {
+		switch protocol {
+		case "vless":
 			vpn.VlessLink = params.VlessLink
-		} else if protocol == "trojan" {
+		case "trojan":
 			vpn.TrojanLink = params.TrojanLink
 		}
 

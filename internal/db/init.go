@@ -2,11 +2,14 @@ package db
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"time"
 	"vpnpanel/internal/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -20,7 +23,7 @@ type DBOptions struct {
 	SSLMode string
 }
 
-func Init(options DBOptions) {
+func Init(options DBOptions, w io.Writer) {
 	if options.Host == "" || options.Port == 0 || options.User == "" || options.Pass == "" || options.DBName == "" {
 		log.Fatal("database options are empty")
 	}
@@ -35,8 +38,20 @@ func Init(options DBOptions) {
 		options.SSLMode,
 	)
 
+	newLogger := gormlogger.New(
+		log.New(w, "\r\n", log.LstdFlags),
+		gormlogger.Config{
+			SlowThreshold: time.Second,
+			LogLevel:      gormlogger.Info,
+			Colorful:      false,
+		},
+	)
+
 	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: newLogger,
+	})
+
 	if err != nil {
 		log.Fatal("failed to connect database:", err)
 	}
