@@ -28,10 +28,22 @@
       <input type="text" v-model="server.Country" class="form-control">
     </div>
     <div class="form-group">
+      <label>Node Role</label>
+      <select v-model="server.NodeRole" class="form-control">
+        <option value="ru">ru</option>
+        <option value="foreign">foreign</option>
+        <option value="direct">direct</option>
+        <option value="other">other</option>
+      </select>
+    </div>
+    <div class="form-group">
       <label>Status</label>
       <select v-model="server.Status" class="form-control">
-        <option value="Online">Online</option>
-        <option value="Offline">Offline</option>
+        <option value="unknown">unknown</option>
+        <option value="online">online</option>
+        <option value="offline">offline</option>
+        <option value="degraded">degraded</option>
+        <option value="disabled">disabled</option>
       </select>
     </div>
 
@@ -53,7 +65,8 @@
           SecretWebPath: "",
           APIKey: "",
           Country: "",
-          Status: "Online"
+          NodeRole: "other",
+          Status: "unknown"
         }
       };
     },

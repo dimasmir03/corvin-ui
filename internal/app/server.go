@@ -2,6 +2,7 @@ package app
 
 import (
 	"log"
+	"time"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/config"
@@ -105,7 +106,14 @@ func (s *Server) CronStart() {
 		return
 	}
 
-	s.Cron.AddJob("@every 5s", jobs.NewCollectTotalOnlineJob(s.ServersService))
+	collectInterval := s.Config.OnlineCollectInterval
+	if _, err := time.ParseDuration(collectInterval); err != nil {
+		log.Printf("invalid ONLINE_COLLECT_INTERVAL %q, fallback to 30s: %v", collectInterval, err)
+		collectInterval = "30s"
+	}
+	if _, err := s.Cron.AddJob("@every "+collectInterval, jobs.NewCollectTotalOnlineJob(s.ServersService)); err != nil {
+		log.Printf("failed to schedule online collect job: %v", err)
+	}
 
 	s.Cron.AddFunc("@daily", func() {
 		s.ServersService.ClearStats()

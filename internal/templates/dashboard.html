@@ -1,176 +1,175 @@
 {{define "content"}}
 <div id="app">
-    <div class="content-header">
+    <div class="content-header mb-3">
         <h1>Dashboard</h1>
     </div>
 
-    <div class="row">
-        <div class="col-lg-4 col-6">
+    <div class="row g-3 mb-3">
+        <div class="col-lg-3 col-md-6">
             <div class="small-box bg-info">
                 <div class="inner">
-                    <h3>[[ serversCount ]]</h3>
-                    <p>Servers</p>
+                    <h3>{{.ServerCount}}</h3>
+                    <p>Серверы</p>
                 </div>
                 <div class="icon"><i class="fas fa-server"></i></div>
             </div>
         </div>
-        <div class="col-lg-4 col-6">
+        <div class="col-lg-3 col-md-6">
             <div class="small-box bg-success">
                 <div class="inner">
-                    <h3>[[ onlineCount ]]</h3>
-                    <p>Active Users</p>
+                    <h3>{{.OnlineNow}}</h3>
+                    <p>Онлайн сейчас</p>
+                </div>
+                <div class="icon"><i class="fas fa-signal"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="small-box bg-primary">
+                <div class="inner">
+                    <h3>{{.ActiveUsers}}</h3>
+                    <p>Активные пользователи</p>
                 </div>
                 <div class="icon"><i class="fas fa-users"></i></div>
             </div>
         </div>
-        <div class="col-lg-4 col-6">
+        <div class="col-lg-3 col-md-6">
             <div class="small-box bg-warning">
                 <div class="inner">
-                    <h3>В разработке</h3>
-                    <p>Total Bandwidth</p>
+                    <h3>{{.TotalBandwidth}}</h3>
+                    <p>Трафик</p>
                 </div>
                 <div class="icon"><i class="fas fa-network-wired"></i></div>
             </div>
         </div>
     </div>
 
-    <!-- 📈 График истории онлайна -->
     <div class="card">
-        <div class="card-header border-0">
-            <h3 class="card-title"><i class="fas fa-chart-line mr-1"></i> Online History</h3>
-        </div>
-        <div class="card-body" style="width: 100%; max-width: 100%;">
-
-            <canvas id="onlineChart" style="width: 100%;" height="600"></canvas>
-            <div class="chart-dates">
-                <span>[[ startDate ]]</span>
-                <span style="float:right">[[ endDate ]]</span>
+        <div class="card-header border-0 d-flex align-items-center justify-content-between">
+            <h3 class="card-title mb-0"><i class="fas fa-chart-line mr-1"></i> Общий онлайн</h3>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Online history range">
+                <button v-for="item in ranges" :key="item.value" type="button" class="btn" :class="range === item.value ? 'btn-primary' : 'btn-outline-primary'" @click="setRange(item.value)">
+                    [[ item.label ]]
+                </button>
             </div>
+        </div>
+        <div class="card-body">
+            <div v-if="emptyState" class="text-center text-muted py-5">Данных пока нет</div>
+            <div id="onlineHistoryChart" v-show="!emptyState" style="min-height: 360px;"></div>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.37.1/dist/apexcharts.min.js"></script>
 <script>
     const app = new Vue({
         delimiters: ["[[", "]]"],
         el: "#app",
         data() {
             return {
-                serversCount: 0,
-                onlineCount: 0,
-                onlineHistory: [], // [{time: "12:00", online: 123}, ...]
                 chart: null,
-                startDate: '',
-                endDate: ''
+                range: "24h",
+                emptyState: false,
+                ranges: [
+                    { value: "1h", label: "1ч" },
+                    { value: "6h", label: "6ч" },
+                    { value: "24h", label: "24ч" },
+                    { value: "7d", label: "7д" },
+                ],
             }
         },
         methods: {
-            async loadDefaultData() {
-                // this.fetchServersCount();
-                this.fetchOnlineCount();
+            setRange(value) {
+                this.range = value;
                 this.fetchOnlineHistory();
             },
-            async fetchServersCount() {
-                axios.get("/api/servers/list")
-                    .then((response) => {
-                        this.serversCount = response.data.length;
-                    })
-                    .catch((error) => {
-                        console.error("Error loading Server Count:", error);
-                        // alert(" Error loading Server Count:", error.message);
-                    });
-            },
-            async fetchOnlineCount() {
-                axios.get("/api/servers/onlines")
-                    .then((response) => {
-                        if (response.data.success == false) {
-                            console.error("Error from api loading Server Count:", response.data.msg);
-                            return;
-                            // alert("Error from api loading Server Count:", response.mess);
-                        }
-                        // console.log(response)
-                        this.onlineCount = response.data.obj.total_online;
-                        this.serversCount = response.data.obj.servers.length;
-                    })
-                    .catch((error) => {
-                        console.error("Error loading Server Count:", error);
-                        // alert("Error loading Online Count:", error.message);
-                    });
-            },
-            fetchOnlineHistory() {
-                axios.get("/api/servers/online_history")
-                    .then((response) => {
-                        this.onlineHistory = response.data.map(item => ({
-                            online: item.online,
-                            created_at: item.created_at
-                        }));
-
-                        const first = new Date(this.onlineHistory[0].created_at);
-                        const last = new Date(this.onlineHistory[this.onlineHistory.length - 1].created_at);
-                        this.startDate = first.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
-                        this.endDate = last.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
-
-                        this.updateChart();
-                    })
-                    .catch((error) => {
-                        console.error("Error loading Online History:", error);
-                    });
-            },
-            initChart() {
-                const ctx = document.getElementById("onlineChart").getContext("2d");
-                this.chart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Online Users',
-                            data: [],
-                            fill: false,
-                            borderColor: 'rgba(60,141,188,0.9)',
-                            backgroundColor: 'rgba(60,141,188,0.2)',
-                            tension: 0.3
-                        }]
-                    },
-                    options: {
-                        responsive: false,
-                        maintainAspectRatio: false,
-                        animation: false,
-                        scales: {
-                            x: {
-                                title: { display: true, text: 'Время' },
-                                ticks: { maxTicksLimit: 8 }
-                            },
-                            y: {
-                                // min: 0,
-                                // max: 1000,
-                                title: { display: true, text: 'Пользователи' }
-                            }
-                        }
+            async fetchOnlineHistory() {
+                try {
+                    const { data } = await axios.get(`/api/servers/online_history?range=${this.range}`);
+                    if (!data.success) {
+                        this.emptyState = true;
+                        return;
                     }
+                    const points = (data.obj && data.obj.points) || [];
+                    this.emptyState = points.length === 0;
+                    this.renderChart(points.map((point) => ({
+                        x: new Date(point.time).getTime(),
+                        y: point.online || 0,
+                    })));
+                } catch (error) {
+                    console.error("Error loading online history:", error);
+                    this.emptyState = true;
+                }
+            },
+            renderChart(seriesData) {
+                if (this.emptyState) {
+                    if (this.chart) {
+                        this.chart.updateSeries([{ name: "Online", data: [] }]);
+                    }
+                    return;
+                }
+
+                const options = {
+                    series: [{ name: "Online", data: seriesData }],
+                    chart: {
+                        id: "online-history-chart",
+                        type: "area",
+                        height: 360,
+                        toolbar: { show: false },
+                        animations: { enabled: true },
+                    },
+                    dataLabels: { enabled: false },
+                    stroke: { curve: "smooth", width: 3 },
+                    fill: {
+                        type: "gradient",
+                        gradient: { shadeIntensity: 0.2, opacityFrom: 0.35, opacityTo: 0.02 },
+                    },
+                    colors: ["#0d6efd"],
+                    xaxis: {
+                        type: "datetime",
+                        labels: {
+                            datetimeUTC: false,
+                            formatter: (value) => this.formatAxisTime(value),
+                        },
+                    },
+                    yaxis: {
+                        min: 0,
+                        forceNiceScale: true,
+                        labels: { formatter: (value) => Math.round(value).toString() },
+                    },
+                    tooltip: {
+                        x: { formatter: (value) => this.formatTooltipTime(value) },
+                        y: { formatter: (value) => `${Math.round(value)} online` },
+                    },
+                    grid: { strokeDashArray: 4 },
+                };
+
+                if (!this.chart) {
+                    this.chart = new ApexCharts(document.querySelector("#onlineHistoryChart"), options);
+                    this.chart.render();
+                    return;
+                }
+
+                this.chart.updateOptions(options, false, true);
+            },
+            formatAxisTime(value) {
+                return new Date(value).toLocaleString("ru-RU", {
+                    day: this.range === "7d" ? "2-digit" : undefined,
+                    month: this.range === "7d" ? "2-digit" : undefined,
+                    hour: "2-digit",
+                    minute: "2-digit",
                 });
             },
-            updateChart() {
-                if (!this.chart) return;
-                this.chart.data.labels = this.onlineHistory.map(i => this.formatDate(i.created_at));
-                this.chart.data.datasets[0].data = this.onlineHistory.map(i => i.online);
-                this.chart.update('none');
+            formatTooltipTime(value) {
+                return new Date(value).toLocaleString("ru-RU", {
+                    day: "2-digit",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                });
             },
-            formatDate(isoString) {
-                return new Date(isoString).toLocaleTimeString('ru-RU', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                })
-            }
         },
         mounted() {
-            this.initChart();
-            this.loadDefaultData();
-            // setInterval(this.loadDefaultData, 5000);
-            setInterval(this.fetchOnlineHistory, 60000);
-            // setInterval(this.fetchServersCount, 60000);
-            setInterval(this.fetchOnlineCount, 5000);
+            this.fetchOnlineHistory();
         },
     });
 </script>

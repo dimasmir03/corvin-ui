@@ -49,8 +49,9 @@ func renderTemplate(c *gin.Context, files []string, data any) {
 
 type DashboardData struct {
 	Title          string
-	ServerCount    int
-	ActiveUsers    int
+	ServerCount    int64
+	OnlineNow      int
+	ActiveUsers    int64
 	TotalBandwidth string
 }
 
@@ -58,11 +59,28 @@ type DashboardData struct {
 // The rendered page includes a table with columns for the server count, active users, and total bandwidth.
 // The page also includes links to add a new server and edit links for each server.
 func (s PanelController) DashboardHandler(c *gin.Context) {
+	var serverCount int64
+	if err := db.DB.Model(&models.Server{}).Count(&serverCount).Error; err != nil {
+		log.Printf("Dashboard server count error: %v", err)
+	}
+
+	var activeUsers int64
+	if err := db.DB.Model(&models.User{}).Where("status = ?", true).Count(&activeUsers).Error; err != nil {
+		log.Printf("Dashboard active users count error: %v", err)
+	}
+
+	onlineNow := 0
+	var totalStat models.ServerStat
+	if err := db.DB.Where("server_id = ?", 0).Order("created_at DESC").Take(&totalStat).Error; err == nil {
+		onlineNow = totalStat.Online
+	}
+
 	data := DashboardData{
 		Title:          "Dashboard",
-		ServerCount:    3,
-		ActiveUsers:    124,
-		TotalBandwidth: "1.2 TB",
+		ServerCount:    serverCount,
+		OnlineNow:      onlineNow,
+		ActiveUsers:    activeUsers,
+		TotalBandwidth: "В разработке",
 	}
 
 	renderTemplate(c, []string{"templates/layout.html", "templates/dashboard.html"}, data)

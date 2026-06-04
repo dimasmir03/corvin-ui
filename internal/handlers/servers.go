@@ -37,26 +37,35 @@ type ServerRequest struct {
 	Type           string `json:"type" form:"type"`
 	Enabled        *bool  `json:"enabled" form:"enabled"`
 	ManagementMode string `json:"management_mode" form:"managementMode"`
+	NodeRole       string `json:"node_role" form:"nodeRole"`
 }
 
 type ServerResponse struct {
-	ID             int                `json:"id"`
-	Name           string             `json:"name"`
-	IP             string             `json:"ip"`
-	Port           uint16             `json:"port"`
-	Country        string             `json:"country"`
-	Status         string             `json:"status"`
-	Type           string             `json:"type"`
-	Enabled        bool               `json:"enabled"`
-	LastSeenAt     *time.Time         `json:"last_seen_at,omitempty"`
-	LastProbeAt    *time.Time         `json:"last_probe_at,omitempty"`
-	LastError      *string            `json:"last_error,omitempty"`
-	PanelVersion   *string            `json:"panel_version,omitempty"`
-	XrayVersion    *string            `json:"xray_version,omitempty"`
-	AgentVersion   *string            `json:"agent_version,omitempty"`
-	ManagementMode string             `json:"management_mode"`
-	APIKeySet      bool               `json:"api_key_set"`
-	LastStat       *models.ServerStat `json:"lastStat,omitempty"`
+	ID                int                `json:"id"`
+	Name              string             `json:"name"`
+	IP                string             `json:"ip"`
+	Port              uint16             `json:"port"`
+	Country           string             `json:"country"`
+	Status            string             `json:"status"`
+	Type              string             `json:"type"`
+	Enabled           bool               `json:"enabled"`
+	NodeRole          string             `json:"node_role"`
+	LastSeenAt        *time.Time         `json:"last_seen_at,omitempty"`
+	LastProbeAt       *time.Time         `json:"last_probe_at,omitempty"`
+	LastStatsAt       *time.Time         `json:"last_stats_at,omitempty"`
+	LastOnlineCount   int                `json:"last_online_count"`
+	LastUploadBytes   int64              `json:"last_upload_bytes"`
+	LastDownloadBytes int64              `json:"last_download_bytes"`
+	LastTotalBytes    int64              `json:"last_total_bytes"`
+	LastPanelStatus   *string            `json:"last_panel_status,omitempty"`
+	LastXrayStatus    *string            `json:"last_xray_status,omitempty"`
+	LastError         *string            `json:"last_error,omitempty"`
+	PanelVersion      *string            `json:"panel_version,omitempty"`
+	XrayVersion       *string            `json:"xray_version,omitempty"`
+	AgentVersion      *string            `json:"agent_version,omitempty"`
+	ManagementMode    string             `json:"management_mode"`
+	APIKeySet         bool               `json:"api_key_set"`
+	LastStat          *models.ServerStat `json:"lastStat,omitempty"`
 }
 
 func (r ServerRequest) toModel() models.Server {
@@ -77,6 +86,10 @@ func (r ServerRequest) toModel() models.Server {
 	if managementMode == "" {
 		managementMode = models.ServerManagementModeAgent
 	}
+	nodeRole := r.NodeRole
+	if nodeRole == "" {
+		nodeRole = models.NodeRoleOther
+	}
 
 	return models.Server{
 		Id:             r.ID,
@@ -88,6 +101,7 @@ func (r ServerRequest) toModel() models.Server {
 		Country:        r.Country,
 		Status:         status,
 		Type:           r.Type,
+		NodeRole:       nodeRole,
 		Enabled:        enabled,
 		ManagementMode: managementMode,
 	}
@@ -95,23 +109,31 @@ func (r ServerRequest) toModel() models.Server {
 
 func newServerResponse(server models.Server) ServerResponse {
 	return ServerResponse{
-		ID:             server.Id,
-		Name:           server.Name,
-		IP:             server.IP,
-		Port:           server.Port,
-		Country:        server.Country,
-		Status:         server.Status,
-		Type:           server.Type,
-		Enabled:        server.Enabled,
-		LastSeenAt:     server.LastSeenAt,
-		LastProbeAt:    server.LastProbeAt,
-		LastError:      server.LastError,
-		PanelVersion:   server.PanelVersion,
-		XrayVersion:    server.XrayVersion,
-		AgentVersion:   server.AgentVersion,
-		ManagementMode: server.ManagementMode,
-		APIKeySet:      server.ApiKey != "",
-		LastStat:       server.LastStat,
+		ID:                server.Id,
+		Name:              server.Name,
+		IP:                server.IP,
+		Port:              server.Port,
+		Country:           server.Country,
+		Status:            server.Status,
+		Type:              server.Type,
+		Enabled:           server.Enabled,
+		NodeRole:          server.NodeRole,
+		LastSeenAt:        server.LastSeenAt,
+		LastProbeAt:       server.LastProbeAt,
+		LastStatsAt:       server.LastStatsAt,
+		LastOnlineCount:   server.LastOnlineCount,
+		LastUploadBytes:   server.LastUploadBytes,
+		LastDownloadBytes: server.LastDownloadBytes,
+		LastTotalBytes:    server.LastTotalBytes,
+		LastPanelStatus:   server.LastPanelStatus,
+		LastXrayStatus:    server.LastXrayStatus,
+		LastError:         server.LastError,
+		PanelVersion:      server.PanelVersion,
+		XrayVersion:       server.XrayVersion,
+		AgentVersion:      server.AgentVersion,
+		ManagementMode:    server.ManagementMode,
+		APIKeySet:         server.ApiKey != "",
+		LastStat:          server.LastStat,
 	}
 }
 
@@ -124,6 +146,8 @@ func newServerResponses(servers []models.Server) []ServerResponse {
 }
 
 func (s ServersController) Register(r *gin.RouterGroup) {
+	r.GET("", s.AllServers)
+	r.GET("/", s.AllServers)
 	r.GET("/list", s.AllServers)
 	r.POST("/create", s.CreateServer)
 	r.GET("/onlines", s.OnlineUsersServers)
@@ -132,15 +156,18 @@ func (s ServersController) Register(r *gin.RouterGroup) {
 	r.POST("/:id/edit", s.UpdateServer)
 	r.POST("/:id/delete", s.DeleteServer)
 	r.POST("/:id/probe", s.ProbeServer)
+	r.POST("/:id/collect_stats", s.CollectNodeStats)
+	r.GET("/:id/stats/latest", s.LatestNodeStats)
+	r.GET("/:id/stats/history", s.NodeStatsHistory)
 	r.POST("/:id/status", s.GetServerStatus) // TODO: реализовать
 }
 
 // #region CRUD
 
 func (s ServersController) AllServers(c *gin.Context) {
-	servers, err := s.Repo.GetAll()
+	servers, err := s.Repo.GetAllFiltered(c.Query("role"))
 	if err != nil {
-		c.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to get servers"})
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, Response{Success: true, Obj: newServerResponses(servers)})
@@ -239,8 +266,18 @@ func (s ServersController) UpdateServer(ctx *gin.Context) {
 	if req.ManagementMode == "" {
 		server.ManagementMode = existing.ManagementMode
 	}
+	if req.NodeRole == "" {
+		server.NodeRole = existing.NodeRole
+	}
 	server.LastSeenAt = existing.LastSeenAt
 	server.LastProbeAt = existing.LastProbeAt
+	server.LastStatsAt = existing.LastStatsAt
+	server.LastOnlineCount = existing.LastOnlineCount
+	server.LastUploadBytes = existing.LastUploadBytes
+	server.LastDownloadBytes = existing.LastDownloadBytes
+	server.LastTotalBytes = existing.LastTotalBytes
+	server.LastPanelStatus = existing.LastPanelStatus
+	server.LastXrayStatus = existing.LastXrayStatus
 	server.LastError = existing.LastError
 	server.PanelVersion = existing.PanelVersion
 	server.XrayVersion = existing.XrayVersion
@@ -338,6 +375,61 @@ func (s ServersController) ProbeServer(c *gin.Context) {
 	}})
 }
 
+func (s ServersController) CollectNodeStats(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: "Invalid ID"})
+		return
+	}
+	if s.jobs == nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: "Jobs service is not configured"})
+		return
+	}
+
+	batch, job, err := s.jobs.CollectNodeStats(uint(id))
+	if err != nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{
+		"batch_id": batch.ID,
+		"job_id":   job.ID,
+		"status":   batch.Status,
+	}})
+}
+
+func (s ServersController) LatestNodeStats(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: "Invalid ID"})
+		return
+	}
+
+	snapshot, err := s.Repo.LatestNodeStats(id)
+	if err != nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: "Stats not found"})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: snapshot})
+}
+
+func (s ServersController) NodeStatsHistory(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: "Invalid ID"})
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+
+	history, err := s.Repo.NodeStatsHistory(id, limit)
+	if err != nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to get stats history"})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: history})
+}
+
 func (s ServersController) GetServerStatus(c *gin.Context) {
 	// id, err := strconv.Atoi(c.Param("id"))
 	// if err != nil {
@@ -397,13 +489,56 @@ func (s ServersController) OnlineUsersServers(c *gin.Context) {
 
 }
 
+type onlineHistoryPoint struct {
+	Time   time.Time `json:"time"`
+	Online int       `json:"online"`
+}
+
 func (s ServersController) OnlineHistory(c *gin.Context) {
-	history, err := s.Repo.GetOnlineHistory()
+	rangeName := c.DefaultQuery("range", "24h")
+	duration, ok := onlineHistoryRange(rangeName)
+	if !ok {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: "Invalid range"})
+		return
+	}
+
+	serverID, err := strconv.Atoi(c.DefaultQuery("server_id", "0"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: "Invalid server_id"})
+		return
+	}
+
+	stats, err := s.Repo.OnlineHistory(serverID, time.Now().Add(-duration), 500)
 	if err != nil {
 		c.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to get online history"})
 		return
 	}
-	c.JSON(http.StatusOK, history)
+
+	points := make([]onlineHistoryPoint, 0, len(stats))
+	for _, stat := range stats {
+		points = append(points, onlineHistoryPoint{Time: stat.CreatedAt, Online: stat.Online})
+	}
+
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{
+		"server_id": serverID,
+		"range":     rangeName,
+		"points":    points,
+	}})
+}
+
+func onlineHistoryRange(value string) (time.Duration, bool) {
+	switch value {
+	case "1h":
+		return time.Hour, true
+	case "6h":
+		return 6 * time.Hour, true
+	case "24h", "":
+		return 24 * time.Hour, true
+	case "7d":
+		return 7 * 24 * time.Hour, true
+	default:
+		return 0, false
+	}
 }
 
 // #endregion

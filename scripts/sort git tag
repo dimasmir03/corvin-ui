@@ -1,0 +1,4 @@
+git tag -l "v0.*" --sort=-version:refname
+git tag -l --sort=-version:refname
+
+git tag -l "2.*" | ForEach-Object { git tag -d $_ }

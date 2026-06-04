@@ -27,26 +27,39 @@ const (
 	ServerStatusDisabled = "disabled"
 
 	ServerManagementModeAgent = "agent"
+
+	NodeRoleRU      = "ru"
+	NodeRoleForeign = "foreign"
+	NodeRoleDirect  = "direct"
+	NodeRoleOther   = "other"
 )
 
 type Server struct {
-	Id             int        `gorm:"primary_key;autoIncrement" form:"id" json:"id"`
-	Name           string     `gorm:"not null" form:"name" json:"name"`
-	IP             string     `gorm:"not null;unique" form:"ip" json:"ip"`
-	Port           uint16     `gorm:"not null" form:"port" json:"port"`
-	SecretWebPath  string     `gorm:"secretWebPath" form:"secretWebPath" json:"-"`
-	ApiKey         string     `gorm:"not null" form:"apiKey" json:"-"`
-	Country        string     `form:"country" json:"country"`
-	Status         string     `gorm:"not null;default:unknown" form:"status" json:"status"`
-	Type           string     `form:"type" json:"type"`
-	Enabled        bool       `gorm:"not null;default:true" form:"enabled" json:"enabled"`
-	LastSeenAt     *time.Time `form:"lastSeenAt" json:"last_seen_at,omitempty"`
-	LastProbeAt    *time.Time `form:"lastProbeAt" json:"last_probe_at,omitempty"`
-	LastError      *string    `form:"lastError" json:"last_error,omitempty"`
-	PanelVersion   *string    `form:"panelVersion" json:"panel_version,omitempty"`
-	XrayVersion    *string    `form:"xrayVersion" json:"xray_version,omitempty"`
-	AgentVersion   *string    `form:"agentVersion" json:"agent_version,omitempty"`
-	ManagementMode string     `gorm:"not null;default:agent" form:"managementMode" json:"management_mode"`
+	Id                int        `gorm:"primary_key;autoIncrement" form:"id" json:"id"`
+	Name              string     `gorm:"not null" form:"name" json:"name"`
+	IP                string     `gorm:"not null;unique" form:"ip" json:"ip"`
+	Port              uint16     `gorm:"not null" form:"port" json:"port"`
+	SecretWebPath     string     `gorm:"secretWebPath" form:"secretWebPath" json:"-"`
+	ApiKey            string     `gorm:"not null" form:"apiKey" json:"-"`
+	Country           string     `form:"country" json:"country"`
+	Status            string     `gorm:"not null;default:unknown" form:"status" json:"status"`
+	Type              string     `form:"type" json:"type"`
+	NodeRole          string     `gorm:"not null;default:other;index" form:"nodeRole" json:"node_role"`
+	Enabled           bool       `gorm:"not null;default:true" form:"enabled" json:"enabled"`
+	LastSeenAt        *time.Time `form:"lastSeenAt" json:"last_seen_at,omitempty"`
+	LastProbeAt       *time.Time `form:"lastProbeAt" json:"last_probe_at,omitempty"`
+	LastStatsAt       *time.Time `form:"lastStatsAt" json:"last_stats_at,omitempty"`
+	LastOnlineCount   int        `gorm:"not null;default:0" form:"lastOnlineCount" json:"last_online_count"`
+	LastUploadBytes   int64      `gorm:"not null;default:0" form:"lastUploadBytes" json:"last_upload_bytes"`
+	LastDownloadBytes int64      `gorm:"not null;default:0" form:"lastDownloadBytes" json:"last_download_bytes"`
+	LastTotalBytes    int64      `gorm:"not null;default:0" form:"lastTotalBytes" json:"last_total_bytes"`
+	LastPanelStatus   *string    `form:"lastPanelStatus" json:"last_panel_status,omitempty"`
+	LastXrayStatus    *string    `form:"lastXrayStatus" json:"last_xray_status,omitempty"`
+	LastError         *string    `form:"lastError" json:"last_error,omitempty"`
+	PanelVersion      *string    `form:"panelVersion" json:"panel_version,omitempty"`
+	XrayVersion       *string    `form:"xrayVersion" json:"xray_version,omitempty"`
+	AgentVersion      *string    `form:"agentVersion" json:"agent_version,omitempty"`
+	ManagementMode    string     `gorm:"not null;default:agent" form:"managementMode" json:"management_mode"`
 	// Online        int         `form:"online" json:"online"`
 	LastStat *ServerStat `gorm:"-" form:"lastStat" json:"lastStat"`
 	// gorm.Model
@@ -57,6 +70,23 @@ type ServerStat struct {
 	ServerID  int       `gorm:"index;not null" json:"server_id"`
 	Online    int       `gorm:"not null" json:"online"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+type NodeStatsSnapshot struct {
+	ID            uint           `gorm:"primary_key;autoIncrement" json:"id"`
+	ServerID      uint           `gorm:"index;not null" json:"server_id"`
+	OnlineCount   int            `json:"online_count"`
+	UploadBytes   int64          `json:"upload_bytes"`
+	DownloadBytes int64          `json:"download_bytes"`
+	TotalBytes    int64          `json:"total_bytes"`
+	PanelStatus   *string        `json:"panel_status,omitempty"`
+	XrayStatus    *string        `json:"xray_status,omitempty"`
+	PanelVersion  *string        `json:"panel_version,omitempty"`
+	XrayVersion   *string        `json:"xray_version,omitempty"`
+	AgentVersion  *string        `json:"agent_version,omitempty"`
+	Error         *string        `json:"error,omitempty"`
+	RawJSON       datatypes.JSON `gorm:"type:jsonb" json:"raw_json,omitempty"`
+	CreatedAt     time.Time      `gorm:"autoCreateTime" json:"created_at"`
 }
 
 type Telegram struct {

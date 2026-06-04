@@ -11,13 +11,14 @@ import (
 const AuthModeNone = "none"
 
 type Config struct {
-	HTTP     HTTPConfig
-	Auth     AuthConfig
-	DB       DBConfig
-	RabbitMQ RabbitMQConfig
-	MinIO    MinIOConfig
-	Session  SessionConfig
-	Defaults DefaultsConfig
+	HTTP                  HTTPConfig
+	Auth                  AuthConfig
+	DB                    DBConfig
+	RabbitMQ              RabbitMQConfig
+	MinIO                 MinIOConfig
+	Session               SessionConfig
+	Defaults              DefaultsConfig
+	OnlineCollectInterval string
 }
 
 type HTTPConfig struct {
@@ -101,6 +102,7 @@ func Load() (Config, error) {
 			KeyFile:                getEnv("KEY_FILE", "/opt/corvin-ui/cert/key.pem"),
 			CAFile:                 getEnv("CA_FILE", "/opt/corvin-ui/cert/ca.pem"),
 		},
+		OnlineCollectInterval: getEnv("ONLINE_COLLECT_INTERVAL", "30s"),
 	}
 
 	if err := cfg.Validate(); err != nil {

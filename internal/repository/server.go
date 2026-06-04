@@ -2,6 +2,7 @@
 package repository
 
 import (
+	"fmt"
 	"time"
 	"vpnpanel/internal/models"
 
@@ -18,13 +19,41 @@ type ServerProbeVersions struct {
 	AgentVersion *string
 }
 
+type NodeStatsUpdate struct {
+	OnlineCount   int
+	UploadBytes   int64
+	DownloadBytes int64
+	TotalBytes    int64
+	PanelStatus   *string
+	XrayStatus    *string
+	PanelVersion  *string
+	XrayVersion   *string
+	AgentVersion  *string
+	Error         *string
+	RawJSON       []byte
+	ObservedAt    time.Time
+	Status        string
+}
+
 func NewServerRepo(db *gorm.DB) *ServerRepo {
 	return &ServerRepo{DB: db}
 }
 
 func (r *ServerRepo) GetAll() ([]models.Server, error) {
+	return r.GetAllFiltered("")
+}
+
+func (r *ServerRepo) GetAllFiltered(role string) ([]models.Server, error) {
 	var servers []models.Server
-	if err := r.DB.Find(&servers).Error; err != nil {
+	query := r.DB
+	switch role {
+	case "", "all":
+	case models.NodeRoleRU, models.NodeRoleForeign, models.NodeRoleDirect, models.NodeRoleOther:
+		query = query.Where("node_role = ?", role)
+	default:
+		return nil, fmt.Errorf("invalid role %q", role)
+	}
+	if err := query.Find(&servers).Error; err != nil {
 		return nil, err
 	}
 	return servers, nil
@@ -160,4 +189,89 @@ func (r *ServerRepo) UpdateProbeFailed(serverID int, probedAt time.Time, status,
 		"last_probe_at": &probedAt,
 		"last_error":    &lastError,
 	}).Error
+}
+
+func (r *ServerRepo) ApplyNodeStats(serverID int, stats NodeStatsUpdate) error {
+	if stats.ObservedAt.IsZero() {
+		stats.ObservedAt = time.Now()
+	}
+	return r.DB.Transaction(func(tx *gorm.DB) error {
+		updates := map[string]any{
+			"status":              stats.Status,
+			"last_stats_at":       &stats.ObservedAt,
+			"last_online_count":   stats.OnlineCount,
+			"last_upload_bytes":   stats.UploadBytes,
+			"last_download_bytes": stats.DownloadBytes,
+			"last_total_bytes":    stats.TotalBytes,
+			"last_panel_status":   stats.PanelStatus,
+			"last_xray_status":    stats.XrayStatus,
+			"last_error":          stats.Error,
+		}
+		if stats.Status == models.ServerStatusOnline || stats.Status == models.ServerStatusDegraded {
+			updates["last_seen_at"] = &stats.ObservedAt
+		}
+		if stats.PanelVersion != nil {
+			updates["panel_version"] = stats.PanelVersion
+		}
+		if stats.XrayVersion != nil {
+			updates["xray_version"] = stats.XrayVersion
+		}
+		if stats.AgentVersion != nil {
+			updates["agent_version"] = stats.AgentVersion
+		}
+		if err := tx.Model(&models.Server{}).Where("id = ?", serverID).Updates(updates).Error; err != nil {
+			return err
+		}
+
+		snapshot := models.NodeStatsSnapshot{
+			ServerID:      uint(serverID),
+			OnlineCount:   stats.OnlineCount,
+			UploadBytes:   stats.UploadBytes,
+			DownloadBytes: stats.DownloadBytes,
+			TotalBytes:    stats.TotalBytes,
+			PanelStatus:   stats.PanelStatus,
+			XrayStatus:    stats.XrayStatus,
+			PanelVersion:  stats.PanelVersion,
+			XrayVersion:   stats.XrayVersion,
+			AgentVersion:  stats.AgentVersion,
+			Error:         stats.Error,
+			RawJSON:       stats.RawJSON,
+			CreatedAt:     stats.ObservedAt,
+		}
+		return tx.Create(&snapshot).Error
+	})
+}
+
+func (r *ServerRepo) LatestNodeStats(serverID int) (*models.NodeStatsSnapshot, error) {
+	var snapshot models.NodeStatsSnapshot
+	if err := r.DB.Where("server_id = ?", serverID).Order("created_at DESC").Take(&snapshot).Error; err != nil {
+		return nil, err
+	}
+	return &snapshot, nil
+}
+
+func (r *ServerRepo) NodeStatsHistory(serverID int, limit int) ([]models.NodeStatsSnapshot, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var snapshots []models.NodeStatsSnapshot
+	if err := r.DB.Where("server_id = ?", serverID).Order("created_at DESC").Limit(limit).Find(&snapshots).Error; err != nil {
+		return nil, err
+	}
+	return snapshots, nil
+}
+
+func (r *ServerRepo) OnlineHistory(serverID int, since time.Time, limit int) ([]models.ServerStat, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	var stats []models.ServerStat
+	query := r.DB.Where("server_id = ?", serverID)
+	if !since.IsZero() {
+		query = query.Where("created_at >= ?", since)
+	}
+	if err := query.Order("created_at ASC").Limit(limit).Find(&stats).Error; err != nil {
+		return nil, err
+	}
+	return stats, nil
 }

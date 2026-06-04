@@ -19,3 +19,4 @@ vpnpanel.log
 
 # local secrets
 .env
+.env.example

@@ -1,7 +1,14 @@
 {{define "content"}}
 <div id="app">
    <h1>{{.Title}}</h1>
-   <a href="/panel/servers/new" class="btn btn-success mb-2">Add Server</a>
+   <div class="d-flex align-items-center gap-2 mb-2">
+      <a href="/panel/servers/new" class="btn btn-success">Add Server</a>
+      <div class="btn-group" role="group" aria-label="Node filters">
+         <button v-for="role in filters" :key="role" type="button" class="btn btn-sm" :class="roleFilter === role ? 'btn-primary' : 'btn-outline-primary'" @click="setFilter(role)">
+            [[ role ]]
+         </button>
+      </div>
+   </div>
    <div class="info-box">
       <div class="info-box-content">
          <span class="info-box-text">Всего онлайна</span>
@@ -9,19 +16,21 @@
             [[ totalOnline ]]
          </span>
       </div>
-      <!-- /.info-box-content -->
    </div>
-   <table class="table table-striped">
+   <table class="table table-striped table-sm align-middle">
       <thead>
          <tr>
             <th>ID</th>
             <th>Name</th>
-            <th>IP</th>
-            <th>Port</th>
-            <th>API Key</th>
-            <th>Country</th>
+            <th>Role</th>
             <th>Status</th>
             <th>Online</th>
+            <th>Traffic</th>
+            <th>Panel</th>
+            <th>Xray</th>
+            <th>Agent</th>
+            <th>Last Stats</th>
+            <th>Error</th>
             <th>Actions</th>
          </tr>
       </thead>
@@ -29,14 +38,31 @@
          <template v-if="servers.length>0">
             <tr v-for="(server,index) in servers" :key="server.id">
                <td>[[ index+1 ]]</td>
-               <td>[[ server.name ]]</td>
-               <td>[[ server.ip ]]</td>
-               <td>[[ server.port ]]</td>
-               <td>[[ server.api_key_set ? "set" : "missing" ]]</td>
-               <td>[[ server.country ]]</td>
-               <td>[[ server.status || "Checking" ]]</td>
-               <td>[[ server.online == undefined ? "Error" : server.online ]]</td>
                <td>
+                  <div>[[ server.name ]]</div>
+                  <small class="text-muted">[[ server.ip ]]:[[ server.port ]]</small>
+               </td>
+               <td>[[ server.node_role || "other" ]]</td>
+               <td>[[ server.status || "unknown" ]]</td>
+               <td>[[ server.last_online_count || 0 ]]</td>
+               <td>
+                  <div>↑ [[ formatBytes(server.last_upload_bytes) ]]</div>
+                  <div>↓ [[ formatBytes(server.last_download_bytes) ]]</div>
+                  <small class="text-muted">Σ [[ formatBytes(server.last_total_bytes) ]]</small>
+               </td>
+               <td>
+                  <div>[[ server.last_panel_status || "-" ]]</div>
+                  <small class="text-muted">[[ server.panel_version || "-" ]]</small>
+               </td>
+               <td>
+                  <div>[[ server.last_xray_status || "-" ]]</div>
+                  <small class="text-muted">[[ server.xray_version || "-" ]]</small>
+               </td>
+               <td>[[ server.agent_version || "-" ]]</td>
+               <td>[[ formatDate(server.last_stats_at) ]]</td>
+               <td class="text-danger">[[ server.last_error || "" ]]</td>
+               <td>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" @click="collectStats(server.id)">Collect</button>
                   <a :href="`/panel/servers/edit/${server.id}`" class="btn btn-sm btn-primary">Edit</a>
                   <form :action="`/api/servers/delete/${server.id}`" method="post" style="display: inline">
                      <button type="submit" class="btn btn-sm btn-danger">
@@ -47,78 +73,69 @@
             </tr>
          </template>
          <tr v-else>
-            <td colspan="9" class="text-center">No servers found</td>
+            <td colspan="12" class="text-center">No servers found</td>
          </tr>
       </tbody>
    </table>
 </div>
 
 <script>
-
-
    const app = new Vue({
       delimiters: ["[[", "]]"],
       el: "#app",
       data() {
          return {
-            servers: [
-               {
-                  id: 0,
-                  name: '',
-                  ip: '',
-                  port: 0,
-                  api_key_set: false,
-                  country: '',
-                  status: '',
-                  online: 0,
-               },
-            ],
-            totalOnline: 0
+            servers: [],
+            totalOnline: 0,
+            roleFilter: "all",
+            filters: ["all", "ru", "foreign", "direct", "other"],
          };
       },
       methods: {
+         setFilter(role) {
+            this.roleFilter = role;
+            this.loadServers();
+         },
          loadServers() {
-            console.log("Loading servers...");
+            const query = this.roleFilter && this.roleFilter !== "all" ? `?role=${this.roleFilter}` : "";
             axios
-               .get("/api/servers/list")
+               .get(`/api/servers${query}`)
                .then((response) => {
-                  console.log(response);
                   this.servers = response.data.obj || [];
-                  // this.servers = this.servers.map((s) => {
-                  //    s.status = "Checking...";
-                  //    return s;
-                  // });
-                  console.log(this.servers);
-                  // this.getOnlineUsers();
+                  this.totalOnline = this.servers.reduce((sum, server) => sum + (server.last_online_count || 0), 0);
                })
                .catch((error) => {
                   alert(error);
                });
          },
-         async getOnlineUsersServers() {
+         async collectStats(serverID) {
             try {
-               const { data } = await axios.get("/api/servers/onlines");
-               this.servers = data.obj.servers;
-               this.servers = this.servers.map((s) => {
-                  const foundServer = data.obj.servers.find((server) => server.id === s.id);
-                  if (foundServer && foundServer.lastStat) {
-                     s.online = foundServer.lastStat.online;
-                  } else {
-                     s.online = 0;
-                  }
-                  return s;
-               });
-               this.totalOnline = data.obj.total_online;
-            } catch (e) {
-               console.error("Fetch error:", e);
+               await axios.post(`/api/servers/${serverID}/collect_stats`);
+               this.loadServers();
+            } catch (error) {
+               alert(error);
             }
          },
+         formatBytes(value) {
+            const bytes = Number(value || 0);
+            if (bytes < 1024) return `${bytes} B`;
+            const units = ["KB", "MB", "GB", "TB"];
+            let size = bytes / 1024;
+            let unit = 0;
+            while (size >= 1024 && unit < units.length - 1) {
+               size /= 1024;
+               unit++;
+            }
+            return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unit]}`;
+         },
+         formatDate(value) {
+            if (!value) return "-";
+            return new Date(value).toLocaleString();
+         },
       },
-
       mounted() {
          this.loadServers();
-         this.getOnlineUsersServers();
-         setInterval(this.getOnlineUsersServers, 5000);
+         setInterval(this.loadServers, 10000);
       },
    });
 </script>
