@@ -21,7 +21,7 @@ func (s *Server) Routes() *gin.Engine {
 	r.Use(nice.Recovery(recoveryHandler))
 	r.Use(cors.Default())
 
-	initSessionStore()
+	s.initSessionStore()
 
 	if err := mountStatic(r); err != nil {
 		log.Printf("WARN: failed to mount static files: %v", err)
@@ -65,8 +65,8 @@ func mountStatic(r *gin.Engine) error {
 	return nil
 }
 
-func initSessionStore() {
-	store := sessions.NewCookieStore([]byte("super-secret-key"))
+func (s *Server) initSessionStore() {
+	store := sessions.NewCookieStore([]byte(s.SessionSecret))
 	middleware.Store = store
 	handlers.Store = store
 }

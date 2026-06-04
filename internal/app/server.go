@@ -28,9 +28,11 @@ type Server struct {
 	MediaController      *handlers.MediaController
 
 	Cron *cron.Cron
+
+	SessionSecret string
 }
 
-func NewServer() *Server {
+func NewServer(sessionSecret string) *Server {
 	settingsRepo := repository.NewSettingsRepo(db.DB)
 
 	serverService := repository.NewServerRepo(db.DB)
@@ -80,7 +82,8 @@ func NewServer() *Server {
 		VpnController:        handlers.NewVpnController(vpnRepo),
 		MediaController:      handlers.NewMediaController(storageRepo),
 
-		Cron: cron.New(cron.WithSeconds()),
+		Cron:          cron.New(cron.WithSeconds()),
+		SessionSecret: sessionSecret,
 	}
 
 	s.Router = s.Routes()

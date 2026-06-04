@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 
+	"vpnpanel/config"
 	"vpnpanel/internal/app"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/db"
@@ -17,20 +18,25 @@ import (
 func main() {
 	mw := initLogger()
 
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
 	dbOptions := db.DBOptions{
-		Host:    "localhost",
-		Port:    5432,
-		User:    "corvinvpn",
-		Pass:    "corvinvpn",
-		DBName:  "corvinvpn",
-		SSLMode: "disable",
+		Host:    cfg.DB.Host,
+		Port:    cfg.DB.Port,
+		User:    cfg.DB.User,
+		Pass:    cfg.DB.Pass,
+		DBName:  cfg.DB.Name,
+		SSLMode: cfg.DB.SSLMode,
 	}
 
 	db.Init(dbOptions, mw)
 
 	settingsRepo := repository.NewSettingsRepo(db.DB)
 
-	if err := InitDefaultSettings(settingsRepo); err != nil {
+	if err := InitDefaultSettings(settingsRepo, cfg); err != nil {
 		log.Fatalf("Failed to initialize default settings: %v", err)
 	}
 
@@ -44,13 +50,13 @@ func main() {
 	initRabbitMQ(settingsRepo)
 
 	// Server init
-	server := app.NewServer()
+	server := app.NewServer(cfg.App.SessionSecret)
 	server.CronStart()
 
 	defer server.Cron.Stop()
 
-	log.Println("Server Started on :8080")
-	if err := http.ListenAndServe(":8080", server.Router); err != nil {
+	log.Printf("Server Started on %s", cfg.App.Addr)
+	if err := http.ListenAndServe(cfg.App.Addr, server.Router); err != nil {
 		log.Fatalf("HTTP server error: %v", err)
 	}
 }
@@ -110,31 +116,8 @@ func initRabbitMQ(settings *repository.SettingsRepo) {
 	broker.GlobalProducer = p
 }
 
-func InitDefaultSettings(repo *repository.SettingsRepo) error {
-	defaults := map[string]string{
-		"amqp_url":                 "amqps://corvinvpn:corvinvpn@localhost:5671/",
-		"amqp_exchange_complaints": "vpn.complaints",
-		"amqp_exchange_users":      "vpn.users",
-
-		"cert_file": "/opt/corvin-ui/cert/cert.pem",
-		"key_file":  "/opt/corvin-ui/cert/key.pem",
-		"ca_file":   "/opt/corvin-ui/cert/ca.pem",
-
-		"minio_access_key": "corvinvpn",
-		"minio_secret_key": "corvinvpn",
-		"minio_bucket":     "vpn",
-		"minio_endpoint":   "localhost:9000",
-		"minio_ssl":        "true",
-		"minio_region":     "us-east-1",
-
-		"db_host":     "localhost",
-		"db_port":     "5432",
-		"db_user":     "corvinvpn",
-		"db_pass":     "corvinvpn",
-		"db_name":     "corvinvpn",
-		"db_ssl_mode": "disable",
-	}
-
+func InitDefaultSettings(repo *repository.SettingsRepo, cfg config.Config) error {
+	defaults := cfg.DefaultSettings()
 	for key, value := range defaults {
 		_, err := repo.GetByKey(key)
 		if err != nil {

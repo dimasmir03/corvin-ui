@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Store       = sessions.NewCookieStore([]byte("super-secret-key"))
+	Store       *sessions.CookieStore
 	SessionName = "vpn-session"
 	AuthKey     = "authenticated"
 	DefaultUser = "admin"
