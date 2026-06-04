@@ -120,6 +120,7 @@ echo "Version: ${VERSION}"
 wget -O /tmp/corvin-ui.tar.gz "https://github.com/${REPO}/releases/download/${VERSION}/corvin-ui-linux-${ARCH}.tar.gz"
 tar -xzf /tmp/corvin-ui.tar.gz -C "${INSTALL_DIR}"
 chmod +x "${INSTALL_DIR}/${APP_NAME}/${APP_NAME}"
+echo "${VERSION}" > "${INSTALL_DIR}/VERSION"
 
 install_cli_wrapper
 write_service_file
