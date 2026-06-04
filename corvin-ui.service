@@ -1,15 +1,16 @@
 [Unit]
-Description=x-ui Service
+Description=Corvin UI Panel
 After=network.target
 Wants=network.target
 
 [Service]
-Environment="XRAY_VMESS_AEAD_FORCED=false"
 Type=simple
-WorkingDirectory=/usr/local/x-ui/
-ExecStart=/usr/local/x-ui/x-ui
+EnvironmentFile=/etc/corvin-ui/corvin-ui.env
+WorkingDirectory=/usr/local/corvin-ui
+ExecStart=/usr/local/corvin-ui/corvin-ui/corvin-ui
 Restart=on-failure
 RestartSec=5s
+User=root
 
 [Install]
 WantedBy=multi-user.target

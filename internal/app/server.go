@@ -2,7 +2,7 @@ package app
 
 import (
 	"log"
-	"strconv"
+	"vpnpanel/internal/config"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers"
 	"vpnpanel/internal/jobs"
@@ -29,35 +29,18 @@ type Server struct {
 
 	Cron *cron.Cron
 
-	SessionSecret string
+	Config config.Config
 }
 
-func NewServer(sessionSecret string) *Server {
-	settingsRepo := repository.NewSettingsRepo(db.DB)
-
+func NewServer(cfg config.Config) *Server {
 	serverService := repository.NewServerRepo(db.DB)
 
-	keys := []string{
-		"minio_endpoint",
-		"minio_access_key",
-		"minio_secret_key",
-		"minio_ssl",
-	}
-
-	values, err := settingsRepo.GetKeys(keys...)
-	if err != nil {
-		log.Fatalf("Failed to get settings: %v", err)
-	}
-	minioSSL, err := strconv.ParseBool(values["minio_ssl"])
-	if err != nil {
-		log.Fatalf("Failed to parse minio_ssl to bool: %v", err)
-	}
 	minioClient, err := storage.NewMinioClient(
-		values["minio_endpoint"],
-		values["minio_access_key"],
-		values["minio_secret_key"],
-		"complaints",
-		minioSSL,
+		cfg.MinIO.Endpoint,
+		cfg.MinIO.AccessKey,
+		cfg.MinIO.SecretKey,
+		cfg.MinIO.Bucket,
+		cfg.MinIO.UseSSL,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -82,8 +65,8 @@ func NewServer(sessionSecret string) *Server {
 		VpnController:        handlers.NewVpnController(vpnRepo),
 		MediaController:      handlers.NewMediaController(storageRepo),
 
-		Cron:          cron.New(cron.WithSeconds()),
-		SessionSecret: sessionSecret,
+		Cron:   cron.New(cron.WithSeconds()),
+		Config: cfg,
 	}
 
 	s.Router = s.Routes()

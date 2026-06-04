@@ -8,9 +8,9 @@ import (
 	"os"
 	"runtime"
 
-	"vpnpanel/config"
 	"vpnpanel/internal/app"
 	"vpnpanel/internal/broker"
+	"vpnpanel/internal/config"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/repository"
 )
@@ -27,7 +27,7 @@ func main() {
 		Host:    cfg.DB.Host,
 		Port:    cfg.DB.Port,
 		User:    cfg.DB.User,
-		Pass:    cfg.DB.Pass,
+		Pass:    cfg.DB.Password,
 		DBName:  cfg.DB.Name,
 		SSLMode: cfg.DB.SSLMode,
 	}
@@ -50,13 +50,13 @@ func main() {
 	initRabbitMQ(settingsRepo)
 
 	// Server init
-	server := app.NewServer(cfg.App.SessionSecret)
+	server := app.NewServer(cfg)
 	server.CronStart()
 
 	defer server.Cron.Stop()
 
-	log.Printf("Server Started on %s", cfg.App.Addr)
-	if err := http.ListenAndServe(cfg.App.Addr, server.Router); err != nil {
+	log.Printf("Server Started on %s", cfg.HTTP.Addr)
+	if err := http.ListenAndServe(cfg.HTTP.Addr, server.Router); err != nil {
 		log.Fatalf("HTTP server error: %v", err)
 	}
 }

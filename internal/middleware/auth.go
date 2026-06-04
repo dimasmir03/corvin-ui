@@ -1,21 +1,38 @@
 package middleware
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/sessions"
 )
 
-var Store *sessions.CookieStore
+const AuthModeNone = "none"
+
+var (
+	Store    *sessions.CookieStore
+	AuthMode = AuthModeNone
+)
 
 func RequireAuth(c *gin.Context) {
-	// session, _ := Store.Get(c.Request, "vpn-session")
+	if AuthMode == AuthModeNone {
+		c.Next()
+		return
+	}
 
-	// auth, ok := session.Values["authenticated"].(bool)
-	// if !ok || !auth {
-	// 	logger.Infof("Redirecting to login: %s", c.Request.URL.Path)
-	// 	c.Redirect(http.StatusFound, "/login")
-	// 	return
-	// }
-	// logger.Infof("Authenticated request: %s", c.Request.URL.Path)
+	session, err := Store.Get(c.Request, "vpn-session")
+	if err != nil {
+		c.Redirect(http.StatusFound, "/login")
+		c.Abort()
+		return
+	}
+
+	auth, ok := session.Values["authenticated"].(bool)
+	if !ok || !auth {
+		c.Redirect(http.StatusFound, "/login")
+		c.Abort()
+		return
+	}
+
 	c.Next()
 }

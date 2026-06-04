@@ -66,8 +66,9 @@ func mountStatic(r *gin.Engine) error {
 }
 
 func (s *Server) initSessionStore() {
-	store := sessions.NewCookieStore([]byte(s.SessionSecret))
+	store := sessions.NewCookieStore([]byte(s.Config.Session.Secret))
 	middleware.Store = store
+	middleware.AuthMode = s.Config.Auth.Mode
 	handlers.Store = store
 }
 

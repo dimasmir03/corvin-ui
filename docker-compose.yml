@@ -1,51 +1,75 @@
+x-corvin-env: &corvin-env
+  env_file:
+    - ${CORVIN_UI_ENV_FILE:-/etc/corvin-ui/corvin-ui.env}
+
 services:
+  corvin-ui:
+    <<: *corvin-env
+    container_name: corvin-ui
+    image: ghcr.io/dimasmir03/corvin-ui:latest
+    depends_on:
+      - pg
+      - minio
+      - rabbitmq
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      HTTP_ADDR: 0.0.0.0:8080
+      AUTH_MODE: session
+      DB_HOST: pg
+      RABBITMQ_URL: ${RABBITMQ_CONTAINER_URL}
+      MINIO_ENDPOINT: minio:9000
+    restart: unless-stopped
+
   pg:
+    <<: *corvin-env
     container_name: postgres
     image: postgres:latest
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
-      POSTGRES_USER: corvinvpn
-      POSTGRES_PASSWORD: corvinvpn
-      POSTGRES_DB: corvinvpn
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes:
-      - pgdata:/var/lib/postgresql
+      - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
 
   minio:
+    <<: *corvin-env
     container_name: minio
     image: minio/minio:latest
     ports:
       - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9001:9001"
     environment:
-      MINIO_ROOT_USER: corvinvpn
-      MINIO_ROOT_PASSWORD: corvinvpn
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     volumes:
       - minio_data:/data
       # - /etc/ssl/corvin-ui:/etc/minio/certs
-    command: [ "minio", "server", "/data", "--console-address", ":9001" ]
+    command: ["minio", "server", "/data", "--console-address", ":9001"]
     restart: unless-stopped
 
   rabbitmq:
+    <<: *corvin-env
     container_name: rabbitmq
     image: rabbitmq:management-alpine
     ports:
       - "1765:5671" # AMQP over TLS
-      - "11765:15671" # RabbitMQ UI
+      - "127.0.0.1:15672:15672" # RabbitMQ management UI
     environment:
-      RABBITMQ_DEFAULT_USER: corvinvpn
-      RABBITMQ_DEFAULT_PASS: corvinvpn
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - /etc/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
       - /etc/ssl/corvin-ui:/etc/rabbitmq/certs
-    command: [ "rabbitmq-server" ]
+    command: ["rabbitmq-server"]
     restart: always
-    # networks:
-    #   - bot_net
 
   bot:
+    <<: *corvin-env
     container_name: bot
     image: ghcr.io/dimasmir03/vpnbot:latest
     depends_on:
@@ -53,24 +77,15 @@ services:
       - minio
       - pg
     environment:
-      - RABBITMQ_URL=amqps://ravenvpn:ravenvpn@rabbitmq:5671/
-      - BASE_URL=http://host.docker.internal:8080
+      RABBITMQ_URL: ${RABBITMQ_CONTAINER_URL}
+      BASE_URL: ${BASE_URL}
     volumes:
       - /etc/ssl/corvin-ui:/app/cert:ro
       - /opt/bot/.env:/app/.env
     restart: always
-    # networks:
-    #   - bot_net
     network_mode: host
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
 
 volumes:
   rabbitmq_data:
   minio_data:
   pgdata:
-
-
-networks:
-  bot_net:
-    driver: bridge
