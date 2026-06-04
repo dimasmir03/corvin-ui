@@ -4,6 +4,7 @@ import (
 	"errors"
 	"vpnpanel/internal/models"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -47,36 +48,26 @@ func (r *JobsRepo) JobsByBatch(batchID uint) ([]models.Job, error) {
 	return jobs, nil
 }
 
-func (r *JobsRepo) UpdateJobResult(jobID uint, status, resultJSON, jobError string) (*models.Job, error) {
-	var job models.Job
-	err := r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.First(&job, jobID).Error; err != nil {
-			return err
-		}
-
-		var result *string
-		if resultJSON != "" {
-			result = &resultJSON
-		}
-
-		updates := map[string]any{
-			"status":      status,
-			"result_json": result,
-			"error":       jobError,
-		}
-		if status == "failed" || status == "retrying" {
-			updates["attempts"] = gorm.Expr("attempts + 1")
-		}
-
-		if err := tx.Model(&job).Updates(updates).Error; err != nil {
-			return err
-		}
-		return tx.First(&job, jobID).Error
+func (r *JobsRepo) MarkJobProcessing(jobID uint) (*models.Job, error) {
+	return r.updateJob(jobID, map[string]any{
+		"status": models.JobStatusProcessing,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return &job, nil
+}
+
+func (r *JobsRepo) MarkJobSuccess(jobID uint, result datatypes.JSON) (*models.Job, error) {
+	return r.updateJob(jobID, map[string]any{
+		"status":      models.JobStatusSuccess,
+		"result_json": &result,
+		"error":       nil,
+	})
+}
+
+func (r *JobsRepo) MarkJobFailed(jobID uint, jobError string) (*models.Job, error) {
+	return r.updateJob(jobID, map[string]any{
+		"status":   models.JobStatusFailed,
+		"error":    &jobError,
+		"attempts": gorm.Expr("attempts + 1"),
+	})
 }
 
 func (r *JobsRepo) UpdateBatchStatus(batchID uint, status string) error {
@@ -88,4 +79,21 @@ func (r *JobsRepo) UpdateBatchStatus(batchID uint, status string) error {
 		return errors.New("job batch not found")
 	}
 	return nil
+}
+
+func (r *JobsRepo) updateJob(jobID uint, updates map[string]any) (*models.Job, error) {
+	var job models.Job
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&job, jobID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&job).Updates(updates).Error; err != nil {
+			return err
+		}
+		return tx.First(&job, jobID).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
 }

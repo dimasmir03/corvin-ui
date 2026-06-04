@@ -1,5 +1,7 @@
 package broker
 
+import "encoding/json"
+
 type ComplaintReplyTask struct {
 	ComplaintID uint   `json:"complaint_id"`
 	TgID        int64  `json:"tg_id"`
@@ -36,4 +38,15 @@ type JobTask struct {
 	Protocol          string `json:"protocol"`
 	UserID            uint   `json:"user_id"`
 	TechnicalClientID string `json:"technical_client_id"`
+}
+
+type JobResultEvent struct {
+	JobID          uint             `json:"job_id"`
+	BatchID        uint             `json:"batch_id"`
+	ServerID       *int             `json:"server_id,omitempty"`
+	Status         string           `json:"status"`
+	RemoteClientID *string          `json:"remote_client_id,omitempty"`
+	ConfigLink     *string          `json:"config_link,omitempty"`
+	Error          *string          `json:"error,omitempty"`
+	ResultJSON     *json.RawMessage `json:"result_json,omitempty"`
 }

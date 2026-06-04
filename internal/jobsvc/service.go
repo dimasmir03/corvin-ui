@@ -8,25 +8,25 @@ import (
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
 const (
 	BatchTypeCreateUserConfig = "create_user_config"
+	ActionCreateClient        = "create_client"
 
-	BatchStatusPending        = "pending"
-	BatchStatusProcessing     = "processing"
-	BatchStatusSuccess        = "success"
-	BatchStatusPartialSuccess = "partial_success"
-	BatchStatusFailed         = "failed"
+	BatchStatusPending        = models.JobBatchStatusPending
+	BatchStatusProcessing     = models.JobBatchStatusProcessing
+	BatchStatusSuccess        = models.JobBatchStatusSuccess
+	BatchStatusPartialSuccess = models.JobBatchStatusPartialSuccess
+	BatchStatusFailed         = models.JobBatchStatusFailed
 
-	JobStatusPending    = "pending"
-	JobStatusProcessing = "processing"
-	JobStatusSuccess    = "success"
-	JobStatusFailed     = "failed"
-	JobStatusRetrying   = "retrying"
-
-	ActionCreateClient = "create_client"
+	JobStatusPending    = models.JobStatusPending
+	JobStatusProcessing = models.JobStatusProcessing
+	JobStatusSuccess    = models.JobStatusSuccess
+	JobStatusFailed     = models.JobStatusFailed
+	JobStatusRetrying   = models.JobStatusRetrying
 )
 
 type Service struct {
@@ -46,16 +46,6 @@ type CreateUserConfigInput struct {
 	Protocols         []string
 }
 
-type ResultEvent struct {
-	JobID          uint   `json:"job_id"`
-	BatchID        uint   `json:"batch_id"`
-	ServerID       int    `json:"server_id"`
-	Status         string `json:"status"`
-	RemoteClientID string `json:"remote_client_id"`
-	ConfigLink     string `json:"config_link"`
-	Error          string `json:"error"`
-}
-
 func NewService(
 	jobsRepo *repository.JobsRepo,
 	serverRepo *repository.ServerRepo,
@@ -68,6 +58,37 @@ func NewService(
 		audit:      auditLogger,
 		producer:   producer,
 	}
+}
+
+func (s *Service) CreateBatch(batchType string, userID *uint) (*models.JobBatch, error) {
+	batch := &models.JobBatch{
+		Type:   batchType,
+		UserID: userID,
+		Status: BatchStatusPending,
+	}
+	if err := s.jobsRepo.CreateBatch(batch); err != nil {
+		return nil, err
+	}
+	return batch, nil
+}
+
+func (s *Service) CreateJob(batchID uint, serverID *int, protocol, action string, payload datatypes.JSON, idempotencyKey string) (*models.Job, error) {
+	job := &models.Job{
+		BatchID:        batchID,
+		ServerID:       serverID,
+		Protocol:       protocol,
+		Action:         action,
+		Status:         JobStatusPending,
+		PayloadJSON:    payload,
+		IdempotencyKey: idempotencyKey,
+	}
+	if err := s.jobsRepo.CreateJob(job); err != nil {
+		return nil, err
+	}
+	if _, err := s.RecalculateBatchStatus(batchID); err != nil {
+		return nil, err
+	}
+	return job, nil
 }
 
 func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatch, []models.Job, error) {
@@ -110,13 +131,14 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 					return err
 				}
 
+				serverID := server.Id
 				job := models.Job{
 					BatchID:        batch.ID,
-					ServerID:       server.Id,
+					ServerID:       &serverID,
 					Protocol:       protocol,
 					Action:         ActionCreateClient,
 					Status:         JobStatusPending,
-					PayloadJSON:    string(payloadJSON),
+					PayloadJSON:    datatypes.JSON(payloadJSON),
 					IdempotencyKey: idempotencyKey(ActionCreateClient, input.UserID, server.Id, protocol),
 				}
 
@@ -129,7 +151,7 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 				if err != nil {
 					return err
 				}
-				job.PayloadJSON = string(payloadJSON)
+				job.PayloadJSON = datatypes.JSON(payloadJSON)
 				if err := tx.Model(&models.Job{}).Where("id = ?", job.ID).Update("payload_json", job.PayloadJSON).Error; err != nil {
 					return err
 				}
@@ -147,16 +169,16 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 
 	for _, job := range createdJobs {
 		var payload broker.JobTask
-		if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
+		if err := json.Unmarshal(job.PayloadJSON, &payload); err != nil {
 			return batch, createdJobs, err
 		}
 		if s.producer != nil {
 			if err := s.producer.PublishJob(payload); err != nil {
-				_ = s.MarkJobFailed(job.ID, err)
+				_, _ = s.MarkJobFailed(job.ID, err.Error())
 				return batch, createdJobs, err
 			}
 		}
-		_ = s.audit.Log(audit.Event{
+		s.logAudit(audit.Event{
 			ActorType:  audit.ActorSystem,
 			Action:     "job.created",
 			EntityType: "job",
@@ -175,21 +197,67 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 	return batch, createdJobs, nil
 }
 
-func (s *Service) ApplyResult(event ResultEvent) (*models.JobBatch, *models.Job, error) {
-	resultJSON, err := json.Marshal(map[string]any{
-		"job_id":           event.JobID,
-		"batch_id":         event.BatchID,
-		"server_id":        event.ServerID,
-		"status":           event.Status,
-		"remote_client_id": event.RemoteClientID,
-		"config_link":      event.ConfigLink,
+func (s *Service) MarkJobProcessing(jobID uint) (*models.Job, error) {
+	job, err := s.jobsRepo.MarkJobProcessing(jobID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.RecalculateBatchStatus(job.BatchID); err != nil {
+		return nil, err
+	}
+	return job, nil
+}
+
+func (s *Service) MarkJobSuccess(jobID uint, result datatypes.JSON) (*models.Job, error) {
+	job, err := s.jobsRepo.MarkJobSuccess(jobID, result)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.RecalculateBatchStatus(job.BatchID); err != nil {
+		return nil, err
+	}
+	return job, nil
+}
+
+func (s *Service) MarkJobFailed(jobID uint, jobError string) (*models.Job, error) {
+	job, err := s.jobsRepo.MarkJobFailed(jobID, jobError)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.RecalculateBatchStatus(job.BatchID); err != nil {
+		return nil, err
+	}
+	s.logAudit(audit.Event{
+		ActorType:  audit.ActorSystem,
+		Action:     "job.failed",
+		EntityType: "job",
+		EntityID:   audit.StringID(job.ID),
+		Status:     audit.StatusFailed,
+		Message:    jobError,
 	})
+	return job, nil
+}
+
+func (s *Service) ApplyResult(event broker.JobResultEvent) (*models.JobBatch, *models.Job, error) {
+	job, err := s.jobsRepo.GetJob(event.JobID)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	jobStatus := normalizeJobResultStatus(event.Status)
-	job, err := s.jobsRepo.UpdateJobResult(event.JobID, jobStatus, string(resultJSON), event.Error)
+	if jobStatus == JobStatusSuccess {
+		resultJSON, err := resultPayload(event)
+		if err != nil {
+			return nil, nil, err
+		}
+		job, err = s.jobsRepo.MarkJobSuccess(job.ID, resultJSON)
+	} else {
+		jobError := "job failed"
+		if event.Error != nil && *event.Error != "" {
+			jobError = *event.Error
+		}
+		job, err = s.jobsRepo.MarkJobFailed(job.ID, jobError)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -201,31 +269,19 @@ func (s *Service) ApplyResult(event ResultEvent) (*models.JobBatch, *models.Job,
 
 	batch := &models.JobBatch{ID: job.BatchID, Status: batchStatus}
 	if jobStatus == JobStatusFailed {
-		_ = s.audit.Log(audit.Event{
+		s.logAudit(audit.Event{
 			ActorType:  audit.ActorAgent,
 			Action:     "job.failed",
 			EntityType: "job",
 			EntityID:   audit.StringID(job.ID),
 			Status:     audit.StatusFailed,
-			Message:    event.Error,
-			Metadata:   event,
-		})
-	}
-
-	if jobStatus == JobStatusRetrying {
-		_ = s.audit.Log(audit.Event{
-			ActorType:  audit.ActorAgent,
-			Action:     "job.retried",
-			EntityType: "job",
-			EntityID:   audit.StringID(job.ID),
-			Status:     audit.StatusSuccess,
-			Message:    "job retry requested by agent",
+			Message:    valueOrEmpty(event.Error),
 			Metadata:   event,
 		})
 	}
 
 	if jobStatus == JobStatusSuccess {
-		_ = s.audit.Log(audit.Event{
+		s.logAudit(audit.Event{
 			ActorType:  audit.ActorAgent,
 			Action:     "vpn.client.created",
 			EntityType: "job",
@@ -237,24 +293,6 @@ func (s *Service) ApplyResult(event ResultEvent) (*models.JobBatch, *models.Job,
 	}
 
 	return batch, job, nil
-}
-
-func (s *Service) MarkJobFailed(jobID uint, cause error) error {
-	job, err := s.jobsRepo.UpdateJobResult(jobID, JobStatusFailed, "", cause.Error())
-	if err != nil {
-		return err
-	}
-	if _, err := s.RecalculateBatchStatus(job.BatchID); err != nil {
-		return err
-	}
-	return s.audit.Log(audit.Event{
-		ActorType:  audit.ActorSystem,
-		Action:     "job.failed",
-		EntityType: "job",
-		EntityID:   audit.StringID(job.ID),
-		Status:     audit.StatusFailed,
-		Message:    cause.Error(),
-	})
 }
 
 func (s *Service) RecalculateBatchStatus(batchID uint) (string, error) {
@@ -301,6 +339,38 @@ func CalculateBatchStatus(jobs []models.Job) string {
 	return BatchStatusPartialSuccess
 }
 
+func resultPayload(event broker.JobResultEvent) (datatypes.JSON, error) {
+	if event.ResultJSON != nil {
+		return datatypes.JSON(*event.ResultJSON), nil
+	}
+
+	data, err := json.Marshal(map[string]any{
+		"job_id":           event.JobID,
+		"batch_id":         event.BatchID,
+		"server_id":        event.ServerID,
+		"status":           event.Status,
+		"remote_client_id": event.RemoteClientID,
+		"config_link":      event.ConfigLink,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return datatypes.JSON(data), nil
+}
+
+func (s *Service) logAudit(event audit.Event) {
+	if s.audit != nil {
+		_ = s.audit.Log(event)
+	}
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func idempotencyKey(action string, userID uint, serverID int, protocol string) string {
 	return fmt.Sprintf("%s:%d:%d:%s", action, userID, serverID, protocol)
 }
@@ -309,10 +379,6 @@ func normalizeJobResultStatus(status string) string {
 	switch status {
 	case JobStatusSuccess:
 		return JobStatusSuccess
-	case JobStatusRetrying:
-		return JobStatusRetrying
-	case JobStatusProcessing:
-		return JobStatusProcessing
 	default:
 		return JobStatusFailed
 	}

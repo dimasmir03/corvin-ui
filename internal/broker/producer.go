@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/wagslane/go-rabbitmq"
@@ -105,6 +106,49 @@ func (p *Producer) PublishCreateUser(msg any) error {
 
 func (p *Producer) PublishJob(msg JobTask) error {
 	return p.publish(p.publisherJobs, p.exchangeJobs, msg)
+}
+
+func (p *Producer) StartResultConsumer(queue string, handler func(JobResultEvent) error) (*rabbitmq.Consumer, error) {
+	if p == nil || p.conn == nil {
+		return nil, fmt.Errorf("rabbitmq connection is not initialized")
+	}
+	if queue == "" {
+		return nil, fmt.Errorf("result queue is required")
+	}
+
+	consumer, err := rabbitmq.NewConsumer(
+		p.conn,
+		queue,
+		rabbitmq.WithConsumerOptionsQueueDurable,
+		rabbitmq.WithConsumerOptionsConcurrency(1),
+		rabbitmq.WithConsumerOptionsQOSPrefetch(10),
+		rabbitmq.WithConsumerOptionsLogging,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create result consumer: %w", err)
+	}
+
+	go func() {
+		err := consumer.Run(func(d rabbitmq.Delivery) rabbitmq.Action {
+			var event JobResultEvent
+			if err := json.Unmarshal(d.Body, &event); err != nil {
+				log.Printf("invalid job result event: %v", err)
+				return rabbitmq.Ack
+			}
+
+			if err := handler(event); err != nil {
+				log.Printf("failed to apply job result event job_id=%d batch_id=%d: %v", event.JobID, event.BatchID, err)
+				return rabbitmq.Ack
+			}
+
+			return rabbitmq.Ack
+		})
+		if err != nil {
+			log.Printf("job result consumer stopped: %v", err)
+		}
+	}()
+
+	return consumer, nil
 }
 
 func (p *Producer) publish(pub *rabbitmq.Publisher, exchange string, msg any) error {

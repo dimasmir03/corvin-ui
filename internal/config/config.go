@@ -38,7 +38,8 @@ type DBConfig struct {
 }
 
 type RabbitMQConfig struct {
-	URL string
+	URL         string
+	ResultQueue string
 }
 
 type MinIOConfig struct {
@@ -79,7 +80,8 @@ func Load() (Config, error) {
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		RabbitMQ: RabbitMQConfig{
-			URL: getEnv("RABBITMQ_URL", ""),
+			URL:         getEnv("RABBITMQ_URL", ""),
+			ResultQueue: getEnv("RABBITMQ_RESULT_QUEUE", "corvin.job.results"),
 		},
 		MinIO: MinIOConfig{
 			Endpoint:  getEnv("MINIO_ENDPOINT", "127.0.0.1:9000"),

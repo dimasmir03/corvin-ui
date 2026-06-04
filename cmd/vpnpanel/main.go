@@ -54,7 +54,7 @@ func main() {
 	server := app.NewServer(cfg)
 	server.CronStart()
 
-	defer server.Cron.Stop()
+	defer server.Close()
 
 	log.Printf("Server Started on %s", cfg.HTTP.Addr)
 	if err := http.ListenAndServe(cfg.HTTP.Addr, server.Router); err != nil {

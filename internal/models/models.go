@@ -2,6 +2,8 @@ package models
 
 import (
 	"time"
+
+	"gorm.io/datatypes"
 )
 
 type User struct {
@@ -85,6 +87,20 @@ type Settings struct {
 	Value string `json:"value"`
 }
 
+const (
+	JobBatchStatusPending        = "pending"
+	JobBatchStatusProcessing     = "processing"
+	JobBatchStatusSuccess        = "success"
+	JobBatchStatusPartialSuccess = "partial_success"
+	JobBatchStatusFailed         = "failed"
+
+	JobStatusPending    = "pending"
+	JobStatusProcessing = "processing"
+	JobStatusSuccess    = "success"
+	JobStatusFailed     = "failed"
+	JobStatusRetrying   = "retrying"
+)
+
 type JobBatch struct {
 	ID        uint      `gorm:"primary_key;autoIncrement" json:"id"`
 	Type      string    `gorm:"not null;index" json:"type"`
@@ -96,19 +112,19 @@ type JobBatch struct {
 }
 
 type Job struct {
-	ID             uint      `gorm:"primary_key;autoIncrement" json:"id"`
-	BatchID        uint      `gorm:"not null;index" json:"batch_id"`
-	ServerID       int       `gorm:"not null;index" json:"server_id"`
-	Protocol       string    `gorm:"not null;index" json:"protocol"`
-	Action         string    `gorm:"not null;index" json:"action"`
-	Status         string    `gorm:"not null;index" json:"status"`
-	PayloadJSON    string    `gorm:"type:jsonb" json:"payload_json"`
-	ResultJSON     *string   `gorm:"type:jsonb" json:"result_json,omitempty"`
-	Error          string    `json:"error"`
-	Attempts       int       `gorm:"not null;default:0" json:"attempts"`
-	IdempotencyKey string    `gorm:"uniqueIndex;not null" json:"idempotency_key"`
-	CreatedAt      time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	ID             uint            `gorm:"primary_key;autoIncrement" json:"id"`
+	BatchID        uint            `gorm:"not null;index" json:"batch_id"`
+	ServerID       *int            `gorm:"index" json:"server_id,omitempty"`
+	Protocol       string          `gorm:"not null;index" json:"protocol"`
+	Action         string          `gorm:"not null;index" json:"action"`
+	Status         string          `gorm:"not null;index" json:"status"`
+	PayloadJSON    datatypes.JSON  `gorm:"type:jsonb" json:"payload_json"`
+	ResultJSON     *datatypes.JSON `gorm:"type:jsonb" json:"result_json,omitempty"`
+	Error          *string         `json:"error,omitempty"`
+	Attempts       int             `gorm:"not null;default:0" json:"attempts"`
+	IdempotencyKey string          `gorm:"uniqueIndex;not null" json:"idempotency_key"`
+	CreatedAt      time.Time       `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time       `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 type AuditLog struct {

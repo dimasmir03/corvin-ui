@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
+	"github.com/wagslane/go-rabbitmq"
 )
 
 type Server struct {
@@ -31,7 +32,8 @@ type Server struct {
 	MediaController      *handlers.MediaController
 	JobsController       *handlers.JobsController
 
-	Cron *cron.Cron
+	ResultConsumer *rabbitmq.Consumer
+	Cron           *cron.Cron
 
 	Config config.Config
 }
@@ -81,6 +83,18 @@ func NewServer(cfg config.Config) *Server {
 		Config: cfg,
 	}
 
+	if broker.GlobalProducer != nil {
+		consumer, err := broker.GlobalProducer.StartResultConsumer(cfg.RabbitMQ.ResultQueue, func(event broker.JobResultEvent) error {
+			_, _, err := jobService.ApplyResult(event)
+			return err
+		})
+		if err != nil {
+			log.Printf("failed to start RabbitMQ result consumer: %v", err)
+		} else {
+			s.ResultConsumer = consumer
+		}
+	}
+
 	s.Router = s.Routes()
 	return s
 }
@@ -98,4 +112,13 @@ func (s *Server) CronStart() {
 	})
 
 	s.Cron.Start()
+}
+
+func (s *Server) Close() {
+	if s.ResultConsumer != nil {
+		s.ResultConsumer.Close()
+	}
+	if s.Cron != nil {
+		s.Cron.Stop()
+	}
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"vpnpanel/internal/broker"
 	"vpnpanel/internal/jobsvc"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +21,7 @@ func (s *JobsController) Register(r *gin.RouterGroup) {
 }
 
 func (s *JobsController) ApplyResult(c *gin.Context) {
-	var event jobsvc.ResultEvent
+	var event broker.JobResultEvent
 	if err := c.ShouldBindJSON(&event); err != nil {
 		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: err.Error()})
 		return
