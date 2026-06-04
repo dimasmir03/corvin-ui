@@ -3,6 +3,8 @@ package jobsvc
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/models"
@@ -14,7 +16,10 @@ import (
 
 const (
 	BatchTypeCreateUserConfig = "create_user_config"
-	ActionCreateClient        = "create_client"
+	BatchTypeProbeNode        = "probe_node"
+
+	ActionCreateClient = "create_client"
+	ActionProbeNode    = "probe_node"
 
 	BatchStatusPending        = models.JobBatchStatusPending
 	BatchStatusProcessing     = models.JobBatchStatusProcessing
@@ -91,6 +96,94 @@ func (s *Service) CreateJob(batchID uint, serverID *int, protocol, action string
 	return job, nil
 }
 
+func (s *Service) ProbeServer(serverID int) (*models.JobBatch, *models.Job, error) {
+	server, err := s.serverRepo.GetByID(serverID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !server.Enabled || server.Status == models.ServerStatusDisabled {
+		return nil, nil, fmt.Errorf("server is disabled")
+	}
+
+	batch := &models.JobBatch{
+		Type:   BatchTypeProbeNode,
+		Status: BatchStatusPending,
+	}
+	var job models.Job
+	err = s.jobsRepo.DB().Transaction(func(tx *gorm.DB) error {
+		txJobsRepo := s.jobsRepo.WithTx(tx)
+		if err := txJobsRepo.CreateBatch(batch); err != nil {
+			return err
+		}
+
+		payload := broker.JobTask{
+			BatchID:  batch.ID,
+			ServerID: server.Id,
+			Action:   ActionProbeNode,
+			Protocol: server.Type,
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+
+		serverID := server.Id
+		job = models.Job{
+			BatchID:        batch.ID,
+			ServerID:       &serverID,
+			Protocol:       server.Type,
+			Action:         ActionProbeNode,
+			Status:         JobStatusPending,
+			PayloadJSON:    datatypes.JSON(payloadJSON),
+			IdempotencyKey: fmt.Sprintf("%s:%d:%d", ActionProbeNode, server.Id, time.Now().UnixNano()),
+		}
+		if err := txJobsRepo.CreateJob(&job); err != nil {
+			return err
+		}
+
+		payload.JobID = job.ID
+		payloadJSON, err = json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		job.PayloadJSON = datatypes.JSON(payloadJSON)
+		if err := tx.Model(&models.Job{}).Where("id = ?", job.ID).Update("payload_json", job.PayloadJSON).Error; err != nil {
+			return err
+		}
+
+		return txJobsRepo.UpdateBatchStatus(batch.ID, BatchStatusProcessing)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	batch.Status = BatchStatusProcessing
+
+	var payload broker.JobTask
+	if err := json.Unmarshal(job.PayloadJSON, &payload); err != nil {
+		return batch, &job, err
+	}
+	if s.producer != nil {
+		if err := s.producer.PublishJob(payload); err != nil {
+			_, _ = s.MarkJobFailed(job.ID, err.Error())
+			return batch, &job, err
+		}
+	}
+	s.logAudit(audit.Event{
+		ActorType:  audit.ActorAdmin,
+		Action:     "server.probe.requested",
+		EntityType: "server",
+		EntityID:   audit.StringID(server.Id),
+		Status:     audit.StatusSuccess,
+		Message:    "server probe requested",
+		Metadata: map[string]any{
+			"batch_id": batch.ID,
+			"job_id":   job.ID,
+		},
+	})
+
+	return batch, &job, nil
+}
+
 func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatch, []models.Job, error) {
 	if len(input.Protocols) == 0 {
 		input.Protocols = []string{"vless", "trojan"}
@@ -116,7 +209,14 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 		}
 
 		for _, server := range servers {
+			if !server.Enabled || server.Status == models.ServerStatusDisabled {
+				continue
+			}
 			for _, protocol := range input.Protocols {
+				if !serverSupportsProtocol(server, protocol) {
+					continue
+				}
+
 				payload := broker.JobTask{
 					BatchID:           batch.ID,
 					ServerID:          server.Id,
@@ -160,12 +260,19 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 			}
 		}
 
-		return txJobsRepo.UpdateBatchStatus(batch.ID, BatchStatusProcessing)
+		status := BatchStatusProcessing
+		if len(createdJobs) == 0 {
+			status = BatchStatusPending
+		}
+		return txJobsRepo.UpdateBatchStatus(batch.ID, status)
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 	batch.Status = BatchStatusProcessing
+	if len(createdJobs) == 0 {
+		batch.Status = BatchStatusPending
+	}
 
 	for _, job := range createdJobs {
 		var payload broker.JobTask
@@ -262,13 +369,19 @@ func (s *Service) ApplyResult(event broker.JobResultEvent) (*models.JobBatch, *m
 		return nil, nil, err
 	}
 
+	if job.Action == ActionProbeNode {
+		if err := s.applyProbeResult(job, event, jobStatus); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	batchStatus, err := s.RecalculateBatchStatus(job.BatchID)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	batch := &models.JobBatch{ID: job.BatchID, Status: batchStatus}
-	if jobStatus == JobStatusFailed {
+	if job.Action != ActionProbeNode && jobStatus == JobStatusFailed {
 		s.logAudit(audit.Event{
 			ActorType:  audit.ActorAgent,
 			Action:     "job.failed",
@@ -280,7 +393,7 @@ func (s *Service) ApplyResult(event broker.JobResultEvent) (*models.JobBatch, *m
 		})
 	}
 
-	if jobStatus == JobStatusSuccess {
+	if job.Action != ActionProbeNode && jobStatus == JobStatusSuccess {
 		s.logAudit(audit.Event{
 			ActorType:  audit.ActorAgent,
 			Action:     "vpn.client.created",
@@ -339,6 +452,78 @@ func CalculateBatchStatus(jobs []models.Job) string {
 	return BatchStatusPartialSuccess
 }
 
+func (s *Service) applyProbeResult(job *models.Job, event broker.JobResultEvent, jobStatus string) error {
+	serverID := 0
+	if job.ServerID != nil {
+		serverID = *job.ServerID
+	} else if event.ServerID != nil {
+		serverID = *event.ServerID
+	}
+	if serverID == 0 {
+		return fmt.Errorf("probe result has no server_id")
+	}
+
+	probedAt := time.Now()
+	probeResult := parseProbeResult(event)
+	if jobStatus == JobStatusSuccess {
+		if err := s.serverRepo.UpdateProbeSuccess(serverID, probedAt, repository.ServerProbeVersions{
+			PanelVersion: probeResult.PanelVersion,
+			XrayVersion:  probeResult.XrayVersion,
+			AgentVersion: probeResult.AgentVersion,
+		}); err != nil {
+			return err
+		}
+		s.logAudit(audit.Event{
+			ActorType:  audit.ActorAgent,
+			Action:     "server.probe.success",
+			EntityType: "server",
+			EntityID:   audit.StringID(serverID),
+			Status:     audit.StatusSuccess,
+			Message:    "server probe succeeded",
+			Metadata:   event,
+		})
+		return nil
+	}
+
+	status := models.ServerStatusOffline
+	if probeResult.Status == models.ServerStatusDegraded {
+		status = models.ServerStatusDegraded
+	}
+	jobError := "probe failed"
+	if event.Error != nil && *event.Error != "" {
+		jobError = *event.Error
+	}
+	if err := s.serverRepo.UpdateProbeFailed(serverID, probedAt, status, jobError); err != nil {
+		return err
+	}
+	s.logAudit(audit.Event{
+		ActorType:  audit.ActorAgent,
+		Action:     "server.probe.failed",
+		EntityType: "server",
+		EntityID:   audit.StringID(serverID),
+		Status:     audit.StatusFailed,
+		Message:    jobError,
+		Metadata:   event,
+	})
+	return nil
+}
+
+type probeResultPayload struct {
+	Status       string  `json:"status"`
+	PanelVersion *string `json:"panel_version"`
+	XrayVersion  *string `json:"xray_version"`
+	AgentVersion *string `json:"agent_version"`
+}
+
+func parseProbeResult(event broker.JobResultEvent) probeResultPayload {
+	if event.ResultJSON == nil || len(*event.ResultJSON) == 0 {
+		return probeResultPayload{}
+	}
+	var result probeResultPayload
+	_ = json.Unmarshal(*event.ResultJSON, &result)
+	return result
+}
+
 func resultPayload(event broker.JobResultEvent) (datatypes.JSON, error) {
 	if event.ResultJSON != nil {
 		return datatypes.JSON(*event.ResultJSON), nil
@@ -369,6 +554,10 @@ func valueOrEmpty(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func serverSupportsProtocol(server models.Server, protocol string) bool {
+	return strings.EqualFold(strings.TrimSpace(server.Type), strings.TrimSpace(protocol))
 }
 
 func idempotencyKey(action string, userID uint, serverID int, protocol string) string {

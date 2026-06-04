@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 	"vpnpanel/internal/audit"
+	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 
@@ -14,36 +16,47 @@ import (
 
 type ServersController struct {
 	Repo  *repository.ServerRepo
+	jobs  *jobsvc.Service
 	audit *audit.Logger
 }
 
-func NewServersController(repo *repository.ServerRepo, auditLogger *audit.Logger) *ServersController {
-	return &ServersController{Repo: repo, audit: auditLogger}
+func NewServersController(repo *repository.ServerRepo, jobs *jobsvc.Service, auditLogger *audit.Logger) *ServersController {
+	return &ServersController{Repo: repo, jobs: jobs, audit: auditLogger}
 }
 
 type ServerRequest struct {
-	ID            int    `json:"id" form:"id"`
-	Name          string `json:"name" form:"name"`
-	IP            string `json:"ip" form:"ip"`
-	Port          uint16 `json:"port" form:"port"`
-	SecretWebPath string `json:"secretWebPath" form:"secretWebPath"`
-	ApiKey        string `json:"apiKey" form:"apiKey"`
-	APIKey        string `json:"APIKey" form:"APIKey"`
-	Country       string `json:"country" form:"country"`
-	Status        string `json:"status" form:"status"`
-	Type          string `json:"type" form:"type"`
+	ID             int    `json:"id" form:"id"`
+	Name           string `json:"name" form:"name"`
+	IP             string `json:"ip" form:"ip"`
+	Port           uint16 `json:"port" form:"port"`
+	SecretWebPath  string `json:"secretWebPath" form:"secretWebPath"`
+	ApiKey         string `json:"apiKey" form:"apiKey"`
+	APIKey         string `json:"APIKey" form:"APIKey"`
+	Country        string `json:"country" form:"country"`
+	Status         string `json:"status" form:"status"`
+	Type           string `json:"type" form:"type"`
+	Enabled        *bool  `json:"enabled" form:"enabled"`
+	ManagementMode string `json:"management_mode" form:"managementMode"`
 }
 
 type ServerResponse struct {
-	ID        int                `json:"id"`
-	Name      string             `json:"name"`
-	IP        string             `json:"ip"`
-	Port      uint16             `json:"port"`
-	Country   string             `json:"country"`
-	Status    string             `json:"status"`
-	Type      string             `json:"type"`
-	APIKeySet bool               `json:"api_key_set"`
-	LastStat  *models.ServerStat `json:"lastStat,omitempty"`
+	ID             int                `json:"id"`
+	Name           string             `json:"name"`
+	IP             string             `json:"ip"`
+	Port           uint16             `json:"port"`
+	Country        string             `json:"country"`
+	Status         string             `json:"status"`
+	Type           string             `json:"type"`
+	Enabled        bool               `json:"enabled"`
+	LastSeenAt     *time.Time         `json:"last_seen_at,omitempty"`
+	LastProbeAt    *time.Time         `json:"last_probe_at,omitempty"`
+	LastError      *string            `json:"last_error,omitempty"`
+	PanelVersion   *string            `json:"panel_version,omitempty"`
+	XrayVersion    *string            `json:"xray_version,omitempty"`
+	AgentVersion   *string            `json:"agent_version,omitempty"`
+	ManagementMode string             `json:"management_mode"`
+	APIKeySet      bool               `json:"api_key_set"`
+	LastStat       *models.ServerStat `json:"lastStat,omitempty"`
 }
 
 func (r ServerRequest) toModel() models.Server {
@@ -52,30 +65,53 @@ func (r ServerRequest) toModel() models.Server {
 		apiKey = r.APIKey
 	}
 
+	enabled := true
+	if r.Enabled != nil {
+		enabled = *r.Enabled
+	}
+	status := r.Status
+	if status == "" {
+		status = models.ServerStatusUnknown
+	}
+	managementMode := r.ManagementMode
+	if managementMode == "" {
+		managementMode = models.ServerManagementModeAgent
+	}
+
 	return models.Server{
-		Id:            r.ID,
-		Name:          r.Name,
-		IP:            r.IP,
-		Port:          r.Port,
-		SecretWebPath: r.SecretWebPath,
-		ApiKey:        apiKey,
-		Country:       r.Country,
-		Status:        r.Status,
-		Type:          r.Type,
+		Id:             r.ID,
+		Name:           r.Name,
+		IP:             r.IP,
+		Port:           r.Port,
+		SecretWebPath:  r.SecretWebPath,
+		ApiKey:         apiKey,
+		Country:        r.Country,
+		Status:         status,
+		Type:           r.Type,
+		Enabled:        enabled,
+		ManagementMode: managementMode,
 	}
 }
 
 func newServerResponse(server models.Server) ServerResponse {
 	return ServerResponse{
-		ID:        server.Id,
-		Name:      server.Name,
-		IP:        server.IP,
-		Port:      server.Port,
-		Country:   server.Country,
-		Status:    server.Status,
-		Type:      server.Type,
-		APIKeySet: server.ApiKey != "",
-		LastStat:  server.LastStat,
+		ID:             server.Id,
+		Name:           server.Name,
+		IP:             server.IP,
+		Port:           server.Port,
+		Country:        server.Country,
+		Status:         server.Status,
+		Type:           server.Type,
+		Enabled:        server.Enabled,
+		LastSeenAt:     server.LastSeenAt,
+		LastProbeAt:    server.LastProbeAt,
+		LastError:      server.LastError,
+		PanelVersion:   server.PanelVersion,
+		XrayVersion:    server.XrayVersion,
+		AgentVersion:   server.AgentVersion,
+		ManagementMode: server.ManagementMode,
+		APIKeySet:      server.ApiKey != "",
+		LastStat:       server.LastStat,
 	}
 }
 
@@ -95,6 +131,7 @@ func (s ServersController) Register(r *gin.RouterGroup) {
 	r.GET("/:id", s.GetServer)
 	r.POST("/:id/edit", s.UpdateServer)
 	r.POST("/:id/delete", s.DeleteServer)
+	r.POST("/:id/probe", s.ProbeServer)
 	r.POST("/:id/status", s.GetServerStatus) // TODO: реализовать
 }
 
@@ -193,21 +230,58 @@ func (s ServersController) UpdateServer(ctx *gin.Context) {
 	if server.ApiKey == "" {
 		server.ApiKey = existing.ApiKey
 	}
+	if req.Enabled == nil {
+		server.Enabled = existing.Enabled
+	}
+	if req.Status == "" {
+		server.Status = existing.Status
+	}
+	if req.ManagementMode == "" {
+		server.ManagementMode = existing.ManagementMode
+	}
+	server.LastSeenAt = existing.LastSeenAt
+	server.LastProbeAt = existing.LastProbeAt
+	server.LastError = existing.LastError
+	server.PanelVersion = existing.PanelVersion
+	server.XrayVersion = existing.XrayVersion
+	server.AgentVersion = existing.AgentVersion
 
 	oldStatus := existing.Status
+	oldEnabled := existing.Enabled
 	if err := s.Repo.Update(&server); err != nil {
 		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to update server"})
 		return
 	}
 
-	if oldStatus != server.Status && (server.Status == "Offline" || server.Status == "disabled") {
+	if oldEnabled != server.Enabled {
+		action := "server.enabled"
+		message := "server enabled"
+		if !server.Enabled {
+			action = "server.disabled"
+			message = "server disabled"
+		}
+		_ = s.audit.Log(audit.Event{
+			ActorType:  audit.ActorAdmin,
+			Action:     action,
+			EntityType: "server",
+			EntityID:   audit.StringID(server.Id),
+			Status:     audit.StatusSuccess,
+			Message:    message,
+			OldValue:   map[string]any{"enabled": oldEnabled},
+			NewValue:   map[string]any{"enabled": server.Enabled},
+			IP:         ctx.ClientIP(),
+			UserAgent:  ctx.Request.UserAgent(),
+		})
+	}
+
+	if oldStatus != server.Status && server.Status == models.ServerStatusDisabled {
 		_ = s.audit.Log(audit.Event{
 			ActorType:  audit.ActorAdmin,
 			Action:     "server.disabled",
 			EntityType: "server",
 			EntityID:   audit.StringID(server.Id),
 			Status:     audit.StatusSuccess,
-			Message:    "server disabled",
+			Message:    "server status disabled",
 			OldValue:   map[string]any{"status": oldStatus},
 			NewValue:   map[string]any{"status": server.Status},
 			IP:         ctx.ClientIP(),
@@ -239,6 +313,30 @@ func (s ServersController) DeleteServer(ctx *gin.Context) {
 // #endregion
 
 // #region Misc
+
+func (s ServersController) ProbeServer(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: "Invalid ID"})
+		return
+	}
+	if s.jobs == nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: "Jobs service is not configured"})
+		return
+	}
+
+	batch, job, err := s.jobs.ProbeServer(id)
+	if err != nil {
+		c.JSON(http.StatusOK, Response{Success: false, Msg: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{
+		"batch_id": batch.ID,
+		"job_id":   job.ID,
+		"status":   batch.Status,
+	}})
+}
 
 func (s ServersController) GetServerStatus(c *gin.Context) {
 	// id, err := strconv.Atoi(c.Param("id"))

@@ -12,6 +12,12 @@ type ServerRepo struct {
 	DB *gorm.DB
 }
 
+type ServerProbeVersions struct {
+	PanelVersion *string
+	XrayVersion  *string
+	AgentVersion *string
+}
+
 func NewServerRepo(db *gorm.DB) *ServerRepo {
 	return &ServerRepo{DB: db}
 }
@@ -124,4 +130,34 @@ func (r *ServerRepo) GetOnlineHistory() ([]models.ServerStat, error) {
 // clear stats
 func (r *ServerRepo) ClearStats() error {
 	return r.DB.Delete(&models.ServerStat{}).Error
+}
+
+func (r *ServerRepo) UpdateProbeSuccess(serverID int, probedAt time.Time, versions ServerProbeVersions) error {
+	updates := map[string]any{
+		"status":        models.ServerStatusOnline,
+		"last_seen_at":  &probedAt,
+		"last_probe_at": &probedAt,
+		"last_error":    nil,
+	}
+	if versions.PanelVersion != nil {
+		updates["panel_version"] = versions.PanelVersion
+	}
+	if versions.XrayVersion != nil {
+		updates["xray_version"] = versions.XrayVersion
+	}
+	if versions.AgentVersion != nil {
+		updates["agent_version"] = versions.AgentVersion
+	}
+	return r.DB.Model(&models.Server{}).Where("id = ?", serverID).Updates(updates).Error
+}
+
+func (r *ServerRepo) UpdateProbeFailed(serverID int, probedAt time.Time, status, lastError string) error {
+	if status == "" {
+		status = models.ServerStatusOffline
+	}
+	return r.DB.Model(&models.Server{}).Where("id = ?", serverID).Updates(map[string]any{
+		"status":        status,
+		"last_probe_at": &probedAt,
+		"last_error":    &lastError,
+	}).Error
 }

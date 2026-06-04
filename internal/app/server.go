@@ -73,7 +73,7 @@ func NewServer(cfg config.Config) *Server {
 		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo, jobService, auditLogger),
 		ComplaintsController: handlers.NewComplaintsController(complaintRepo),
 		UserController:       handlers.NewUserController(userRepo, auditLogger),
-		ServersController:    handlers.NewServersController(serversRepo, auditLogger),
+		ServersController:    handlers.NewServersController(serversRepo, jobService, auditLogger),
 		PanelController:      handlers.NewPanelController(),
 		VpnController:        handlers.NewVpnController(vpnRepo),
 		MediaController:      handlers.NewMediaController(storageRepo),

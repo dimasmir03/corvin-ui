@@ -19,18 +19,36 @@ type User struct {
 	Complaint []Complaint `json:"complaint" form:"complaint"`
 }
 
+const (
+	ServerStatusUnknown  = "unknown"
+	ServerStatusOnline   = "online"
+	ServerStatusOffline  = "offline"
+	ServerStatusDegraded = "degraded"
+	ServerStatusDisabled = "disabled"
+
+	ServerManagementModeAgent = "agent"
+)
+
 type Server struct {
-	Id            int    `gorm:"primary_key;autoIncrement" form:"id" json:"id"`
-	Name          string `gorm:"not null" form:"name" json:"name"`
-	IP            string `gorm:"not null;unique" form:"ip" json:"ip"`
-	Port          uint16 `gorm:"not null" form:"port" json:"port"`
-	SecretWebPath string `gorm:"secretWebPath" form:"secretWebPath" json:"-"`
-	ApiKey        string `gorm:"not null" form:"apiKey" json:"-"`
-	Country       string `form:"country" json:"country"`
-	Status        string `form:"status" json:"status"`
-	Type          string `form:"type" json:"type"`
+	Id             int        `gorm:"primary_key;autoIncrement" form:"id" json:"id"`
+	Name           string     `gorm:"not null" form:"name" json:"name"`
+	IP             string     `gorm:"not null;unique" form:"ip" json:"ip"`
+	Port           uint16     `gorm:"not null" form:"port" json:"port"`
+	SecretWebPath  string     `gorm:"secretWebPath" form:"secretWebPath" json:"-"`
+	ApiKey         string     `gorm:"not null" form:"apiKey" json:"-"`
+	Country        string     `form:"country" json:"country"`
+	Status         string     `gorm:"not null;default:unknown" form:"status" json:"status"`
+	Type           string     `form:"type" json:"type"`
+	Enabled        bool       `gorm:"not null;default:true" form:"enabled" json:"enabled"`
+	LastSeenAt     *time.Time `form:"lastSeenAt" json:"last_seen_at,omitempty"`
+	LastProbeAt    *time.Time `form:"lastProbeAt" json:"last_probe_at,omitempty"`
+	LastError      *string    `form:"lastError" json:"last_error,omitempty"`
+	PanelVersion   *string    `form:"panelVersion" json:"panel_version,omitempty"`
+	XrayVersion    *string    `form:"xrayVersion" json:"xray_version,omitempty"`
+	AgentVersion   *string    `form:"agentVersion" json:"agent_version,omitempty"`
+	ManagementMode string     `gorm:"not null;default:agent" form:"managementMode" json:"management_mode"`
 	// Online        int         `form:"online" json:"online"`
-	LastStat *ServerStat `gorm:"-"  form:"lastStat" json:"lastStat"`
+	LastStat *ServerStat `gorm:"-" form:"lastStat" json:"lastStat"`
 	// gorm.Model
 }
 
