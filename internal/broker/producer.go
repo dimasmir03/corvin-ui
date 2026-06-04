@@ -15,9 +15,11 @@ type Producer struct {
 
 	publisherComplaints *rabbitmq.Publisher
 	publisherUsers      *rabbitmq.Publisher
+	publisherJobs       *rabbitmq.Publisher
 
 	exchangeComplaints string
 	exchangeUsers      string
+	exchangeJobs       string
 }
 
 func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafile string) (*Producer, error) {
@@ -70,12 +72,26 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafi
 		return nil, fmt.Errorf("failed to create publisher: %w", err)
 	}
 
+	exchangeJobs := "vpn.jobs"
+	publisherJobs, err := rabbitmq.NewPublisher(
+		conn,
+		rabbitmq.WithPublisherOptionsExchangeName(exchangeJobs),
+		rabbitmq.WithPublisherOptionsExchangeKind("fanout"),
+		rabbitmq.WithPublisherOptionsExchangeDeclare,
+		rabbitmq.WithPublisherOptionsLogging,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create publisher for jobs: %w", err)
+	}
+
 	return &Producer{
 		conn:                conn,
 		publisherComplaints: publisherComplaints,
 		publisherUsers:      publisherUsers,
+		publisherJobs:       publisherJobs,
 		exchangeComplaints:  exchangeComplaints,
 		exchangeUsers:       exchangeUsers,
+		exchangeJobs:        exchangeJobs,
 	}, nil
 }
 
@@ -87,7 +103,15 @@ func (p *Producer) PublishCreateUser(msg any) error {
 	return p.publish(p.publisherUsers, p.exchangeUsers, msg)
 }
 
+func (p *Producer) PublishJob(msg JobTask) error {
+	return p.publish(p.publisherJobs, p.exchangeJobs, msg)
+}
+
 func (p *Producer) publish(pub *rabbitmq.Publisher, exchange string, msg any) error {
+	if p == nil || pub == nil {
+		return fmt.Errorf("rabbitmq publisher is not initialized")
+	}
+
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to serialize task: %w", err)
@@ -107,6 +131,9 @@ func (p *Producer) Close() {
 	}
 	if p.publisherUsers != nil {
 		p.publisherUsers.Close()
+	}
+	if p.publisherJobs != nil {
+		p.publisherJobs.Close()
 	}
 	if p.conn != nil {
 		p.conn.Close()
@@ -129,7 +156,7 @@ func loadRootCAs(cafile string) (*x509.CertPool, error) {
 }
 
 func (p *Producer) IsReady() bool {
-	return p != nil && p.conn != nil && p.publisherComplaints != nil && p.publisherUsers != nil
+	return p != nil && p.conn != nil && p.publisherComplaints != nil && p.publisherUsers != nil && p.publisherJobs != nil
 }
 
 func IsReady() bool {

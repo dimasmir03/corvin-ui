@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"vpnpanel/internal/audit"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 
@@ -12,11 +13,12 @@ import (
 )
 
 type ServersController struct {
-	Repo *repository.ServerRepo
+	Repo  *repository.ServerRepo
+	audit *audit.Logger
 }
 
-func NewServersController(repo *repository.ServerRepo) *ServersController {
-	return &ServersController{Repo: repo}
+func NewServersController(repo *repository.ServerRepo, auditLogger *audit.Logger) *ServersController {
+	return &ServersController{Repo: repo, audit: auditLogger}
 }
 
 type ServerRequest struct {
@@ -124,6 +126,22 @@ func (s ServersController) CreateServer(c *gin.Context) {
 		return
 	}
 
+	_ = s.audit.Log(audit.Event{
+		ActorType:  audit.ActorAdmin,
+		Action:     "server.created",
+		EntityType: "server",
+		EntityID:   audit.StringID(server.Id),
+		Status:     audit.StatusSuccess,
+		Message:    "server created",
+		NewValue: map[string]any{
+			"name": server.Name,
+			"ip":   server.IP,
+			"port": server.Port,
+		},
+		IP:        c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
 		"redirect": "/panel/servers",
@@ -176,9 +194,25 @@ func (s ServersController) UpdateServer(ctx *gin.Context) {
 		server.ApiKey = existing.ApiKey
 	}
 
+	oldStatus := existing.Status
 	if err := s.Repo.Update(&server); err != nil {
 		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to update server"})
 		return
+	}
+
+	if oldStatus != server.Status && (server.Status == "Offline" || server.Status == "disabled") {
+		_ = s.audit.Log(audit.Event{
+			ActorType:  audit.ActorAdmin,
+			Action:     "server.disabled",
+			EntityType: "server",
+			EntityID:   audit.StringID(server.Id),
+			Status:     audit.StatusSuccess,
+			Message:    "server disabled",
+			OldValue:   map[string]any{"status": oldStatus},
+			NewValue:   map[string]any{"status": server.Status},
+			IP:         ctx.ClientIP(),
+			UserAgent:  ctx.Request.UserAgent(),
+		})
 	}
 
 	ctx.JSON(http.StatusOK, Response{Success: true})

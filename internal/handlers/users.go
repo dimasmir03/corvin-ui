@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"vpnpanel/internal/audit"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers/response"
 	"vpnpanel/internal/models"
@@ -13,10 +14,11 @@ import (
 
 type UserController struct {
 	users *repository.UserRepo
+	audit *audit.Logger
 }
 
-func NewUserController(users *repository.UserRepo) *UserController {
-	return &UserController{users: users}
+func NewUserController(users *repository.UserRepo, auditLogger *audit.Logger) *UserController {
+	return &UserController{users: users, audit: auditLogger}
 }
 
 func (s *UserController) Register(r *gin.RouterGroup) {
@@ -164,8 +166,21 @@ func (s *UserController) UpdateStatusUser(c *gin.Context) {
 		)
 		return
 	}
+	oldStatus := user.Status
 	user.Status = userStatus.Status
 	db.DB.Save(&user)
+	if oldStatus && !user.Status {
+		_ = s.audit.Log(audit.Event{
+			ActorType:  audit.ActorAdmin,
+			Action:     "user.disabled",
+			EntityType: "user",
+			EntityID:   audit.StringID(user.ID),
+			Status:     audit.StatusSuccess,
+			Message:    "user disabled",
+			IP:         c.ClientIP(),
+			UserAgent:  c.Request.UserAgent(),
+		})
+	}
 	c.JSON(http.StatusOK, response.Response{Success: true})
 }
 

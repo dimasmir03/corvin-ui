@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/handlers/response"
+	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 	"vpnpanel/internal/utils"
@@ -18,15 +20,21 @@ import (
 type TelegramController struct {
 	teleRepo *repository.TelegramRepo
 	storage  *repository.StorageRepo
+	jobs     *jobsvc.Service
+	audit    *audit.Logger
 }
 
 func NewTelegramController(
 	repo *repository.StorageRepo,
 	teleRepo *repository.TelegramRepo,
+	jobs *jobsvc.Service,
+	auditLogger *audit.Logger,
 ) *TelegramController {
 	return &TelegramController{
 		storage:  repo,
 		teleRepo: teleRepo,
+		jobs:     jobs,
+		audit:    auditLogger,
 	}
 }
 
@@ -60,6 +68,18 @@ func (s TelegramController) CreateUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
 		return
 	}
+
+	_ = s.audit.Log(audit.Event{
+		ActorType:  audit.ActorTelegramUser,
+		ActorID:    audit.StringID(dto.TgID),
+		Action:     "user.created",
+		EntityType: "user",
+		EntityID:   audit.StringID(user.UserID),
+		Status:     audit.StatusSuccess,
+		Message:    "telegram user created",
+		IP:         c.ClientIP(),
+		UserAgent:  c.Request.UserAgent(),
+	})
 
 	c.JSON(http.StatusOK, Response{
 		Success: true,
@@ -134,7 +154,35 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 		return
 	}
 
-	// Отправляем в RabbitMQ
+	if s.jobs != nil {
+		batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
+			UserID:            telegram.UserID,
+			TechnicalClientID: vlessParams.UID,
+			Protocols:         []string{"vless", "trojan"},
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, response.Response{
+				Success: false,
+				Msg:     "Failed to create vpn jobs:" + err.Error(),
+			})
+			return
+		}
+		_ = s.audit.Log(audit.Event{
+			ActorType:  audit.ActorTelegramUser,
+			ActorID:    audit.StringID(dto.TgID),
+			Action:     "vpn.client.created",
+			EntityType: "job_batch",
+			EntityID:   audit.StringID(batch.ID),
+			Status:     audit.StatusSuccess,
+			Message:    "vpn create jobs queued",
+			Metadata: map[string]any{
+				"jobs_count": len(jobs),
+				"user_id":    telegram.UserID,
+			},
+		})
+	}
+
+	// Отправляем legacy task в RabbitMQ
 	task := broker.CreateUserTask{
 		UserID:     dto.TgID,
 		Username:   vlessParams.Name,
@@ -231,7 +279,40 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 		Username = trojanParams.Name
 	}
 
-	// Отправляем в RabbitMQ
+	if s.jobs != nil {
+		technicalClientID := vlessParams.UID
+		if protocol == "trojan" {
+			technicalClientID = trojanParams.Password
+		}
+		batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
+			UserID:            telegram.UserID,
+			TechnicalClientID: technicalClientID,
+			Protocols:         []string{protocol},
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, response.Response{
+				Success: false,
+				Msg:     "Failed to create vpn jobs:" + err.Error(),
+			})
+			return
+		}
+		_ = s.audit.Log(audit.Event{
+			ActorType:  audit.ActorTelegramUser,
+			ActorID:    audit.StringID(dto.TgID),
+			Action:     "vpn.client.created",
+			EntityType: "job_batch",
+			EntityID:   audit.StringID(batch.ID),
+			Status:     audit.StatusSuccess,
+			Message:    "vpn protocol create jobs queued",
+			Metadata: map[string]any{
+				"jobs_count": len(jobs),
+				"protocol":   protocol,
+				"user_id":    telegram.UserID,
+			},
+		})
+	}
+
+	// Отправляем legacy task в RabbitMQ
 	task := broker.CreateUserTask{
 		UserID:     dto.TgID,
 		Username:   Username,

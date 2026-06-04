@@ -27,3 +27,13 @@ type CreateUserTask struct {
 	Sni      string `json:"sni,omitempty"`
 	Password string `json:"password,omitempty"`
 }
+
+type JobTask struct {
+	JobID             uint   `json:"job_id"`
+	BatchID           uint   `json:"batch_id"`
+	ServerID          int    `json:"server_id"`
+	Action            string `json:"action"`
+	Protocol          string `json:"protocol"`
+	UserID            uint   `json:"user_id"`
+	TechnicalClientID string `json:"technical_client_id"`
+}

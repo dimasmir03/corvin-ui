@@ -70,5 +70,8 @@ func migrate() error {
 		&models.Vpn{},
 		&models.Complaint{},
 		&models.Settings{},
+		&models.JobBatch{},
+		&models.Job{},
+		&models.AuditLog{},
 	)
 }

@@ -2,10 +2,13 @@ package app
 
 import (
 	"log"
+	"vpnpanel/internal/audit"
+	"vpnpanel/internal/broker"
 	"vpnpanel/internal/config"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers"
 	"vpnpanel/internal/jobs"
+	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/repository"
 	"vpnpanel/internal/storage"
 
@@ -26,6 +29,7 @@ type Server struct {
 	PanelController      *handlers.PanelController
 	VpnController        *handlers.VpnController
 	MediaController      *handlers.MediaController
+	JobsController       *handlers.JobsController
 
 	Cron *cron.Cron
 
@@ -52,18 +56,26 @@ func NewServer(cfg config.Config) *Server {
 	serversRepo := repository.NewServerRepo(db.DB)
 	vpnRepo := repository.NewVpnRepo(db.DB)
 	storageRepo := repository.NewStorageRepo(minioClient)
+	auditLogger := audit.NewLogger(repository.NewAuditRepo(db.DB))
+	jobService := jobsvc.NewService(
+		repository.NewJobsRepo(db.DB),
+		serversRepo,
+		auditLogger,
+		broker.GlobalProducer,
+	)
 
 	s := &Server{
 		ServersService: serverService,
 		StorageRepo:    storageRepo,
 
-		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo),
+		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo, jobService, auditLogger),
 		ComplaintsController: handlers.NewComplaintsController(complaintRepo),
-		UserController:       handlers.NewUserController(userRepo),
-		ServersController:    handlers.NewServersController(serversRepo),
+		UserController:       handlers.NewUserController(userRepo, auditLogger),
+		ServersController:    handlers.NewServersController(serversRepo, auditLogger),
 		PanelController:      handlers.NewPanelController(),
 		VpnController:        handlers.NewVpnController(vpnRepo),
 		MediaController:      handlers.NewMediaController(storageRepo),
+		JobsController:       handlers.NewJobsController(jobService),
 
 		Cron:   cron.New(cron.WithSeconds()),
 		Config: cfg,

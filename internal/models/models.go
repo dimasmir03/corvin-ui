@@ -84,3 +84,46 @@ type Settings struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
+
+type JobBatch struct {
+	ID        uint      `gorm:"primary_key;autoIncrement" json:"id"`
+	Type      string    `gorm:"not null;index" json:"type"`
+	UserID    *uint     `gorm:"index" json:"user_id,omitempty"`
+	Status    string    `gorm:"not null;index" json:"status"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	Jobs      []Job     `gorm:"foreignKey:BatchID" json:"jobs,omitempty"`
+}
+
+type Job struct {
+	ID             uint      `gorm:"primary_key;autoIncrement" json:"id"`
+	BatchID        uint      `gorm:"not null;index" json:"batch_id"`
+	ServerID       int       `gorm:"not null;index" json:"server_id"`
+	Protocol       string    `gorm:"not null;index" json:"protocol"`
+	Action         string    `gorm:"not null;index" json:"action"`
+	Status         string    `gorm:"not null;index" json:"status"`
+	PayloadJSON    string    `gorm:"type:jsonb" json:"payload_json"`
+	ResultJSON     *string   `gorm:"type:jsonb" json:"result_json,omitempty"`
+	Error          string    `json:"error"`
+	Attempts       int       `gorm:"not null;default:0" json:"attempts"`
+	IdempotencyKey string    `gorm:"uniqueIndex;not null" json:"idempotency_key"`
+	CreatedAt      time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+type AuditLog struct {
+	ID           uint      `gorm:"primary_key;autoIncrement" json:"id"`
+	ActorType    string    `gorm:"not null;index" json:"actor_type"`
+	ActorID      *string   `gorm:"index" json:"actor_id,omitempty"`
+	Action       string    `gorm:"not null;index" json:"action"`
+	EntityType   string    `gorm:"not null;index" json:"entity_type"`
+	EntityID     *string   `gorm:"index" json:"entity_id,omitempty"`
+	Status       string    `gorm:"not null;index" json:"status"`
+	Message      string    `json:"message"`
+	OldValueJSON *string   `gorm:"type:jsonb" json:"old_value_json,omitempty"`
+	NewValueJSON *string   `gorm:"type:jsonb" json:"new_value_json,omitempty"`
+	MetadataJSON *string   `gorm:"type:jsonb" json:"metadata_json,omitempty"`
+	IP           string    `json:"ip,omitempty"`
+	UserAgent    string    `json:"user_agent,omitempty"`
+	CreatedAt    time.Time `gorm:"autoCreateTime" json:"created_at"`
+}

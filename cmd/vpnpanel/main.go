@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"vpnpanel/internal/app"
+	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/config"
 	"vpnpanel/internal/db"
@@ -165,6 +166,16 @@ func handleSettingCLI(args []string) {
 			fmt.Printf("Failed to update settings: %v\n", err)
 			return
 		}
+
+		auditLogger := audit.NewLogger(repository.NewAuditRepo(db.DB))
+		_ = auditLogger.Log(audit.Event{
+			ActorType:  audit.ActorAdmin,
+			Action:     "settings.changed",
+			EntityType: "settings",
+			Status:     audit.StatusSuccess,
+			Message:    "settings updated from CLI",
+			NewValue:   updates,
+		})
 
 		fmt.Println("Settings updated successfully")
 
