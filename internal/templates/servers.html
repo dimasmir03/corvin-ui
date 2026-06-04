@@ -18,7 +18,7 @@
             <th>Name</th>
             <th>IP</th>
             <th>Port</th>
-            <th>SecretWebPath</th>
+            <th>API Key</th>
             <th>Country</th>
             <th>Status</th>
             <th>Online</th>
@@ -32,7 +32,7 @@
                <td>[[ server.name ]]</td>
                <td>[[ server.ip ]]</td>
                <td>[[ server.port ]]</td>
-               <td>[[ server.secretWebPath ]]</td>
+               <td>[[ server.api_key_set ? "set" : "missing" ]]</td>
                <td>[[ server.country ]]</td>
                <td>[[ server.status || "Checking" ]]</td>
                <td>[[ server.online == undefined ? "Error" : server.online ]]</td>
@@ -67,7 +67,7 @@
                   name: '',
                   ip: '',
                   port: 0,
-                  secretWebPath: '',
+                  api_key_set: false,
                   country: '',
                   status: '',
                   online: 0,
@@ -83,7 +83,7 @@
                .get("/api/servers/list")
                .then((response) => {
                   console.log(response);
-                  this.servers = response.data;
+                  this.servers = response.data.obj || [];
                   // this.servers = this.servers.map((s) => {
                   //    s.status = "Checking...";
                   //    return s;
@@ -101,8 +101,10 @@
                this.servers = data.obj.servers;
                this.servers = this.servers.map((s) => {
                   const foundServer = data.obj.servers.find((server) => server.id === s.id);
-                  if (foundServer) {
+                  if (foundServer && foundServer.lastStat) {
                      s.online = foundServer.lastStat.online;
+                  } else {
+                     s.online = 0;
                   }
                   return s;
                });

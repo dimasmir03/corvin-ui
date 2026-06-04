@@ -41,7 +41,7 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafi
 		url,
 		rabbitmq.WithConnectionOptionsLogging,
 		rabbitmq.WithConnectionOptionsConfig(rabbitmq.Config{
-				TLSClientConfig: tlsConfig,
+			TLSClientConfig: tlsConfig,
 		}),
 	)
 	if err != nil {
@@ -126,4 +126,12 @@ func loadRootCAs(cafile string) (*x509.CertPool, error) {
 	}
 
 	return rootCAs, nil
+}
+
+func (p *Producer) IsReady() bool {
+	return p != nil && p.conn != nil && p.publisherComplaints != nil && p.publisherUsers != nil
+}
+
+func IsReady() bool {
+	return GlobalProducer != nil && GlobalProducer.IsReady()
 }

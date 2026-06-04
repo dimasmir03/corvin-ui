@@ -20,6 +20,24 @@ func NewStorageRepo(min *storage.MinioClient) *StorageRepo {
 }
 
 // UploadFile — загружает в MinIO, возвращает путь файла
+
+func (s *StorageRepo) Ping(ctx context.Context) error {
+	if s == nil || s.minio == nil || s.minio.Client == nil {
+		return errStorageNotConfigured
+	}
+
+	_, err := s.minio.Client.BucketExists(ctx, s.minio.BucketName)
+	return err
+}
+
+type storageError string
+
+func (e storageError) Error() string {
+	return string(e)
+}
+
+const errStorageNotConfigured storageError = "storage is not configured"
+
 func (s *StorageRepo) UploadFile(r io.Reader, objectName string, contentType string) (string, error) {
 	ctx := context.Background()
 

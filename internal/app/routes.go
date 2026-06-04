@@ -23,6 +23,9 @@ func (s *Server) Routes() *gin.Engine {
 
 	s.initSessionStore()
 
+	r.GET("/health", s.Health)
+	r.GET("/ready", s.Ready)
+
 	if err := mountStatic(r); err != nil {
 		log.Printf("WARN: failed to mount static files: %v", err)
 	}

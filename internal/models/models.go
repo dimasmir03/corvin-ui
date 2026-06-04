@@ -22,8 +22,8 @@ type Server struct {
 	Name          string `gorm:"not null" form:"name" json:"name"`
 	IP            string `gorm:"not null;unique" form:"ip" json:"ip"`
 	Port          uint16 `gorm:"not null" form:"port" json:"port"`
-	SecretWebPath string `gorm:"secretWebPath" form:"secretWebPath" json:"secretWebPath"`
-	ApiKey        string `gorm:"not null" form:"apiKey" json:"apiKey"`
+	SecretWebPath string `gorm:"secretWebPath" form:"secretWebPath" json:"-"`
+	ApiKey        string `gorm:"not null" form:"apiKey" json:"-"`
 	Country       string `form:"country" json:"country"`
 	Status        string `form:"status" json:"status"`
 	Type          string `form:"type" json:"type"`
@@ -55,12 +55,12 @@ type Vpn struct {
 
 	// VpnUser    string    `gorm:"unique;not null" json:"vpn_user" form:"vpn_user"`
 	// VpnPass    string    `gorm:"not null" json:"vpn_pass" form:"vpn_pass"`
-	
-	Link       string    `gorm:"not null" json:"link" form:"link"`
 
-	VlessLink  string    `json:"vless_link" form:"vless_link"`
-	TrojanLink string    `json:"trojan_link" form:"trojan_link"`
-	
+	Link string `gorm:"not null" json:"link" form:"link"`
+
+	VlessLink  string `json:"vless_link" form:"vless_link"`
+	TrojanLink string `json:"trojan_link" form:"trojan_link"`
+
 	Created_at time.Time `gorm:"autoCreateTime" json:"created_at"`
 	Expires_at time.Time `gorm:"autoCreateTime" json:"expires_at"`
 	UserID     uint      `gorm:"index;not null" json:"user_id" form:"user_id"`
