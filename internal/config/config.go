@@ -130,14 +130,9 @@ func (c Config) Validate() error {
 
 func (c Config) DefaultSettings() map[string]string {
 	return map[string]string{
-		"amqp_url":                 c.RabbitMQ.URL,
 		"amqp_exchange_complaints": c.Defaults.AMQPExchangeComplaints,
 		"amqp_exchange_users":      c.Defaults.AMQPExchangeUsers,
-		"cert_file":                c.Defaults.CertFile,
-		"key_file":                 c.Defaults.KeyFile,
-		"ca_file":                  c.Defaults.CAFile,
 		"minio_access_key":         c.MinIO.AccessKey,
-		"minio_secret_key":         c.MinIO.SecretKey,
 		"minio_bucket":             c.MinIO.Bucket,
 		"minio_endpoint":           c.MinIO.Endpoint,
 		"minio_ssl":                strconv.FormatBool(c.MinIO.UseSSL),
@@ -145,7 +140,6 @@ func (c Config) DefaultSettings() map[string]string {
 		"db_host":                  c.DB.Host,
 		"db_port":                  strconv.Itoa(c.DB.Port),
 		"db_user":                  c.DB.User,
-		"db_pass":                  c.DB.Password,
 		"db_name":                  c.DB.Name,
 		"db_ssl_mode":              c.DB.SSLMode,
 	}

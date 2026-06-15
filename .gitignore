@@ -18,5 +18,5 @@ data.db
 vpnpanel.log
 
 # local secrets
-.env
 .env.example
+.env

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 
@@ -48,7 +49,7 @@ func main() {
 	}
 
 	// RabbitMQ init
-	initRabbitMQ(settingsRepo)
+	initRabbitMQ(cfg, settingsRepo)
 
 	// Server init
 	server := app.NewServer(cfg)
@@ -86,12 +87,11 @@ func initLogPath() string {
 	return "/var/log/corvin-ui/"
 }
 
-func initRabbitMQ(settings *repository.SettingsRepo) {
+func initRabbitMQ(cfg config.Config, settings *repository.SettingsRepo) {
 	keys := []string{
 		"amqp_url",
 		"amqp_exchange_complaints",
 		"amqp_exchange_users",
-		"amqp_queue",
 		"cert_file",
 		"key_file",
 		"ca_file",
@@ -101,13 +101,21 @@ func initRabbitMQ(settings *repository.SettingsRepo) {
 	if err != nil {
 		log.Fatalf("Failed to get settings: %v", err)
 	}
+
+	amqpURL, amqpSource := envFirst(cfg.RabbitMQ.URL, values["amqp_url"])
+	certFile := envSettingsFallback("CERT_FILE", cfg.Defaults.CertFile, values["cert_file"])
+	keyFile := envSettingsFallback("KEY_FILE", cfg.Defaults.KeyFile, values["key_file"])
+	caFile := envSettingsFallback("CA_FILE", cfg.Defaults.CAFile, values["ca_file"])
+
+	logAMQPConfig(amqpSource, amqpURL)
+
 	p, err := broker.NewProducer(
-		values["amqp_url"],
-		values["amqp_exchange_complaints"],
-		values["amqp_exchange_users"],
-		values["cert_file"],
-		values["key_file"],
-		values["ca_file"],
+		amqpURL,
+		fallback(values["amqp_exchange_complaints"], cfg.Defaults.AMQPExchangeComplaints),
+		fallback(values["amqp_exchange_users"], cfg.Defaults.AMQPExchangeUsers),
+		certFile,
+		keyFile,
+		caFile,
 	)
 
 	if err != nil && runtime.GOOS != "windows" {
@@ -115,6 +123,52 @@ func initRabbitMQ(settings *repository.SettingsRepo) {
 	}
 
 	broker.GlobalProducer = p
+}
+
+func envFirst(envValue, settingsValue string) (string, string) {
+	if envValue != "" {
+		return envValue, "env"
+	}
+	return settingsValue, "settings"
+}
+
+func fallback(value, fallbackValue string) string {
+	if value != "" {
+		return value
+	}
+	return fallbackValue
+}
+
+func envSettingsFallback(envKey, defaultValue, settingsValue string) string {
+	if value, ok := os.LookupEnv(envKey); ok && value != "" {
+		return value
+	}
+	if settingsValue != "" {
+		return settingsValue
+	}
+	return defaultValue
+}
+
+func logAMQPConfig(source, rawURL string) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		log.Printf("AMQP config source=%s url_user= host= port= password_len=0 parse_error=%v", source, err)
+		return
+	}
+
+	passwordLen := 0
+	if password, ok := parsed.User.Password(); ok {
+		passwordLen = len(password)
+	}
+
+	log.Printf(
+		"AMQP config source=%s url_user=%s host=%s port=%s password_len=%d",
+		source,
+		parsed.User.Username(),
+		parsed.Hostname(),
+		parsed.Port(),
+		passwordLen,
+	)
 }
 
 func InitDefaultSettings(repo *repository.SettingsRepo, cfg config.Config) error {
