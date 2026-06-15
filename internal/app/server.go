@@ -62,6 +62,7 @@ func NewServer(cfg config.Config) *Server {
 	storageRepo := repository.NewStorageRepo(minioClient)
 	auditLogger := audit.NewLogger(repository.NewAuditRepo(db.DB))
 	usersService := service.NewUsersService(teleRepo, auditLogger)
+	vpnService := service.NewVPNService(vpnRepo, teleRepo)
 	jobService := jobsvc.NewService(
 		repository.NewJobsRepo(db.DB),
 		serversRepo,
@@ -73,7 +74,7 @@ func NewServer(cfg config.Config) *Server {
 		ServersService: serverService,
 		StorageRepo:    storageRepo,
 
-		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo, usersService, jobService, auditLogger),
+		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo, usersService, vpnService, jobService, auditLogger),
 		ComplaintsController: handlers.NewComplaintsController(complaintRepo),
 		UserController:       handlers.NewUserController(userRepo, auditLogger),
 		ServersController:    handlers.NewServersController(serversRepo, jobService, auditLogger),

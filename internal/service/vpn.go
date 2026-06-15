@@ -1,32 +1,47 @@
 package service
 
 import (
-	"context"
 	"errors"
-	"vpnpanel/internal/broker"
-	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 )
 
-var errVPNServiceNotImplemented = errors.New("vpn service is not implemented")
-
 type VPNService struct {
-	telegramRepo *repository.TelegramRepo
 	vpnRepo      *repository.VpnRepo
-	jobs         *jobsvc.Service
+	telegramRepo *repository.TelegramRepo
 }
 
-type VPNReadyNotification struct{}
-
-func (s *VPNService) GetConfigByTelegramID(ctx context.Context, tgID int64) (*models.Vpn, error) {
-	return nil, errVPNServiceNotImplemented
+func NewVPNService(
+	vpnRepo *repository.VpnRepo,
+	telegramRepo *repository.TelegramRepo,
+) *VPNService {
+	return &VPNService{
+		vpnRepo:      vpnRepo,
+		telegramRepo: telegramRepo,
+	}
 }
 
-func (s *VPNService) RequestCreateConfig(ctx context.Context, tgID int64, protocol string) (*models.JobBatch, error) {
-	return nil, errVPNServiceNotImplemented
+func (s *VPNService) GetVPNByTelegramID(tgID int64) (models.Vpn, error) {
+	telegram, err := s.telegramRepo.FindByTgID(tgID)
+	if err != nil {
+		return models.Vpn{}, err
+	}
+
+	return s.vpnRepo.GetByUserID(telegram.UserID)
 }
 
-func (s *VPNService) ApplyAgentCreateResult(ctx context.Context, event broker.JobResultEvent) (*VPNReadyNotification, error) {
-	return nil, errVPNServiceNotImplemented
+func (s *VPNService) GetVPNLinkByProtocol(tgID int64, protocol string) (string, error) {
+	vpn, err := s.GetVPNByTelegramID(tgID)
+	if err != nil {
+		return "", err
+	}
+
+	switch protocol {
+	case "vless":
+		return vpn.VlessLink, nil
+	case "trojan":
+		return vpn.TrojanLink, nil
+	default:
+		return "", errors.New("unsupported protocol")
+	}
 }

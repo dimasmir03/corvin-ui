@@ -20,6 +20,7 @@ import (
 type TelegramController struct {
 	teleRepo     *repository.TelegramRepo
 	usersService *service.UsersService
+	vpnService   *service.VPNService
 	storage      *repository.StorageRepo
 	jobs         *jobsvc.Service
 	audit        *audit.Logger
@@ -29,6 +30,7 @@ func NewTelegramController(
 	repo *repository.StorageRepo,
 	teleRepo *repository.TelegramRepo,
 	usersService *service.UsersService,
+	vpnService *service.VPNService,
 	jobs *jobsvc.Service,
 	auditLogger *audit.Logger,
 ) *TelegramController {
@@ -36,6 +38,7 @@ func NewTelegramController(
 		storage:      repo,
 		teleRepo:     teleRepo,
 		usersService: usersService,
+		vpnService:   vpnService,
 		jobs:         jobs,
 		audit:        auditLogger,
 	}
@@ -352,7 +355,7 @@ func (s TelegramController) GetVpn(c *gin.Context) {
 		return
 	}
 
-	vpn, err := s.teleRepo.GetVpn(tgID)
+	vpn, err := s.vpnService.GetVPNByTelegramID(tgID)
 	if err != nil {
 		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
@@ -378,7 +381,7 @@ func (s TelegramController) GetVpnLinkByProtocol(c *gin.Context) {
 
 	protocol := c.Param("protocol")
 
-	vpn, err := s.teleRepo.GetVpn(tgID)
+	link, err := s.vpnService.GetVPNLinkByProtocol(tgID, protocol)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusNotFound, Response{
 			false,
@@ -394,14 +397,6 @@ func (s TelegramController) GetVpnLinkByProtocol(c *gin.Context) {
 			nil,
 		})
 		return
-	}
-
-	link := ""
-	switch protocol {
-	case "vless":
-		link = vpn.VlessLink
-	case "trojan":
-		link = vpn.TrojanLink
 	}
 
 	c.JSON(http.StatusOK, Response{
