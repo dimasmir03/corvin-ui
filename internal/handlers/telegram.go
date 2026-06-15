@@ -9,8 +9,8 @@ import (
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/handlers/response"
 	"vpnpanel/internal/jobsvc"
-	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
+	"vpnpanel/internal/service"
 	"vpnpanel/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -18,23 +18,26 @@ import (
 )
 
 type TelegramController struct {
-	teleRepo *repository.TelegramRepo
-	storage  *repository.StorageRepo
-	jobs     *jobsvc.Service
-	audit    *audit.Logger
+	teleRepo     *repository.TelegramRepo
+	usersService *service.UsersService
+	storage      *repository.StorageRepo
+	jobs         *jobsvc.Service
+	audit        *audit.Logger
 }
 
 func NewTelegramController(
 	repo *repository.StorageRepo,
 	teleRepo *repository.TelegramRepo,
+	usersService *service.UsersService,
 	jobs *jobsvc.Service,
 	auditLogger *audit.Logger,
 ) *TelegramController {
 	return &TelegramController{
-		storage:  repo,
-		teleRepo: teleRepo,
-		jobs:     jobs,
-		audit:    auditLogger,
+		storage:      repo,
+		teleRepo:     teleRepo,
+		usersService: usersService,
+		jobs:         jobs,
+		audit:        auditLogger,
 	}
 }
 
@@ -57,29 +60,17 @@ func (s TelegramController) CreateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, Response{false, err.Error(), nil})
 		return
 	}
-	user, err := s.teleRepo.CreateUser(models.Telegram{
+
+	user, err := s.usersService.EnsureTelegramUser(service.TelegramUserInput{
 		TgID:      dto.TgID,
 		Username:  dto.Username,
 		Firstname: dto.Firstname,
 		Lastname:  dto.Lastname,
 	})
-
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
 		return
 	}
-
-	_ = s.audit.Log(audit.Event{
-		ActorType:  audit.ActorTelegramUser,
-		ActorID:    audit.StringID(dto.TgID),
-		Action:     "user.created",
-		EntityType: "user",
-		EntityID:   audit.StringID(user.UserID),
-		Status:     audit.StatusSuccess,
-		Message:    "telegram user created",
-		IP:         c.ClientIP(),
-		UserAgent:  c.Request.UserAgent(),
-	})
 
 	c.JSON(http.StatusOK, Response{
 		Success: true,
@@ -95,8 +86,17 @@ func (s TelegramController) CreateUser(c *gin.Context) {
 }
 
 func (s TelegramController) GetUser(c *gin.Context) {
-	tgID := c.Param("tg_id")
-	user, err := s.teleRepo.GetUser(tgID)
+	tgID, err := strconv.ParseInt(c.Param("tg_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Response{
+			Success: false,
+			Msg:     err.Error(),
+			Obj:     nil,
+		})
+		return
+	}
+
+	user, err := s.usersService.GetTelegramByTgID(tgID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, Response{
@@ -414,7 +414,7 @@ func (s TelegramController) GetVpnLinkByProtocol(c *gin.Context) {
 }
 
 func (s TelegramController) GetAllUsers(c *gin.Context) {
-	users, err := s.teleRepo.GetAllUsers()
+	users, err := s.usersService.GetAllTelegramUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
 		return

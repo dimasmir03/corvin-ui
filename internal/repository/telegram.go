@@ -18,27 +18,30 @@ func NewTelegramRepo(db *gorm.DB) *TelegramRepo {
 
 // Create user
 func (c *TelegramRepo) CreateUser(m models.Telegram) (models.Telegram, error) {
-	err := c.DB.Transaction(func(tx *gorm.DB) error {
-		user := models.User{
-			Username: fmt.Sprintf("%s%s(%d)", m.Firstname, m.Lastname, m.TgID),
-			Status:   true,
-		}
+	user := models.User{
+		Username: fmt.Sprintf("%s%s(%d)", m.Firstname, m.Lastname, m.TgID),
+		Status:   true,
+	}
 
+	return c.CreateTelegramUser(user, m)
+}
+
+func (c *TelegramRepo) CreateTelegramUser(user models.User, telegram models.Telegram) (models.Telegram, error) {
+	err := c.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
 
-		m.UserID = user.ID
+		telegram.UserID = user.ID
 
-		if err := tx.Create(&m).Error; err != nil {
+		if err := tx.Create(&telegram).Error; err != nil {
 			return err
 		}
 
-		// return tx.Model(&m).Update("user_id", user.ID).Error
 		return nil
 	})
 
-	return m, err
+	return telegram, err
 }
 
 // Get user
@@ -151,6 +154,10 @@ func (c *TelegramRepo) UpdateTrojanLink(vpnID uint, link string) error {
 }
 
 func (c *TelegramRepo) GetTelegramByTgID(tgID int64) (models.Telegram, error) {
+	return c.FindByTgID(tgID)
+}
+
+func (c *TelegramRepo) FindByTgID(tgID int64) (models.Telegram, error) {
 	var tg models.Telegram
 	return tg, c.DB.Where("tg_id = ?", tgID).First(&tg).Error
 }
