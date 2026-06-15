@@ -11,7 +11,6 @@ import (
 	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/repository"
 	"vpnpanel/internal/service"
-	"vpnpanel/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -131,84 +130,23 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 		return
 	}
 
-	// link generation (заглушка)
-	// link := "https://vpn.example.com/profile/" + fmt.Sprint(dto.TgID)
-
-	vlessParams := utils.GenVlessLink(dto.TgID)
-
-	trojanParams := utils.GenTrojanLink(dto.TgID)
-
-	telegram, err := s.teleRepo.GetTelegramByTgID(dto.TgID)
+	vpn, err := s.vpnService.CreateVPN(service.CreateVPNInput{TgID: dto.TgID})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
-		return
-	}
-
-	vpn, err := s.teleRepo.CreateVpn(repository.CreateVpnParams{
-		UserID:     telegram.UserID,
-		UUID:       vlessParams.UID,
-		Status:     "active",
-		VlessLink:  vlessParams.Link,
-		TrojanLink: trojanParams.Link,
-	})
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
-		return
-	}
-
-	if s.jobs != nil {
-		batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
-			UserID:            telegram.UserID,
-			TechnicalClientID: vlessParams.UID,
-			Protocols:         []string{"vless", "trojan"},
-		})
-		if err != nil {
+		if service.IsVPNFlowError(err, service.VPNErrorKindJobs) {
 			c.JSON(http.StatusInternalServerError, response.Response{
 				Success: false,
 				Msg:     "Failed to create vpn jobs:" + err.Error(),
 			})
 			return
 		}
-		_ = s.audit.Log(audit.Event{
-			ActorType:  audit.ActorTelegramUser,
-			ActorID:    audit.StringID(dto.TgID),
-			Action:     "vpn.client.created",
-			EntityType: "job_batch",
-			EntityID:   audit.StringID(batch.ID),
-			Status:     audit.StatusSuccess,
-			Message:    "vpn create jobs queued",
-			Metadata: map[string]any{
-				"jobs_count": len(jobs),
-				"user_id":    telegram.UserID,
-			},
-		})
-	}
-
-	// Отправляем legacy task в RabbitMQ
-	task := broker.CreateUserTask{
-		UserID:     dto.TgID,
-		Username:   vlessParams.Name,
-		UUID:       vlessParams.UID,
-		PBK:        vlessParams.PBK,
-		SID:        vlessParams.SID,
-		SPX:        vlessParams.SPX,
-		Flow:       vlessParams.Flow,
-		Encryption: vlessParams.Encryption,
-
-		Type:     trojanParams.Type,
-		Security: trojanParams.Security,
-		Fp:       trojanParams.Fp,
-		Alpn:     trojanParams.Alpn,
-		Sni:      trojanParams.Sni,
-		Password: trojanParams.Password,
-	}
-
-	if err := broker.GlobalProducer.PublishCreateUser(task); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{
-			Success: false,
-			Msg:     "Failed to send create user task in broker:" + err.Error(),
-		})
+		if service.IsVPNFlowError(err, service.VPNErrorKindBroker) {
+			c.JSON(http.StatusInternalServerError, response.Response{
+				Success: false,
+				Msg:     "Failed to send create user task in broker:" + err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
 		return
 	}
 
@@ -232,113 +170,26 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 		return
 	}
 
-	var vlessParams utils.VlessParams
-	var trojanParams utils.TrojanParams
-	switch protocol {
-	case "vless":
-		vlessParams = utils.GenVlessLink(dto.TgID)
-	case "trojan":
-		trojanParams = utils.GenTrojanLink(dto.TgID)
-	}
-
-	telegram, err := s.teleRepo.GetTelegramByTgID(dto.TgID)
+	_, err := s.vpnService.CreateVPNProtocol(service.CreateVPNProtocolInput{
+		TgID:     dto.TgID,
+		Protocol: protocol,
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
-		return
-	}
-
-	switch protocol {
-	case "vless":
-		_, err := s.teleRepo.CreateVpnProtocol(repository.CreateVpnParams{
-			TgID:      telegram.TgID,
-			UserID:    telegram.UserID,
-			VlessLink: vlessParams.Link,
-		}, protocol)
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
-			return
-		}
-
-	case "trojan":
-		_, err := s.teleRepo.CreateVpnProtocol(repository.CreateVpnParams{
-			TgID:       telegram.TgID,
-			UserID:     telegram.UserID,
-			TrojanLink: trojanParams.Link,
-		}, protocol)
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
-			return
-		}
-
-	}
-
-	var Username string
-	switch protocol {
-	case "vless":
-		Username = vlessParams.Name
-	case "trojan":
-		Username = trojanParams.Name
-	}
-
-	if s.jobs != nil {
-		technicalClientID := vlessParams.UID
-		if protocol == "trojan" {
-			technicalClientID = trojanParams.Password
-		}
-		batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
-			UserID:            telegram.UserID,
-			TechnicalClientID: technicalClientID,
-			Protocols:         []string{protocol},
-		})
-		if err != nil {
+		if service.IsVPNFlowError(err, service.VPNErrorKindJobs) {
 			c.JSON(http.StatusInternalServerError, response.Response{
 				Success: false,
 				Msg:     "Failed to create vpn jobs:" + err.Error(),
 			})
 			return
 		}
-		_ = s.audit.Log(audit.Event{
-			ActorType:  audit.ActorTelegramUser,
-			ActorID:    audit.StringID(dto.TgID),
-			Action:     "vpn.client.created",
-			EntityType: "job_batch",
-			EntityID:   audit.StringID(batch.ID),
-			Status:     audit.StatusSuccess,
-			Message:    "vpn protocol create jobs queued",
-			Metadata: map[string]any{
-				"jobs_count": len(jobs),
-				"protocol":   protocol,
-				"user_id":    telegram.UserID,
-			},
-		})
-	}
-
-	// Отправляем legacy task в RabbitMQ
-	task := broker.CreateUserTask{
-		UserID:     dto.TgID,
-		Username:   Username,
-		UUID:       vlessParams.UID,
-		PBK:        vlessParams.PBK,
-		SID:        vlessParams.SID,
-		SPX:        vlessParams.SPX,
-		Flow:       vlessParams.Flow,
-		Encryption: vlessParams.Encryption,
-
-		Type:     trojanParams.Type,
-		Security: trojanParams.Security,
-		Fp:       trojanParams.Fp,
-		Alpn:     trojanParams.Alpn,
-		Sni:      trojanParams.Sni,
-		Password: trojanParams.Password,
-	}
-
-	if err := broker.GlobalProducer.PublishCreateUser(task); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Response{
-			Success: false,
-			Msg:     "Failed to send create user task in broker:" + err.Error(),
-		})
+		if service.IsVPNFlowError(err, service.VPNErrorKindBroker) {
+			c.JSON(http.StatusInternalServerError, response.Response{
+				Success: false,
+				Msg:     "Failed to send create user task in broker:" + err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, Response{false, err.Error(), nil})
 		return
 	}
 

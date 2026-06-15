@@ -62,13 +62,13 @@ func NewServer(cfg config.Config) *Server {
 	storageRepo := repository.NewStorageRepo(minioClient)
 	auditLogger := audit.NewLogger(repository.NewAuditRepo(db.DB))
 	usersService := service.NewUsersService(teleRepo, auditLogger)
-	vpnService := service.NewVPNService(vpnRepo, teleRepo)
 	jobService := jobsvc.NewService(
 		repository.NewJobsRepo(db.DB),
 		serversRepo,
 		auditLogger,
 		broker.GlobalProducer,
 	)
+	vpnService := service.NewVPNService(vpnRepo, teleRepo, jobService, auditLogger)
 
 	s := &Server{
 		ServersService: serverService,
