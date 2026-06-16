@@ -5,17 +5,26 @@ import (
 	"strings"
 	"time"
 	"vpnpanel/internal/config"
+	"vpnpanel/internal/service"
 
-	telebot "gopkg.in/telebot.v4"
+	telebot "gopkg.in/telebot.v3"
 )
 
-type Bot struct {
-	bot *telebot.Bot
+type Deps struct {
+	Users *service.UsersService
 }
 
-func New(cfg config.TelegramConfig) (*Bot, error) {
+type Bot struct {
+	bot  *telebot.Bot
+	deps Deps
+}
+
+func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 	if !cfg.Enabled {
 		return nil, nil
+	}
+	if deps.Users == nil {
+		return nil, fmt.Errorf("telegrambot requires UsersService when TELEGRAM_ENABLED=true")
 	}
 
 	token := strings.TrimSpace(cfg.Token)
@@ -31,11 +40,9 @@ func New(cfg config.TelegramConfig) (*Bot, error) {
 		return nil, err
 	}
 
-	b.Handle("/ping", func(c telebot.Context) error {
-		return c.Send("ok")
-	})
-
-	return &Bot{bot: b}, nil
+	bot := &Bot{bot: b, deps: deps}
+	bot.registerHandlers()
+	return bot, nil
 }
 
 func (b *Bot) Start() {

@@ -74,7 +74,9 @@ func NewServer(cfg config.Config) (*Server, error) {
 	)
 	vpnService := service.NewVPNService(vpnRepo, teleRepo, jobService, auditLogger)
 
-	tgBot, err := telegrambot.New(cfg.Telegram)
+	tgBot, err := telegrambot.New(cfg.Telegram, telegrambot.Deps{
+		Users: usersService,
+	})
 	if err != nil {
 		return nil, err
 	}
