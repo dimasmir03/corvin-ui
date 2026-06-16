@@ -10,7 +10,6 @@ require (
 	github.com/gorilla/sessions v1.4.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/wagslane/go-rabbitmq v0.15.0
-	gopkg.in/telebot.v3 v3.3.8
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
@@ -74,4 +73,5 @@ require (
 	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/tools v0.37.0 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
+	gopkg.in/telebot.v4 v4.0.0-beta.9
 )

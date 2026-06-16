@@ -52,7 +52,10 @@ func main() {
 	initRabbitMQ(cfg, settingsRepo)
 
 	// Server init
-	server := app.NewServer(cfg)
+	server, err := app.NewServer(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize server: %v", err)
+	}
 	server.CronStart()
 
 	defer server.Close()

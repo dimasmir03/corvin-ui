@@ -43,3 +43,32 @@ func TestValidateRequiresSessionSecretWhenAuthEnabled(t *testing.T) {
 		t.Fatalf("expected session auth with secret to be allowed: %v", err)
 	}
 }
+
+func TestValidateAllowsDisabledTelegramWithoutToken(t *testing.T) {
+	cfg := Config{
+		HTTP:     HTTPConfig{Addr: "127.0.0.1:8080"},
+		Auth:     AuthConfig{Mode: AuthModeNone},
+		Telegram: TelegramConfig{Enabled: false},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected disabled telegram without token to be allowed: %v", err)
+	}
+}
+
+func TestValidateRequiresTelegramTokenWhenEnabled(t *testing.T) {
+	cfg := Config{
+		HTTP:     HTTPConfig{Addr: "127.0.0.1:8080"},
+		Auth:     AuthConfig{Mode: AuthModeNone},
+		Telegram: TelegramConfig{Enabled: true},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected enabled telegram without token to be rejected")
+	}
+
+	cfg.Telegram.Token = "token"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected enabled telegram with token to be allowed: %v", err)
+	}
+}

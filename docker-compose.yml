@@ -19,6 +19,8 @@ services:
       DB_HOST: pg
       RABBITMQ_URL: ${RABBITMQ_CONTAINER_URL}
       MINIO_ENDPOINT: minio:9000
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     restart: unless-stopped
 
   pg:

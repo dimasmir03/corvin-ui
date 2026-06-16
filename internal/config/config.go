@@ -15,6 +15,7 @@ type Config struct {
 	Auth                  AuthConfig
 	DB                    DBConfig
 	RabbitMQ              RabbitMQConfig
+	Telegram              TelegramConfig
 	MinIO                 MinIOConfig
 	Session               SessionConfig
 	Defaults              DefaultsConfig
@@ -41,6 +42,11 @@ type DBConfig struct {
 type RabbitMQConfig struct {
 	URL         string
 	ResultQueue string
+}
+
+type TelegramConfig struct {
+	Enabled bool
+	Token   string
 }
 
 type MinIOConfig struct {
@@ -84,6 +90,10 @@ func Load() (Config, error) {
 			URL:         getEnv("RABBITMQ_URL", ""),
 			ResultQueue: getEnv("RABBITMQ_RESULT_QUEUE", "corvin.job.results"),
 		},
+		Telegram: TelegramConfig{
+			Enabled: getEnvBool("TELEGRAM_ENABLED", false),
+			Token:   getEnv("TELEGRAM_BOT_TOKEN", ""),
+		},
 		MinIO: MinIOConfig{
 			Endpoint:  getEnv("MINIO_ENDPOINT", "127.0.0.1:9000"),
 			AccessKey: getEnv("MINIO_ACCESS_KEY", "corvinvpn"),
@@ -123,6 +133,10 @@ func (c Config) Validate() error {
 
 	if c.Auth.Mode != AuthModeNone && c.Session.Secret == "" {
 		return fmt.Errorf("SESSION_SECRET is required when AUTH_MODE=%s", c.Auth.Mode)
+	}
+
+	if c.Telegram.Enabled && strings.TrimSpace(c.Telegram.Token) == "" {
+		return fmt.Errorf("TELEGRAM_BOT_TOKEN is required when TELEGRAM_ENABLED=true")
 	}
 
 	return nil

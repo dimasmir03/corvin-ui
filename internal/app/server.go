@@ -13,6 +13,7 @@ import (
 	"vpnpanel/internal/repository"
 	"vpnpanel/internal/service"
 	"vpnpanel/internal/storage"
+	"vpnpanel/internal/telegrambot"
 
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
@@ -34,13 +35,16 @@ type Server struct {
 	MediaController      *handlers.MediaController
 	JobsController       *handlers.JobsController
 
+	telegramBot      *telegrambot.Bot
+	telegramNotifier *telegrambot.Notifier
+
 	ResultConsumer *rabbitmq.Consumer
 	Cron           *cron.Cron
 
 	Config config.Config
 }
 
-func NewServer(cfg config.Config) *Server {
+func NewServer(cfg config.Config) (*Server, error) {
 	serverService := repository.NewServerRepo(db.DB)
 
 	minioClient, err := storage.NewMinioClient(
@@ -70,6 +74,16 @@ func NewServer(cfg config.Config) *Server {
 	)
 	vpnService := service.NewVPNService(vpnRepo, teleRepo, jobService, auditLogger)
 
+	tgBot, err := telegrambot.New(cfg.Telegram)
+	if err != nil {
+		return nil, err
+	}
+	var tgNotifier *telegrambot.Notifier
+	if tgBot != nil {
+		tgNotifier = tgBot.Notifier()
+		tgBot.Start()
+	}
+
 	s := &Server{
 		ServersService: serverService,
 		StorageRepo:    storageRepo,
@@ -82,6 +96,9 @@ func NewServer(cfg config.Config) *Server {
 		VpnController:        handlers.NewVpnController(vpnRepo),
 		MediaController:      handlers.NewMediaController(storageRepo),
 		JobsController:       handlers.NewJobsController(jobService),
+
+		telegramBot:      tgBot,
+		telegramNotifier: tgNotifier,
 
 		Cron:   cron.New(cron.WithSeconds()),
 		Config: cfg,
@@ -100,7 +117,7 @@ func NewServer(cfg config.Config) *Server {
 	}
 
 	s.Router = s.Routes()
-	return s
+	return s, nil
 }
 
 func (s *Server) CronStart() {
@@ -126,6 +143,9 @@ func (s *Server) CronStart() {
 }
 
 func (s *Server) Close() {
+	if s.telegramBot != nil {
+		s.telegramBot.Stop()
+	}
 	if s.ResultConsumer != nil {
 		s.ResultConsumer.Close()
 	}
