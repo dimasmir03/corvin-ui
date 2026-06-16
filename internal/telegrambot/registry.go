@@ -12,8 +12,13 @@ func (b *Bot) registerHandlers() {
 	})
 	b.bot.Handle("/start", b.handleStart)
 	b.bot.Handle("/id", b.handleID)
+	b.bot.Handle("/vpn", b.handleVPN)
 
 	b.bot.Handle(&btnMenuVPN, b.handleMenuVPN)
 	b.bot.Handle(&btnMenuInstruction, b.handleMenuInstruction)
 	b.bot.Handle(&btnMenuSupport, b.handleMenuSupport)
+	b.bot.Handle(&btnVPNVLESS, b.handleVPNVLESS)
+	b.bot.Handle(&btnVPNTrojan, b.handleVPNTrojan)
+	b.bot.Handle(&btnVPNCreate, b.handleVPNCreatePlaceholder)
+	b.bot.Handle(&btnVPNBack, b.handleVPNBack)
 }

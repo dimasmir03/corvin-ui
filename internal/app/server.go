@@ -78,6 +78,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 
 	tgBot, err := telegrambot.New(cfg.Telegram, telegrambot.Deps{
 		Users:  usersService,
+		VPN:    vpnService,
 		Logger: technicalLogger,
 	})
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 
 type Deps struct {
 	Users  *service.UsersService
+	VPN    *service.VPNService
 	Logger *projectlogger.Logger
 }
 
@@ -32,6 +33,9 @@ func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 	}
 	if deps.Users == nil {
 		return nil, fmt.Errorf("telegrambot requires UsersService when TELEGRAM_ENABLED=true")
+	}
+	if deps.VPN == nil {
+		return nil, fmt.Errorf("telegrambot requires VPNService when TELEGRAM_ENABLED=true")
 	}
 
 	technicalLog.Info("telegram bot enabled")

@@ -3,7 +3,7 @@ package telegrambot
 import telebot "gopkg.in/telebot.v4"
 
 func (b *Bot) handleMenuVPN(c telebot.Context) error {
-	return b.respondWithStub(c, msgVPNComingSoon)
+	return b.handleVPN(c)
 }
 
 func (b *Bot) handleMenuInstruction(c telebot.Context) error {
