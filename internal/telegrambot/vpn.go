@@ -3,6 +3,7 @@ package telegrambot
 import (
 	"errors"
 	"strings"
+	"vpnpanel/internal/service"
 
 	telebot "gopkg.in/telebot.v4"
 	"gorm.io/gorm"
@@ -40,11 +41,16 @@ func (b *Bot) handleVPNTrojan(c telebot.Context) error {
 	return b.sendVPNLink(c, "trojan", msgTrojanMissing)
 }
 
-func (b *Bot) handleVPNCreatePlaceholder(c telebot.Context) error {
-	if err := c.Respond(); err != nil {
-		b.logger.Error("telegram callback failed", err)
-	}
-	return c.Send(msgVPNCreatePlaceholder)
+func (b *Bot) handleCreateVPN(c telebot.Context) error {
+	return b.requestCreateVPN(c, "vless")
+}
+
+func (b *Bot) handleCreateVLESS(c telebot.Context) error {
+	return b.requestCreateVPN(c, "vless")
+}
+
+func (b *Bot) handleCreateTrojan(c telebot.Context) error {
+	return b.requestCreateVPN(c, "trojan")
 }
 
 func (b *Bot) handleVPNBack(c telebot.Context) error {
@@ -78,6 +84,37 @@ func (b *Bot) sendVPNLink(c telebot.Context, protocol string, missingMessage str
 	}
 
 	return c.Send(link)
+}
+
+func (b *Bot) requestCreateVPN(c telebot.Context, protocol string) error {
+	b.respondToCallback(c)
+
+	sender := c.Sender()
+	if sender == nil {
+		b.logger.Error("telegram vpn create request failed", nil, "reason", "sender is nil", "protocol", protocol)
+		return c.Send(msgVPNCreateFailed)
+	}
+
+	b.logger.Info("telegram vpn create requested", "tg_id", sender.ID, "protocol", protocol)
+	result, err := b.deps.VPN.RequestCreateVPN(service.RequestCreateVPNInput{
+		TgID:     sender.ID,
+		Protocol: protocol,
+	})
+	if errors.Is(err, service.ErrVPNAlreadyExists) {
+		b.logger.Info("telegram vpn already exists", "tg_id", sender.ID, "protocol", protocol)
+		return c.Send(msgVPNAlreadyExists)
+	}
+	if errors.Is(err, service.ErrUnsupportedProtocol) {
+		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol)
+		return c.Send(msgVPNUnsupportedProtocol)
+	}
+	if err != nil {
+		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol)
+		return c.Send(msgVPNCreateFailed)
+	}
+
+	b.logger.Info("telegram vpn create request queued", "tg_id", sender.ID, "protocol", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID)
+	return c.Send(msgVPNCreateRequested)
 }
 
 func (b *Bot) respondToCallback(c telebot.Context) {

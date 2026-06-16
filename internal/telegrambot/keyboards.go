@@ -7,10 +7,11 @@ const (
 	callbackMenuInstruction = "menu:instruction"
 	callbackMenuSupport     = "menu:support"
 
-	callbackVPNVLESS  = "vpn:vless"
-	callbackVPNTrojan = "vpn:trojan"
-	callbackVPNCreate = "vpn:create"
-	callbackVPNBack   = "vpn:back"
+	callbackVPNVLESS     = "vpn:vless"
+	callbackVPNTrojan    = "vpn:trojan"
+	callbackCreateVLESS  = "vpn:create:vless"
+	callbackCreateTrojan = "vpn:create:trojan"
+	callbackVPNBack      = "vpn:back"
 )
 
 var (
@@ -23,10 +24,11 @@ var (
 	vpnMarkup       = &telebot.ReplyMarkup{}
 	vpnCreateMarkup = &telebot.ReplyMarkup{}
 
-	btnVPNVLESS  = vpnMarkup.Data("🔗 VLESS", callbackVPNVLESS)
-	btnVPNTrojan = vpnMarkup.Data("🔗 Trojan", callbackVPNTrojan)
-	btnVPNCreate = vpnMarkup.Data("➕ Создать VPN", callbackVPNCreate)
-	btnVPNBack   = vpnMarkup.Data("⬅️ Назад", callbackVPNBack)
+	btnVPNVLESS     = vpnMarkup.Data("🔗 VLESS", callbackVPNVLESS)
+	btnVPNTrojan    = vpnMarkup.Data("🔗 Trojan", callbackVPNTrojan)
+	btnCreateVLESS  = vpnMarkup.Data("➕ Создать VLESS", callbackCreateVLESS)
+	btnCreateTrojan = vpnMarkup.Data("➕ Создать Trojan", callbackCreateTrojan)
+	btnVPNBack      = vpnMarkup.Data("⬅️ Назад", callbackVPNBack)
 )
 
 func startMenu() *telebot.ReplyMarkup {
@@ -43,7 +45,8 @@ func vpnMenu() *telebot.ReplyMarkup {
 	vpnMarkup.Inline(
 		vpnMarkup.Row(btnVPNVLESS),
 		vpnMarkup.Row(btnVPNTrojan),
-		vpnMarkup.Row(btnVPNCreate),
+		vpnMarkup.Row(btnCreateVLESS),
+		vpnMarkup.Row(btnCreateTrojan),
 		vpnMarkup.Row(btnVPNBack),
 	)
 
@@ -52,7 +55,8 @@ func vpnMenu() *telebot.ReplyMarkup {
 
 func vpnCreateMenu() *telebot.ReplyMarkup {
 	vpnCreateMarkup.Inline(
-		vpnCreateMarkup.Row(btnVPNCreate),
+		vpnCreateMarkup.Row(btnCreateVLESS),
+		vpnCreateMarkup.Row(btnCreateTrojan),
 		vpnCreateMarkup.Row(btnVPNBack),
 	)
 

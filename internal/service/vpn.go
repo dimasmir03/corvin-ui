@@ -2,6 +2,8 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/jobsvc"
@@ -10,6 +12,11 @@ import (
 	"vpnpanel/internal/utils"
 
 	"gorm.io/gorm"
+)
+
+var (
+	ErrVPNAlreadyExists    = errors.New("vpn already exists")
+	ErrUnsupportedProtocol = errors.New("unsupported protocol")
 )
 
 type VPNErrorKind string
@@ -46,6 +53,18 @@ type CreateVPNProtocolInput struct {
 	Protocol string
 }
 
+type RequestCreateVPNInput struct {
+	TgID     int64
+	Protocol string
+}
+
+type RequestCreateVPNResult struct {
+	TgID     int64
+	Protocol string
+	BatchID  uint
+	JobID    uint
+}
+
 type VPNService struct {
 	vpnRepo      *repository.VpnRepo
 	telegramRepo *repository.TelegramRepo
@@ -65,6 +84,63 @@ func NewVPNService(
 		jobs:         jobs,
 		audit:        auditLogger,
 	}
+}
+
+func (s *VPNService) RequestCreateVPN(input RequestCreateVPNInput) (*RequestCreateVPNResult, error) {
+	protocol := strings.ToLower(strings.TrimSpace(input.Protocol))
+	if protocol == "" {
+		protocol = "vless"
+	}
+	if protocol != "vless" && protocol != "trojan" {
+		return nil, ErrUnsupportedProtocol
+	}
+
+	telegram, err := s.telegramRepo.GetTelegramByTgID(input.TgID)
+	if err != nil {
+		return nil, err
+	}
+
+	vpn, err := s.vpnRepo.GetByUserID(telegram.UserID)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if err == nil {
+		switch protocol {
+		case "vless":
+			if strings.TrimSpace(vpn.VlessLink) != "" {
+				return nil, ErrVPNAlreadyExists
+			}
+		case "trojan":
+			if strings.TrimSpace(vpn.TrojanLink) != "" {
+				return nil, ErrVPNAlreadyExists
+			}
+		}
+	}
+
+	if s.jobs == nil {
+		return nil, errors.New("jobs service is not configured")
+	}
+
+	batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
+		UserID:            telegram.UserID,
+		TechnicalClientID: fmt.Sprintf("tg-%d-%s", input.TgID, protocol),
+		Protocols:         []string{protocol},
+	})
+	if err != nil {
+		return nil, &VPNFlowError{Kind: VPNErrorKindJobs, Err: err}
+	}
+
+	var jobID uint
+	if len(jobs) > 0 {
+		jobID = jobs[0].ID
+	}
+
+	return &RequestCreateVPNResult{
+		TgID:     input.TgID,
+		Protocol: protocol,
+		BatchID:  batch.ID,
+		JobID:    jobID,
+	}, nil
 }
 
 func (s *VPNService) CreateVPN(input CreateVPNInput) (models.Vpn, error) {
@@ -276,6 +352,6 @@ func (s *VPNService) GetVPNLinkByProtocol(tgID int64, protocol string) (string, 
 	case "trojan":
 		return vpn.TrojanLink, nil
 	default:
-		return "", errors.New("unsupported protocol")
+		return "", ErrUnsupportedProtocol
 	}
 }
