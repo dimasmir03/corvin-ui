@@ -10,6 +10,7 @@ import (
 	"vpnpanel/internal/handlers"
 	"vpnpanel/internal/jobs"
 	"vpnpanel/internal/jobsvc"
+	projectlogger "vpnpanel/internal/logger"
 	"vpnpanel/internal/repository"
 	"vpnpanel/internal/service"
 	"vpnpanel/internal/storage"
@@ -64,6 +65,11 @@ func NewServer(cfg config.Config) (*Server, error) {
 	serversRepo := repository.NewServerRepo(db.DB)
 	vpnRepo := repository.NewVpnRepo(db.DB)
 	storageRepo := repository.NewStorageRepo(minioClient)
+	technicalLogger := projectlogger.Logger
+	if technicalLogger == nil {
+		projectlogger.NewLogger("console", "info")
+		technicalLogger = projectlogger.Logger
+	}
 	auditLogger := audit.NewLogger(repository.NewAuditRepo(db.DB))
 	usersService := service.NewUsersService(teleRepo, auditLogger)
 	jobService := jobsvc.NewService(
@@ -75,7 +81,8 @@ func NewServer(cfg config.Config) (*Server, error) {
 	vpnService := service.NewVPNService(vpnRepo, teleRepo, jobService, auditLogger)
 
 	tgBot, err := telegrambot.New(cfg.Telegram, telegrambot.Deps{
-		Users: usersService,
+		Users:  usersService,
+		Logger: technicalLogger,
 	})
 	if err != nil {
 		return nil, err

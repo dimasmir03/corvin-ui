@@ -2,7 +2,6 @@ package telegrambot
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"vpnpanel/internal/service"
 
@@ -12,6 +11,7 @@ import (
 func (b *Bot) handleStart(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
+		b.logger.Error("telegram start handler failed: sender is nil")
 		return c.Send(msgRegistrationFailed)
 	}
 
@@ -22,11 +22,15 @@ func (b *Bot) handleStart(c telebot.Context) error {
 		Lastname:  sender.LastName,
 	})
 	if err != nil {
-		log.Printf("telegram /start ensure user failed tg_id=%d: %v", sender.ID, err)
+		b.logger.Errorf("telegram start handler failed tg_id=%d: %v", sender.ID, err)
 		return c.Send(msgRegistrationFailed)
 	}
 
-	return c.Send(fmt.Sprintf(msgStart, displayName(sender)), startMenu())
+	if err := c.Send(fmt.Sprintf(msgStart, displayName(sender)), startMenu()); err != nil {
+		b.logger.Errorf("telegram send failed tg_id=%d: %v", sender.ID, err)
+		return err
+	}
+	return nil
 }
 
 func (b *Bot) handleID(c telebot.Context) error {

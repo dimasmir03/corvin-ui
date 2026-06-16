@@ -1,26 +1,26 @@
 package telegrambot
 
-import (
-	"log"
-
-	telebot "gopkg.in/telebot.v4"
-)
+import telebot "gopkg.in/telebot.v4"
 
 func (b *Bot) handleMenuVPN(c telebot.Context) error {
-	return respondWithStub(c, msgVPNComingSoon)
+	return b.respondWithStub(c, msgVPNComingSoon)
 }
 
 func (b *Bot) handleMenuInstruction(c telebot.Context) error {
-	return respondWithStub(c, msgInstructionComingSoon)
+	return b.respondWithStub(c, msgInstructionComingSoon)
 }
 
 func (b *Bot) handleMenuSupport(c telebot.Context) error {
-	return respondWithStub(c, msgSupportComingSoon)
+	return b.respondWithStub(c, msgSupportComingSoon)
 }
 
-func respondWithStub(c telebot.Context, text string) error {
+func (b *Bot) respondWithStub(c telebot.Context, text string) error {
 	if err := c.Respond(); err != nil {
-		log.Printf("telegram callback respond failed: %v", err)
+		b.logger.Errorf("telegram callback respond failed: %v", err)
 	}
-	return c.Send(text)
+	if err := c.Send(text); err != nil {
+		b.logger.Errorf("telegram send failed: %v", err)
+		return err
+	}
+	return nil
 }
