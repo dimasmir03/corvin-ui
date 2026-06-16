@@ -162,6 +162,11 @@ func (c *TelegramRepo) FindByTgID(tgID int64) (models.Telegram, error) {
 	return tg, c.DB.Where("tg_id = ?", tgID).First(&tg).Error
 }
 
+func (c *TelegramRepo) GetByUserID(userID uint) (models.Telegram, error) {
+	var tg models.Telegram
+	return tg, c.DB.Where("user_id = ?", userID).First(&tg).Error
+}
+
 // GetAllUsers
 func (c *TelegramRepo) GetAllUsers() ([]models.Telegram, error) {
 	var users []models.Telegram

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -63,6 +64,12 @@ type RequestCreateVPNResult struct {
 	Protocol string
 	BatchID  uint
 	JobID    uint
+}
+
+type VPNReadyNotification struct {
+	TgID     int64
+	Protocol string
+	Link     string
 }
 
 type VPNService struct {
@@ -141,6 +148,82 @@ func (s *VPNService) RequestCreateVPN(input RequestCreateVPNInput) (*RequestCrea
 		BatchID:  batch.ID,
 		JobID:    jobID,
 	}, nil
+}
+
+func (s *VPNService) ApplyAgentCreateResult(job *models.Job, event broker.JobResultEvent) (*VPNReadyNotification, error) {
+	if job == nil || job.Action != jobsvc.ActionCreateClient {
+		return nil, nil
+	}
+	if job.Status != jobsvc.JobStatusSuccess {
+		return nil, nil
+	}
+
+	var payload broker.JobTask
+	if len(job.PayloadJSON) > 0 {
+		if err := json.Unmarshal(job.PayloadJSON, &payload); err != nil {
+			return nil, err
+		}
+	}
+
+	protocol := strings.ToLower(strings.TrimSpace(payload.Protocol))
+	if protocol == "" {
+		protocol = strings.ToLower(strings.TrimSpace(job.Protocol))
+	}
+	if protocol != "vless" && protocol != "trojan" {
+		return nil, ErrUnsupportedProtocol
+	}
+
+	userID := payload.UserID
+	if userID == 0 {
+		return nil, errors.New("job payload user_id is empty")
+	}
+
+	link := strings.TrimSpace(valueOrEmptyString(event.ConfigLink))
+	if link == "" {
+		link = strings.TrimSpace(configLinkFromResult(event.ResultJSON))
+	}
+	if link == "" {
+		return nil, errors.New("agent result config link is empty")
+	}
+
+	if _, err := s.vpnRepo.UpsertLinkByUserID(userID, protocol, link); err != nil {
+		return nil, err
+	}
+
+	telegram, err := s.telegramRepo.GetByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &VPNReadyNotification{
+		TgID:     telegram.TgID,
+		Protocol: protocol,
+		Link:     link,
+	}, nil
+}
+
+func configLinkFromResult(raw *json.RawMessage) string {
+	if raw == nil || len(*raw) == 0 {
+		return ""
+	}
+	var payload struct {
+		ConfigLink string `json:"config_link"`
+		Link       string `json:"link"`
+	}
+	if err := json.Unmarshal(*raw, &payload); err != nil {
+		return ""
+	}
+	if payload.ConfigLink != "" {
+		return payload.ConfigLink
+	}
+	return payload.Link
+}
+
+func valueOrEmptyString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func (s *VPNService) CreateVPN(input CreateVPNInput) (models.Vpn, error) {

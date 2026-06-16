@@ -112,8 +112,29 @@ func NewServer(cfg config.Config) (*Server, error) {
 
 	if broker.GlobalProducer != nil {
 		consumer, err := broker.GlobalProducer.StartResultConsumer(cfg.RabbitMQ.ResultQueue, func(event broker.JobResultEvent) error {
-			_, _, err := jobService.ApplyResult(event)
-			return err
+			_, job, err := jobService.ApplyResult(event)
+			if err != nil {
+				technicalLogger.Error("job result apply failed", err, "job_id", event.JobID, "batch_id", event.BatchID)
+				return err
+			}
+
+			notification, err := vpnService.ApplyAgentCreateResult(job, event)
+			if err != nil {
+				technicalLogger.Error("vpn agent result apply failed", err, "job_id", event.JobID, "batch_id", event.BatchID)
+				return err
+			}
+
+			if notification != nil {
+				technicalLogger.Info("agent vpn result applied", "tg_id", notification.TgID, "protocol", notification.Protocol, "job_id", event.JobID, "batch_id", event.BatchID)
+				technicalLogger.Info("vpn link saved", "tg_id", notification.TgID, "protocol", notification.Protocol, "job_id", event.JobID, "batch_id", event.BatchID)
+				if tgNotifier != nil {
+					if err := tgNotifier.SendVPNReady(notification.TgID, notification.Link); err != nil {
+						technicalLogger.Error("telegram vpn ready notification failed", err, "tg_id", notification.TgID, "protocol", notification.Protocol)
+					}
+				}
+			}
+
+			return nil
 		})
 		if err != nil {
 			log.Printf("failed to start RabbitMQ result consumer: %v", err)

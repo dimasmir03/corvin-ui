@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"errors"
+	"fmt"
 	"vpnpanel/internal/models"
 
 	"gorm.io/gorm"
@@ -32,4 +34,34 @@ func (r *VpnRepo) Save(vpn models.Vpn) (models.Vpn, error) {
 		return models.Vpn{}, err
 	}
 	return vpn, nil
+}
+
+func (r *VpnRepo) UpsertLinkByUserID(userID uint, protocol string, link string) (models.Vpn, error) {
+	vpn, err := r.GetByUserID(userID)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.Vpn{}, err
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		vpn = models.Vpn{
+			UUID:   fmt.Sprintf("agent-user-%d", userID),
+			UserID: userID,
+			Status: "active",
+			Link:   link,
+		}
+	}
+
+	switch protocol {
+	case "vless":
+		vpn.VlessLink = link
+	case "trojan":
+		vpn.TrojanLink = link
+	}
+	if vpn.Link == "" {
+		vpn.Link = link
+	}
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return r.Create(vpn)
+	}
+	return r.Save(vpn)
 }

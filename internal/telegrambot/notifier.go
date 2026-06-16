@@ -32,10 +32,10 @@ func (n *Notifier) SendText(tgID int64, text string) error {
 }
 
 func (n *Notifier) SendVPNReady(tgID int64, link string) error {
-	if err := n.SendText(tgID, fmt.Sprintf("VPN ready.\n\nLink:\n%s", link)); err != nil {
+	if err := n.SendText(tgID, fmt.Sprintf("✅ VPN готов.\n\nСсылка:\n%s", link)); err != nil {
 		return err
 	}
-	n.logger.Info("vpn ready notification sent", "tg_id", tgID)
+	n.logger.Info("telegram vpn ready notification sent", "tg_id", tgID)
 	return nil
 }
 
