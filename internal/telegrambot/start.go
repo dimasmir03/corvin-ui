@@ -11,7 +11,7 @@ import (
 func (b *Bot) handleStart(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
-		b.logger.Error("telegram start handler failed: sender is nil")
+		b.logger.Error("telegram start handler failed", nil, "reason", "sender is nil")
 		return c.Send(msgRegistrationFailed)
 	}
 
@@ -22,12 +22,12 @@ func (b *Bot) handleStart(c telebot.Context) error {
 		Lastname:  sender.LastName,
 	})
 	if err != nil {
-		b.logger.Errorf("telegram start handler failed tg_id=%d: %v", sender.ID, err)
+		b.logger.Error("telegram start handler failed", err, "tg_id", sender.ID)
 		return c.Send(msgRegistrationFailed)
 	}
 
 	if err := c.Send(fmt.Sprintf(msgStart, displayName(sender)), startMenu()); err != nil {
-		b.logger.Errorf("telegram send failed tg_id=%d: %v", sender.ID, err)
+		b.logger.Error("telegram send failed", err, "tg_id", sender.ID)
 		return err
 	}
 	return nil

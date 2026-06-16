@@ -65,11 +65,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 	serversRepo := repository.NewServerRepo(db.DB)
 	vpnRepo := repository.NewVpnRepo(db.DB)
 	storageRepo := repository.NewStorageRepo(minioClient)
-	technicalLogger := projectlogger.Logger
-	if technicalLogger == nil {
-		projectlogger.NewLogger("console", "info")
-		technicalLogger = projectlogger.Logger
-	}
+	technicalLogger := projectlogger.Default()
 	auditLogger := audit.NewLogger(repository.NewAuditRepo(db.DB))
 	usersService := service.NewUsersService(teleRepo, auditLogger)
 	jobService := jobsvc.NewService(

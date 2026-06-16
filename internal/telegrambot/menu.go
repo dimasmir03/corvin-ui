@@ -16,10 +16,10 @@ func (b *Bot) handleMenuSupport(c telebot.Context) error {
 
 func (b *Bot) respondWithStub(c telebot.Context, text string) error {
 	if err := c.Respond(); err != nil {
-		b.logger.Errorf("telegram callback respond failed: %v", err)
+		b.logger.Error("telegram callback failed", err)
 	}
 	if err := c.Send(text); err != nil {
-		b.logger.Errorf("telegram send failed: %v", err)
+		b.logger.Error("telegram send failed", err)
 		return err
 	}
 	return nil

@@ -13,28 +13,28 @@ import (
 
 type Deps struct {
 	Users  *service.UsersService
-	Logger *projectlogger.LoggerType
+	Logger *projectlogger.Logger
 }
 
 type Bot struct {
 	bot      *telebot.Bot
 	deps     Deps
-	logger   *projectlogger.LoggerType
+	logger   *projectlogger.Logger
 	notifier *Notifier
 	state    *StateStore
 }
 
 func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
-	log := resolveLogger(deps.Logger)
+	technicalLog := resolveLogger(deps.Logger).With("component", "telegrambot")
 	if !cfg.Enabled {
-		log.Info("telegram bot disabled")
+		technicalLog.Warn("telegram bot disabled")
 		return nil, nil
 	}
 	if deps.Users == nil {
 		return nil, fmt.Errorf("telegrambot requires UsersService when TELEGRAM_ENABLED=true")
 	}
 
-	log.Info("telegram bot enabled")
+	technicalLog.Info("telegram bot enabled")
 
 	token := strings.TrimSpace(cfg.Token)
 	if token == "" {
@@ -46,15 +46,15 @@ func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
 	})
 	if err != nil {
-		log.Errorf("telegram bot init failed: %v", err)
+		technicalLog.Error("telegram bot init failed", err)
 		return nil, err
 	}
 
 	bot := &Bot{
 		bot:      tb,
 		deps:     deps,
-		logger:   log,
-		notifier: NewNotifier(tb, log),
+		logger:   technicalLog,
+		notifier: NewNotifier(tb, technicalLog),
 		state:    NewStateStore(),
 	}
 	bot.registerHandlers()
@@ -84,12 +84,9 @@ func (b *Bot) Notifier() *Notifier {
 	return b.notifier
 }
 
-func resolveLogger(log *projectlogger.LoggerType) *projectlogger.LoggerType {
+func resolveLogger(log *projectlogger.Logger) *projectlogger.Logger {
 	if log != nil {
 		return log
 	}
-	if projectlogger.Logger == nil {
-		projectlogger.NewLogger("console", "info")
-	}
-	return projectlogger.Logger
+	return projectlogger.Default()
 }
