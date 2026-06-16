@@ -12,6 +12,10 @@ const (
 	callbackCreateVLESS  = "vpn:create:vless"
 	callbackCreateTrojan = "vpn:create:trojan"
 	callbackVPNBack      = "vpn:back"
+
+	callbackInstructionPrev = "instruction:prev"
+	callbackInstructionNext = "instruction:next"
+	callbackInstructionMenu = "instruction:menu"
 )
 
 var (
@@ -29,6 +33,12 @@ var (
 	btnCreateVLESS  = vpnMarkup.Data("➕ Создать VLESS", callbackCreateVLESS)
 	btnCreateTrojan = vpnMarkup.Data("➕ Создать Trojan", callbackCreateTrojan)
 	btnVPNBack      = vpnMarkup.Data("⬅️ Назад", callbackVPNBack)
+
+	instructionMarkup = &telebot.ReplyMarkup{}
+
+	btnInstructionPrev = instructionMarkup.Data("⬅️ Назад", callbackInstructionPrev)
+	btnInstructionNext = instructionMarkup.Data("➡️ Далее", callbackInstructionNext)
+	btnInstructionMenu = instructionMarkup.Data("🏠 Меню", callbackInstructionMenu)
 )
 
 func startMenu() *telebot.ReplyMarkup {
@@ -61,4 +71,22 @@ func vpnCreateMenu() *telebot.ReplyMarkup {
 	)
 
 	return vpnCreateMarkup
+}
+
+func instructionMenu(step int) *telebot.ReplyMarkup {
+	rows := make([]telebot.Row, 0, 2)
+	var nav []telebot.Btn
+	if step > 0 {
+		nav = append(nav, btnInstructionPrev)
+	}
+	if step < len(instructionSteps)-1 {
+		nav = append(nav, btnInstructionNext)
+	}
+	if len(nav) > 0 {
+		rows = append(rows, instructionMarkup.Row(nav...))
+	}
+	rows = append(rows, instructionMarkup.Row(btnInstructionMenu))
+	instructionMarkup.Inline(rows...)
+
+	return instructionMarkup
 }

@@ -7,7 +7,7 @@ func (b *Bot) handleMenuVPN(c telebot.Context) error {
 }
 
 func (b *Bot) handleMenuInstruction(c telebot.Context) error {
-	return b.respondWithStub(c, msgInstructionComingSoon)
+	return b.handleInstruction(c)
 }
 
 func (b *Bot) handleMenuSupport(c telebot.Context) error {
