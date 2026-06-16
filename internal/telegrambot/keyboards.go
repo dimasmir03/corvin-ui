@@ -1,6 +1,6 @@
 package telegrambot
 
-import telebot "gopkg.in/telebot.v3"
+import telebot "gopkg.in/telebot.v4"
 
 const (
 	callbackMenuVPN         = "menu:vpn"
@@ -8,18 +8,20 @@ const (
 	callbackMenuSupport     = "menu:support"
 )
 
+var (
+	menuMarkup = &telebot.ReplyMarkup{}
+
+	btnMenuVPN         = menuMarkup.Data("🔐 VPN", callbackMenuVPN)
+	btnMenuInstruction = menuMarkup.Data("📖 Инструкция", callbackMenuInstruction)
+	btnMenuSupport     = menuMarkup.Data("💬 Поддержка", callbackMenuSupport)
+)
+
 func startMenu() *telebot.ReplyMarkup {
-	menu := &telebot.ReplyMarkup{}
-
-	btnVPN := menu.Data("🔐 VPN", callbackMenuVPN)
-	btnInstruction := menu.Data("📖 Инструкция", callbackMenuInstruction)
-	btnSupport := menu.Data("💬 Поддержка", callbackMenuSupport)
-
-	menu.Inline(
-		menu.Row(btnVPN),
-		menu.Row(btnInstruction),
-		menu.Row(btnSupport),
+	menuMarkup.Inline(
+		menuMarkup.Row(btnMenuVPN),
+		menuMarkup.Row(btnMenuInstruction),
+		menuMarkup.Row(btnMenuSupport),
 	)
 
-	return menu
+	return menuMarkup
 }

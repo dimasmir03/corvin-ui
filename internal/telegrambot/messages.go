@@ -1,11 +1,11 @@
 package telegrambot
 
 const (
-	welcomeMessage = `Привет, %s!
+	msgStart = `Привет, %s!
 Добро пожаловать в Corvin VPN.`
 
-	registrationFailedMessage = "Не удалось зарегистрировать пользователя. Попробуйте позже."
-	vpnComingSoonMessage      = "Раздел VPN будет подключён позже."
-	instructionSoonMessage    = "Инструкция будет подключена позже."
-	supportSoonMessage        = "Поддержка будет подключена позже."
+	msgRegistrationFailed    = "Не удалось зарегистрировать пользователя. Попробуйте позже."
+	msgVPNComingSoon         = "Раздел VPN будет подключён позже."
+	msgInstructionComingSoon = "Инструкция будет подключена позже."
+	msgSupportComingSoon     = "Поддержка будет подключена позже."
 )

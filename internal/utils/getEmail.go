@@ -3,7 +3,7 @@ package utils
 import (
 	"strconv"
 
-	"gopkg.in/telebot.v3"
+	"gopkg.in/telebot.v4"
 )
 
 func GetEmail(user *telebot.User) string {

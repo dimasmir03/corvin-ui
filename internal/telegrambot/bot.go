@@ -7,7 +7,7 @@ import (
 	"vpnpanel/internal/config"
 	"vpnpanel/internal/service"
 
-	telebot "gopkg.in/telebot.v3"
+	telebot "gopkg.in/telebot.v4"
 )
 
 type Deps struct {
@@ -15,8 +15,10 @@ type Deps struct {
 }
 
 type Bot struct {
-	bot  *telebot.Bot
-	deps Deps
+	bot      *telebot.Bot
+	deps     Deps
+	notifier *Notifier
+	state    *StateStore
 }
 
 func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
@@ -32,7 +34,7 @@ func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN is required when TELEGRAM_ENABLED=true")
 	}
 
-	b, err := telebot.NewBot(telebot.Settings{
+	tb, err := telebot.NewBot(telebot.Settings{
 		Token:  token,
 		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
 	})
@@ -40,7 +42,12 @@ func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 		return nil, err
 	}
 
-	bot := &Bot{bot: b, deps: deps}
+	bot := &Bot{
+		bot:      tb,
+		deps:     deps,
+		notifier: NewNotifier(tb),
+		state:    NewStateStore(),
+	}
 	bot.registerHandlers()
 	return bot, nil
 }
@@ -60,8 +67,8 @@ func (b *Bot) Stop() {
 }
 
 func (b *Bot) Notifier() *Notifier {
-	if b == nil {
+	if b == nil || b.notifier == nil {
 		return NewNotifier(nil)
 	}
-	return NewNotifier(b.bot)
+	return b.notifier
 }

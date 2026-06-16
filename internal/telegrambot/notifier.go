@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	telebot "gopkg.in/telebot.v3"
+	telebot "gopkg.in/telebot.v4"
 )
 
 var ErrNotifierDisabled = errors.New("telegram notifier is disabled")
