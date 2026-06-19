@@ -95,6 +95,8 @@ const (
 const (
 	msgSupportPrompt               = "Напишите ваше обращение одним сообщением.\nМожно описать проблему текстом."
 	msgSupportSent                 = "✅ Обращение отправлено в поддержку."
+	msgSupportPhotoSent            = "✅ Обращение с фото отправлено в поддержку."
+	msgSupportPhotoPrompt          = "Чтобы отправить фото в поддержку, сначала откройте /help."
 	msgSupportCreateFailed         = "Не удалось отправить обращение. Попробуйте позже."
 	msgSupportCanceled             = "Обращение отменено."
 	msgSupportReplyPrompt          = "Напишите ответ на обращение #%d."

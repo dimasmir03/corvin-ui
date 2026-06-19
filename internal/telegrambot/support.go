@@ -69,10 +69,62 @@ func (b *Bot) handleSupportText(c telebot.Context) error {
 		TgID:        complaint.TgID,
 		Username:    complaint.Username,
 		Text:        complaint.Text,
+		PhotoFileID: complaint.PhotoFileID,
 	}); err != nil {
 		b.logger.Error("support admin notification failed", err, "tg_id", sender.ID, "complaint_id", complaint.ID, "admin_count", len(b.adminIDs))
 	} else {
 		b.logger.Info("support admin notification sent", "tg_id", sender.ID, "complaint_id", complaint.ID, "admin_count", len(b.adminIDs))
+	}
+
+	return nil
+}
+
+func (b *Bot) handleSupportPhoto(c telebot.Context) error {
+	sender := c.Sender()
+	if sender == nil {
+		b.logger.Error("support photo complaint create failed", nil, "reason", "sender is nil")
+		return c.Send(msgSupportCreateFailed)
+	}
+
+	message := c.Message()
+	if message == nil || message.Photo == nil || strings.TrimSpace(message.Photo.FileID) == "" {
+		b.logger.Error("support photo complaint create failed", nil, "tg_id", sender.ID, "reason", "photo file_id is empty")
+		return c.Send(msgSupportCreateFailed)
+	}
+
+	caption := strings.TrimSpace(message.Caption)
+	if caption == "" {
+		caption = "Фото без описания"
+	}
+
+	complaint, err := b.deps.Support.CreateComplaint(service.CreateComplaintInput{
+		TgID:        sender.ID,
+		Text:        caption,
+		PhotoFileID: message.Photo.FileID,
+	})
+	if err != nil {
+		b.logger.Error("support photo complaint create failed", err, "tg_id", sender.ID)
+		return c.Send(msgSupportCreateFailed)
+	}
+
+	b.state.ClearMode(sender.ID)
+	b.logger.Info("support photo complaint created", "tg_id", sender.ID, "complaint_id", complaint.ID, "has_photo", complaint.Photo)
+
+	if err := c.Send(msgSupportPhotoSent); err != nil {
+		b.logger.Error("telegram send failed", err, "tg_id", sender.ID)
+		return err
+	}
+
+	if err := b.Notifier().SendSupportAdminNotification(b.adminIDs, SupportAdminNotification{
+		ComplaintID: complaint.ID,
+		TgID:        complaint.TgID,
+		Username:    complaint.Username,
+		Text:        complaint.Text,
+		PhotoFileID: complaint.PhotoFileID,
+	}); err != nil {
+		b.logger.Error("support photo admin notification failed", err, "tg_id", sender.ID, "complaint_id", complaint.ID, "admin_count", len(b.adminIDs))
+	} else {
+		b.logger.Info("support photo admin notification sent", "tg_id", sender.ID, "complaint_id", complaint.ID, "admin_count", len(b.adminIDs))
 	}
 
 	return nil

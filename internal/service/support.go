@@ -13,9 +13,10 @@ type SupportService struct {
 }
 
 type CreateComplaintInput struct {
-	TgID      int64
-	Text      string
-	PhotoFile string
+	TgID        int64
+	Text        string
+	PhotoFile   string
+	PhotoFileID string
 }
 
 type ReplyToComplaintInput struct {
@@ -58,6 +59,10 @@ func (s *SupportService) CreateComplaint(input CreateComplaintInput) (models.Com
 	if input.PhotoFile != "" {
 		complaint.Photo = true
 		complaint.PhotoURL = input.PhotoFile
+	}
+	if input.PhotoFileID != "" {
+		complaint.Photo = true
+		complaint.PhotoFileID = input.PhotoFileID
 	}
 
 	if err := s.complaintRepo.Create(complaint); err != nil {

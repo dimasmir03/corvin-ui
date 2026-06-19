@@ -18,6 +18,7 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle("/help", b.handleHelp)
 	b.bot.Handle("/cancel", b.handleCancel)
 	b.bot.Handle(telebot.OnText, b.handleText)
+	b.bot.Handle(telebot.OnPhoto, b.handlePhoto)
 
 	b.bot.Handle(&btnMenuVPN, b.handleMenuVPN)
 	b.bot.Handle(&btnMenuInstruction, b.handleMenuInstruction)
