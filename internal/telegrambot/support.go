@@ -157,7 +157,7 @@ func (b *Bot) handleSupportReplyStart(c telebot.Context) error {
 	}
 	if !b.isAdmin(sender.ID) {
 		b.logger.Warn("support reply access denied", "admin_tg_id", sender.ID)
-		return c.Send(msgAccessDenied)
+		return nil
 	}
 
 	callback := c.Callback()
@@ -185,7 +185,7 @@ func (b *Bot) handleSupportReplyText(c telebot.Context) error {
 	if !b.isAdmin(sender.ID) {
 		b.logger.Warn("support reply access denied", "admin_tg_id", sender.ID)
 		b.state.ClearMode(sender.ID)
-		return c.Send(msgAccessDenied)
+		return nil
 	}
 
 	state := b.state.GetState(sender.ID)

@@ -28,7 +28,7 @@ func (b *Bot) handleGetUsers(c telebot.Context) error {
 	}
 	if !b.isAdmin(sender.ID) {
 		b.logger.Warn("admin getusers access denied", "admin_tg_id", sender.ID)
-		return c.Send(msgAccessDenied)
+		return nil
 	}
 
 	b.logger.Info("admin getusers requested", "admin_tg_id", sender.ID)

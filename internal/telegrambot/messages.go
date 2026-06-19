@@ -104,7 +104,6 @@ const (
 	msgSupportReplySavedSendFailed = "Ответ сохранён, но не удалось отправить сообщение пользователю."
 	msgSupportReplyFailed          = "Не удалось сохранить ответ. Попробуйте позже."
 	msgSupportReplyCanceled        = "Ответ отменён."
-	msgAccessDenied                = "Нет доступа."
 	msgAdminGetUsersEmpty          = "Пользователей пока нет."
 	msgAdminGetUsersFailed         = "Не удалось получить список пользователей. Попробуйте позже."
 	msgActionCancelled             = "Действие отменено."
