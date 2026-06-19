@@ -28,6 +28,11 @@ const (
 Откройте раздел VPN, чтобы получить ссылку.`
 	msgVPNUnsupportedProtocol = "Неподдерживаемый протокол VPN."
 	msgVPNCreateFailed        = "Не удалось создать VPN. Попробуйте позже."
+
+	msgLinkChooseProtocol      = "Выберите протокол:"
+	msgLinkUnsupportedProtocol = "Неподдерживаемый протокол VPN.\nДоступные варианты: vless, trojan."
+	msgLinkMissing             = "Ссылка пока не создана.\n\nОткройте /vpn и создайте VPN."
+	msgLinkFetchFailed         = "Не удалось получить ссылку. Попробуйте позже."
 )
 
 type InstructionStep struct {
