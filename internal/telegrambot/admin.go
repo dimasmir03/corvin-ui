@@ -2,6 +2,7 @@ package telegrambot
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"vpnpanel/internal/service"
 
@@ -55,6 +56,42 @@ func (b *Bot) handleGetUsers(c telebot.Context) error {
 
 	b.logger.Info("admin getusers completed", "admin_tg_id", sender.ID, "users_count", len(users))
 	return c.Send(formatAdminTelegramUsers(users))
+}
+
+func (b *Bot) handleSendUser(c telebot.Context) error {
+	sender := c.Sender()
+	if sender == nil {
+		return nil
+	}
+
+	args := c.Args()
+	if len(args) < 2 {
+		return c.Send(msgAdminSendUserUsage)
+	}
+
+	targetTgID, err := strconv.ParseInt(strings.TrimSpace(args[0]), 10, 64)
+	if err != nil || targetTgID == 0 {
+		return c.Send(msgAdminSendUserInvalidID)
+	}
+
+	message := strings.TrimSpace(strings.Join(args[1:], " "))
+	if message == "" {
+		return c.Send(msgAdminSendUserUsage)
+	}
+
+	b.logger.Info("admin senduser requested", "admin_tg_id", sender.ID, "target_tg_id", targetTgID, "message_len", len(message))
+	if _, err := b.deps.Users.GetTelegramByTgID(targetTgID); err != nil {
+		b.logger.Warn("admin senduser target not found", "admin_tg_id", sender.ID, "target_tg_id", targetTgID)
+		return c.Send(msgAdminSendUserNotFound)
+	}
+
+	if err := b.Notifier().SendAdminDirectMessage(targetTgID, message); err != nil {
+		b.logger.Error("admin senduser failed", err, "admin_tg_id", sender.ID, "target_tg_id", targetTgID, "message_len", len(message))
+		return c.Send(msgAdminSendUserFailed)
+	}
+
+	b.logger.Info("admin senduser sent", "admin_tg_id", sender.ID, "target_tg_id", targetTgID, "message_len", len(message))
+	return c.Send(msgAdminSendUserSent)
 }
 
 func formatAdminTelegramUsers(users []service.AdminTelegramUserView) string {

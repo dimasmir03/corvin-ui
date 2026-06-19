@@ -99,6 +99,14 @@ func supportAdminNotificationMessage(data SupportAdminNotification) string {
 	return message
 }
 
+func (n *Notifier) SendAdminDirectMessage(tgID int64, text string) error {
+	if err := n.SendText(tgID, fmt.Sprintf("Сообщение от поддержки:\n\n%s", text)); err != nil {
+		return err
+	}
+	n.logger.Info("admin direct message sent", "tg_id", tgID)
+	return nil
+}
+
 func (n *Notifier) SendSupportReply(tgID int64, text string) error {
 	if err := n.SendText(tgID, fmt.Sprintf("Support reply:\n\n%s", text)); err != nil {
 		return err

@@ -46,5 +46,6 @@ func (b *Bot) registerAdminHandlers() {
 	admin.Use(b.adminMiddleware)
 
 	admin.Handle("/getusers", b.handleGetUsers)
+	admin.Handle("/senduser", b.handleSendUser)
 	admin.Handle(&btnSupportReply, b.handleSupportReplyStart)
 }
