@@ -75,11 +75,13 @@ func NewServer(cfg config.Config) (*Server, error) {
 		broker.GlobalProducer,
 	)
 	vpnService := service.NewVPNService(vpnRepo, teleRepo, jobService, auditLogger)
+	supportService := service.NewSupportService(teleRepo, complaintRepo)
 
 	tgBot, err := telegrambot.New(cfg.Telegram, telegrambot.Deps{
-		Users:  usersService,
-		VPN:    vpnService,
-		Logger: technicalLogger,
+		Users:   usersService,
+		VPN:     vpnService,
+		Support: supportService,
+		Logger:  technicalLogger,
 	})
 	if err != nil {
 		return nil, err

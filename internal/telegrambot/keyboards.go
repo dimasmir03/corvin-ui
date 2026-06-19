@@ -5,7 +5,7 @@ import telebot "gopkg.in/telebot.v4"
 const (
 	callbackMenuVPN         = "menu:vpn"
 	callbackMenuInstruction = "menu:instruction"
-	callbackMenuSupport     = "menu:support"
+	callbackMenuSupport     = "support:open"
 
 	callbackVPNVLESS     = "vpn:vless"
 	callbackVPNTrojan    = "vpn:trojan"
@@ -16,6 +16,8 @@ const (
 	callbackInstructionPrev = "instruction:prev"
 	callbackInstructionNext = "instruction:next"
 	callbackInstructionMenu = "instruction:menu"
+
+	callbackSupportCancel = "support:cancel"
 )
 
 var (
@@ -39,6 +41,10 @@ var (
 	btnInstructionPrev = instructionMarkup.Data("⬅️ Назад", callbackInstructionPrev)
 	btnInstructionNext = instructionMarkup.Data("➡️ Далее", callbackInstructionNext)
 	btnInstructionMenu = instructionMarkup.Data("🏠 Меню", callbackInstructionMenu)
+
+	supportMarkup = &telebot.ReplyMarkup{}
+
+	btnSupportCancel = supportMarkup.Data("❌ Отмена", callbackSupportCancel)
 )
 
 func startMenu() *telebot.ReplyMarkup {
@@ -89,4 +95,12 @@ func instructionMenu(step int) *telebot.ReplyMarkup {
 	instructionMarkup.Inline(rows...)
 
 	return instructionMarkup
+}
+
+func supportMenu() *telebot.ReplyMarkup {
+	supportMarkup.Inline(
+		supportMarkup.Row(btnSupportCancel),
+	)
+
+	return supportMarkup
 }

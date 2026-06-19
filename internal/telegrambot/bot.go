@@ -12,15 +12,17 @@ import (
 )
 
 type Deps struct {
-	Users  *service.UsersService
-	VPN    *service.VPNService
-	Logger *projectlogger.Logger
+	Users   *service.UsersService
+	VPN     *service.VPNService
+	Support *service.SupportService
+	Logger  *projectlogger.Logger
 }
 
 type Bot struct {
 	bot      *telebot.Bot
 	deps     Deps
 	logger   *projectlogger.Logger
+	adminIDs []int64
 	notifier *Notifier
 	state    *StateStore
 }
@@ -36,6 +38,9 @@ func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 	}
 	if deps.VPN == nil {
 		return nil, fmt.Errorf("telegrambot requires VPNService when TELEGRAM_ENABLED=true")
+	}
+	if deps.Support == nil {
+		return nil, fmt.Errorf("telegrambot requires SupportService when TELEGRAM_ENABLED=true")
 	}
 
 	technicalLog.Info("telegram bot enabled")
@@ -58,6 +63,7 @@ func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 		bot:      tb,
 		deps:     deps,
 		logger:   technicalLog,
+		adminIDs: cfg.AdminIDs,
 		notifier: NewNotifier(tb, technicalLog),
 		state:    NewStateStore(),
 	}

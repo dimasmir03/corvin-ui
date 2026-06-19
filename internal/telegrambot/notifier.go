@@ -10,6 +10,13 @@ import (
 
 var ErrNotifierDisabled = errors.New("telegram notifier is disabled")
 
+type SupportAdminNotification struct {
+	ComplaintID uint
+	TgID        int64
+	Username    string
+	Text        string
+}
+
 type Notifier struct {
 	bot    *telebot.Bot
 	logger *projectlogger.Logger
@@ -36,6 +43,20 @@ func (n *Notifier) SendVPNReady(tgID int64, link string) error {
 		return err
 	}
 	n.logger.Info("telegram vpn ready notification sent", "tg_id", tgID)
+	return nil
+}
+
+func (n *Notifier) SendSupportAdminNotification(adminIDs []int64, data SupportAdminNotification) error {
+	if len(adminIDs) == 0 {
+		n.logger.Info("support admin notification skipped", "complaint_id", data.ComplaintID)
+		return nil
+	}
+
+	message := fmt.Sprintf("💬 Новое обращение в поддержку\n\nID: %d\nПользователь: @%s / %d\n\nТекст:\n%s", data.ComplaintID, data.Username, data.TgID, data.Text)
+	if err := n.SendText(adminIDs[0], message); err != nil {
+		return err
+	}
+	n.logger.Info("support admin notification sent", "complaint_id", data.ComplaintID, "admin_id", adminIDs[0])
 	return nil
 }
 

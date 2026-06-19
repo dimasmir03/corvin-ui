@@ -84,3 +84,12 @@ const (
 	msgInstructionFirst = "Это первый шаг."
 	msgInstructionLast  = "Это последний шаг."
 )
+
+const (
+	msgSupportPrompt           = "Напишите ваше обращение одним сообщением.\nМожно описать проблему текстом."
+	msgSupportSent             = "✅ Обращение отправлено в поддержку."
+	msgSupportCreateFailed     = "Не удалось отправить обращение. Попробуйте позже."
+	msgSupportCanceled         = "Обращение отменено."
+	msgSupportReplyPlaceholder = "Ответ на обращение будет подключён следующим шагом."
+	msgUnknownText             = "Выберите действие в меню."
+)

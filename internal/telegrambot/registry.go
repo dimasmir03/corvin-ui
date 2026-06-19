@@ -15,10 +15,12 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle("/vpn", b.handleVPN)
 	b.bot.Handle("/create_vpn", b.handleCreateVPN)
 	b.bot.Handle("/instruction", b.handleInstruction)
+	b.bot.Handle("/help", b.handleSupport)
+	b.bot.Handle(telebot.OnText, b.handleText)
 
 	b.bot.Handle(&btnMenuVPN, b.handleMenuVPN)
 	b.bot.Handle(&btnMenuInstruction, b.handleMenuInstruction)
-	b.bot.Handle(&btnMenuSupport, b.handleMenuSupport)
+	b.bot.Handle(&btnMenuSupport, b.handleSupport)
 	b.bot.Handle(&btnVPNVLESS, b.handleVPNVLESS)
 	b.bot.Handle(&btnVPNTrojan, b.handleVPNTrojan)
 	b.bot.Handle(&btnCreateVLESS, b.handleCreateVLESS)
@@ -27,4 +29,5 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle(&btnInstructionNext, b.handleInstructionNext)
 	b.bot.Handle(&btnInstructionPrev, b.handleInstructionPrev)
 	b.bot.Handle(&btnInstructionMenu, b.handleInstructionMenu)
+	b.bot.Handle(&btnSupportCancel, b.handleSupportCancel)
 }
