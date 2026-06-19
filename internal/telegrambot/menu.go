@@ -11,7 +11,7 @@ func (b *Bot) handleMenuInstruction(c telebot.Context) error {
 }
 
 func (b *Bot) handleMenuSupport(c telebot.Context) error {
-	return b.handleSupport(c)
+	return b.handleSupportOpen(c)
 }
 
 func (b *Bot) respondWithStub(c telebot.Context, text string) error {

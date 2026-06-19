@@ -9,7 +9,7 @@ import (
 	telebot "gopkg.in/telebot.v4"
 )
 
-func (b *Bot) handleSupport(c telebot.Context) error {
+func (b *Bot) handleSupportOpen(c telebot.Context) error {
 	b.respondToCallback(c)
 
 	sender := c.Sender()
@@ -21,6 +21,18 @@ func (b *Bot) handleSupport(c telebot.Context) error {
 	b.state.SetMode(sender.ID, ModeSupport)
 	b.logger.Info("support flow opened", "tg_id", sender.ID)
 	return c.Send(msgSupportPrompt, supportMenu())
+}
+
+func (b *Bot) handleSupport(c telebot.Context) error {
+	return b.handleSupportOpen(c)
+}
+
+func (b *Bot) handleHelp(c telebot.Context) error {
+	sender := c.Sender()
+	if sender != nil {
+		b.logger.Info("support help command opened", "tg_id", sender.ID)
+	}
+	return b.handleSupportOpen(c)
 }
 
 func (b *Bot) handleSupportText(c telebot.Context) error {

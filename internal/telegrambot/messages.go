@@ -101,5 +101,7 @@ const (
 	msgSupportReplyFailed          = "Не удалось сохранить ответ. Попробуйте позже."
 	msgSupportReplyCanceled        = "Ответ отменён."
 	msgAccessDenied                = "Нет доступа."
+	msgActionCancelled             = "Действие отменено."
+	msgNoActiveAction              = "Нет активного действия."
 	msgUnknownText                 = "Выберите действие в меню."
 )
