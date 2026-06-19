@@ -47,6 +47,16 @@ func (s *StateStore) GetInstructionStep(tgID int64) int {
 	return step
 }
 
+func (s *StateStore) HasInstruction(tgID int64) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	_, ok := s.instruction[tgID]
+	s.mu.RUnlock()
+	return ok
+}
+
 func (s *StateStore) ClearInstruction(tgID int64) {
 	if s == nil {
 		return

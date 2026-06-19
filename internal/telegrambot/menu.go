@@ -2,6 +2,14 @@ package telegrambot
 
 import telebot "gopkg.in/telebot.v4"
 
+func (b *Bot) handleMenu(c telebot.Context) error {
+	sender := c.Sender()
+	if sender != nil {
+		b.logger.Info("menu command opened", "tg_id", sender.ID)
+	}
+	return b.handleMenu(c)
+}
+
 func (b *Bot) handleMenuVPN(c telebot.Context) error {
 	return b.handleVPN(c)
 }

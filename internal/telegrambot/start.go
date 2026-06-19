@@ -36,9 +36,15 @@ func (b *Bot) handleStart(c telebot.Context) error {
 func (b *Bot) handleID(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
-		return c.Send("Не удалось определить Telegram ID.")
+		return c.Send(msgTelegramIDFailed)
 	}
-	return c.Send(fmt.Sprintf("Ваш Telegram ID: %d", sender.ID))
+
+	message := fmt.Sprintf("Ваш Telegram ID: %d", sender.ID)
+	if strings.TrimSpace(sender.Username) != "" {
+		message += fmt.Sprintf("\nUsername: @%s", sender.Username)
+	}
+	b.logger.Debug("telegram id requested", "tg_id", sender.ID)
+	return c.Send(message)
 }
 
 func displayName(user *telebot.User) string {

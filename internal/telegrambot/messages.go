@@ -5,7 +5,9 @@ const (
 Добро пожаловать в Corvin VPN.`
 
 	msgRegistrationFailed    = "Не удалось зарегистрировать пользователя. Попробуйте позже."
+	msgTelegramIDFailed      = "Не удалось определить Telegram ID."
 	msgStartMenu             = "Главное меню"
+	msgPingOK                = "ok"
 	msgVPNComingSoon         = "Раздел VPN будет подключён позже."
 	msgInstructionComingSoon = "Инструкция будет подключена позже."
 	msgSupportComingSoon     = "Поддержка будет подключена позже."

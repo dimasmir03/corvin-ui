@@ -7,11 +7,10 @@ func (b *Bot) registerHandlers() {
 		return
 	}
 
-	b.bot.Handle("/ping", func(c telebot.Context) error {
-		return c.Send("ok")
-	})
+	b.bot.Handle("/ping", b.handlePing)
 	b.bot.Handle("/start", b.handleStart)
 	b.bot.Handle("/id", b.handleID)
+	b.bot.Handle("/menu", b.handleMenu)
 	b.bot.Handle("/vpn", b.handleVPN)
 	b.bot.Handle("/link", b.handleLink)
 	b.bot.Handle("/create_vpn", b.handleCreateVPN)
