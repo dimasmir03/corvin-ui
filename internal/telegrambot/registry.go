@@ -47,5 +47,8 @@ func (b *Bot) registerAdminHandlers() {
 
 	admin.Handle("/getusers", b.handleGetUsers)
 	admin.Handle("/senduser", b.handleSendUser)
+	admin.Handle("/send", b.handleSendBroadcast)
 	admin.Handle(&btnSupportReply, b.handleSupportReplyStart)
+	admin.Handle(&btnBroadcastConfirm, b.handleBroadcastConfirm)
+	admin.Handle(&btnBroadcastCancel, b.handleBroadcastCancel)
 }

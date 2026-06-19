@@ -22,6 +22,9 @@ const (
 
 	callbackSupportCancel = "support:cancel"
 	callbackSupportReply  = "support:reply"
+
+	callbackBroadcastConfirm = "admin:broadcast:confirm"
+	callbackBroadcastCancel  = "admin:broadcast:cancel"
 )
 
 var (
@@ -49,10 +52,14 @@ var (
 	btnInstructionNext = instructionMarkup.Data("➡️ Далее", callbackInstructionNext)
 	btnInstructionMenu = instructionMarkup.Data("🏠 Меню", callbackInstructionMenu)
 
-	supportMarkup = &telebot.ReplyMarkup{}
+	supportMarkup   = &telebot.ReplyMarkup{}
+	broadcastMarkup = &telebot.ReplyMarkup{}
 
 	btnSupportCancel = supportMarkup.Data("❌ Отмена", callbackSupportCancel)
 	btnSupportReply  = supportMarkup.Data("Ответить", callbackSupportReply)
+
+	btnBroadcastConfirm = broadcastMarkup.Data("✅ Отправить", callbackBroadcastConfirm)
+	btnBroadcastCancel  = broadcastMarkup.Data("❌ Отмена", callbackBroadcastCancel)
 )
 
 func startMenu() *telebot.ReplyMarkup {
@@ -120,4 +127,12 @@ func supportMenu() *telebot.ReplyMarkup {
 	)
 
 	return supportMarkup
+}
+
+func broadcastConfirmMenu() *telebot.ReplyMarkup {
+	broadcastMarkup.Inline(
+		broadcastMarkup.Row(btnBroadcastConfirm, btnBroadcastCancel),
+	)
+
+	return broadcastMarkup
 }

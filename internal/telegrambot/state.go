@@ -1,6 +1,9 @@
 package telegrambot
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type UserMode string
 
@@ -15,16 +18,24 @@ type UserState struct {
 	ComplaintID uint
 }
 
+type BroadcastDraft struct {
+	Text            string
+	RecipientsCount int
+	CreatedAt       time.Time
+}
+
 type StateStore struct {
-	mu          sync.RWMutex
-	instruction map[int64]int
-	states      map[int64]UserState
+	mu              sync.RWMutex
+	instruction     map[int64]int
+	states          map[int64]UserState
+	broadcastDrafts map[int64]BroadcastDraft
 }
 
 func NewStateStore() *StateStore {
 	return &StateStore{
-		instruction: make(map[int64]int),
-		states:      make(map[int64]UserState),
+		instruction:     make(map[int64]int),
+		states:          make(map[int64]UserState),
+		broadcastDrafts: make(map[int64]BroadcastDraft),
 	}
 }
 
@@ -113,4 +124,32 @@ func (s *StateStore) GetState(tgID int64) UserState {
 
 func (s *StateStore) ClearMode(tgID int64) {
 	s.SetMode(tgID, ModeNone)
+}
+
+func (s *StateStore) SetBroadcastDraft(adminTgID int64, draft BroadcastDraft) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.broadcastDrafts[adminTgID] = draft
+	s.mu.Unlock()
+}
+
+func (s *StateStore) GetBroadcastDraft(adminTgID int64) (BroadcastDraft, bool) {
+	if s == nil {
+		return BroadcastDraft{}, false
+	}
+	s.mu.RLock()
+	draft, ok := s.broadcastDrafts[adminTgID]
+	s.mu.RUnlock()
+	return draft, ok
+}
+
+func (s *StateStore) ClearBroadcastDraft(adminTgID int64) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	delete(s.broadcastDrafts, adminTgID)
+	s.mu.Unlock()
 }

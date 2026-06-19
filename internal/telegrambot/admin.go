@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"vpnpanel/internal/service"
 
 	telebot "gopkg.in/telebot.v4"
 )
+
+const broadcastSendDelay = 50 * time.Millisecond
 
 func (b *Bot) isAdmin(tgID int64) bool {
 	if b == nil || len(b.adminIDs) == 0 {
@@ -94,6 +97,86 @@ func (b *Bot) handleSendUser(c telebot.Context) error {
 	return c.Send(msgAdminSendUserSent)
 }
 
+func (b *Bot) handleSendBroadcast(c telebot.Context) error {
+	sender := c.Sender()
+	if sender == nil {
+		return nil
+	}
+
+	message := strings.TrimSpace(strings.Join(c.Args(), " "))
+	if message == "" {
+		return c.Send(msgAdminBroadcastUsage)
+	}
+
+	users, err := b.deps.Users.ListTelegramUsers()
+	if err != nil {
+		b.logger.Error("admin broadcast draft failed", err, "admin_tg_id", sender.ID, "message_len", len(message))
+		return c.Send(msgAdminGetUsersFailed)
+	}
+	if len(users) == 0 {
+		return c.Send(msgAdminBroadcastNoRecipients)
+	}
+
+	b.state.SetBroadcastDraft(sender.ID, BroadcastDraft{
+		Text:            message,
+		RecipientsCount: len(users),
+		CreatedAt:       time.Now(),
+	})
+	b.logger.Info("admin broadcast draft created", "admin_tg_id", sender.ID, "recipients_count", len(users), "message_len", len(message))
+
+	return c.Send(formatBroadcastPreview(message, len(users)), broadcastConfirmMenu())
+}
+
+func (b *Bot) handleBroadcastConfirm(c telebot.Context) error {
+	b.respondToCallback(c)
+
+	sender := c.Sender()
+	if sender == nil {
+		return nil
+	}
+
+	draft, ok := b.state.GetBroadcastDraft(sender.ID)
+	if !ok || strings.TrimSpace(draft.Text) == "" {
+		return c.Send(msgAdminBroadcastNoDraft)
+	}
+
+	users, err := b.deps.Users.ListTelegramUsers()
+	if err != nil {
+		b.logger.Error("admin broadcast failed", err, "admin_tg_id", sender.ID, "message_len", len(draft.Text))
+		return c.Send(msgAdminGetUsersFailed)
+	}
+
+	total := len(users)
+	sent := 0
+	failed := 0
+	b.logger.Info("admin broadcast started", "admin_tg_id", sender.ID, "recipients_count", total, "message_len", len(draft.Text))
+	for _, user := range users {
+		if err := b.Notifier().SendAdminBroadcastMessage(user.TgID, draft.Text); err != nil {
+			failed++
+			b.logger.Error("admin broadcast recipient failed", err, "admin_tg_id", sender.ID, "target_tg_id", user.TgID)
+		} else {
+			sent++
+		}
+		time.Sleep(broadcastSendDelay)
+	}
+
+	b.state.ClearBroadcastDraft(sender.ID)
+	b.logger.Info("admin broadcast finished", "admin_tg_id", sender.ID, "recipients_count", total, "sent", sent, "failed", failed, "message_len", len(draft.Text))
+	return c.Send(formatBroadcastResult(total, sent, failed))
+}
+
+func (b *Bot) handleBroadcastCancel(c telebot.Context) error {
+	b.respondToCallback(c)
+
+	sender := c.Sender()
+	if sender == nil {
+		return nil
+	}
+	b.state.ClearBroadcastDraft(sender.ID)
+	b.logger.Info("admin broadcast cancelled", "admin_tg_id", sender.ID)
+	return c.Send(msgAdminBroadcastCancelled)
+}
+
 func formatAdminTelegramUsers(users []service.AdminTelegramUserView) string {
 	if len(users) == 0 {
 		return msgAdminGetUsersEmpty
@@ -119,4 +202,12 @@ func adminTelegramUserDisplayName(user service.AdminTelegramUserView) string {
 		return name
 	}
 	return "без имени"
+}
+
+func formatBroadcastPreview(message string, recipientsCount int) string {
+	return fmt.Sprintf("📣 Рассылка\n\nПолучателей: %d\n\nТекст:\n%s\n\nОтправить?", recipientsCount, message)
+}
+
+func formatBroadcastResult(total int, sent int, failed int) string {
+	return fmt.Sprintf("✅ Рассылка завершена.\n\nВсего: %d\nОтправлено: %d\nОшибок: %d", total, sent, failed)
 }

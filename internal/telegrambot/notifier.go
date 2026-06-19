@@ -107,6 +107,10 @@ func (n *Notifier) SendAdminDirectMessage(tgID int64, text string) error {
 	return nil
 }
 
+func (n *Notifier) SendAdminBroadcastMessage(tgID int64, text string) error {
+	return n.SendAdminDirectMessage(tgID, text)
+}
+
 func (n *Notifier) SendSupportReply(tgID int64, text string) error {
 	if err := n.SendText(tgID, fmt.Sprintf("Support reply:\n\n%s", text)); err != nil {
 		return err
