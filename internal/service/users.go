@@ -22,6 +22,14 @@ type TelegramUserInput struct {
 	Lastname  string
 }
 
+type AdminTelegramUserView struct {
+	UserID    uint
+	TgID      int64
+	Username  string
+	Firstname string
+	Lastname  string
+}
+
 func NewUsersService(
 	telegramRepo *repository.TelegramRepo,
 	auditLogger *audit.Logger,
@@ -81,4 +89,24 @@ func (s *UsersService) GetTelegramByTgID(tgID int64) (models.Telegram, error) {
 
 func (s *UsersService) GetAllTelegramUsers() ([]models.Telegram, error) {
 	return s.telegramRepo.GetAllUsers()
+}
+
+func (s *UsersService) ListTelegramUsers() ([]AdminTelegramUserView, error) {
+	users, err := s.telegramRepo.GetAllUsers()
+	if err != nil {
+		return nil, err
+	}
+
+	views := make([]AdminTelegramUserView, 0, len(users))
+	for _, user := range users {
+		views = append(views, AdminTelegramUserView{
+			UserID:    user.UserID,
+			TgID:      user.TgID,
+			Username:  user.Username,
+			Firstname: user.Firstname,
+			Lastname:  user.Lastname,
+		})
+	}
+
+	return views, nil
 }

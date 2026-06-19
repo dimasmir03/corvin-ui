@@ -17,6 +17,7 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle("/instruction", b.handleInstruction)
 	b.bot.Handle("/help", b.handleHelp)
 	b.bot.Handle("/cancel", b.handleCancel)
+	b.bot.Handle("/getusers", b.handleGetUsers)
 	b.bot.Handle(telebot.OnText, b.handleText)
 	b.bot.Handle(telebot.OnPhoto, b.handlePhoto)
 
