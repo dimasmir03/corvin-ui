@@ -21,7 +21,7 @@ func (b *Bot) isAdmin(tgID int64) bool {
 	return false
 }
 
-func (b *Bot) adminOnly(handler string, next telebot.HandlerFunc) telebot.HandlerFunc {
+func (b *Bot) adminMiddleware(next telebot.HandlerFunc) telebot.HandlerFunc {
 	return func(c telebot.Context) error {
 		sender := c.Sender()
 		logMsg := "admin command ignored for non-admin"
@@ -29,11 +29,11 @@ func (b *Bot) adminOnly(handler string, next telebot.HandlerFunc) telebot.Handle
 			logMsg = "admin callback ignored for non-admin"
 		}
 		if sender == nil {
-			b.logger.Warn(logMsg, "handler", handler)
+			b.logger.Debug(logMsg)
 			return nil
 		}
 		if !b.isAdmin(sender.ID) {
-			b.logger.Warn(logMsg, "tg_id", sender.ID, "handler", handler)
+			b.logger.Debug(logMsg, "tg_id", sender.ID)
 			return nil
 		}
 		return next(c)

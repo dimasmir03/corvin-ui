@@ -7,6 +7,11 @@ func (b *Bot) registerHandlers() {
 		return
 	}
 
+	b.registerUserHandlers()
+	b.registerAdminHandlers()
+}
+
+func (b *Bot) registerUserHandlers() {
 	b.bot.Handle("/ping", b.handlePing)
 	b.bot.Handle("/start", b.handleStart)
 	b.bot.Handle("/id", b.handleID)
@@ -17,7 +22,6 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle("/instruction", b.handleInstruction)
 	b.bot.Handle("/help", b.handleHelp)
 	b.bot.Handle("/cancel", b.handleCancel)
-	b.registerAdminHandlers()
 	b.bot.Handle(telebot.OnText, b.handleText)
 	b.bot.Handle(telebot.OnPhoto, b.handlePhoto)
 
@@ -38,10 +42,9 @@ func (b *Bot) registerHandlers() {
 }
 
 func (b *Bot) registerAdminHandlers() {
-	if b == nil || b.bot == nil {
-		return
-	}
+	admin := b.bot.Group()
+	admin.Use(b.adminMiddleware)
 
-	b.bot.Handle("/getusers", b.adminOnly("getusers", b.handleGetUsers))
-	b.bot.Handle(&btnSupportReply, b.adminOnly("support_reply", b.handleSupportReplyStart))
+	admin.Handle("/getusers", b.handleGetUsers)
+	admin.Handle(&btnSupportReply, b.handleSupportReplyStart)
 }
