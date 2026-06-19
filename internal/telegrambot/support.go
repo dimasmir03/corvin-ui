@@ -2,6 +2,7 @@ package telegrambot
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"vpnpanel/internal/service"
@@ -97,15 +98,37 @@ func (b *Bot) handleSupportPhoto(c telebot.Context) error {
 		caption = "Фото без описания"
 	}
 
-	complaint, err := b.deps.Support.CreateComplaint(service.CreateComplaintInput{
-		TgID:        sender.ID,
-		Text:        caption,
-		PhotoFileID: message.Photo.FileID,
-	})
+	photoFile := message.Photo.File
+	reader, err := b.bot.File(&photoFile)
 	if err != nil {
-		b.logger.Error("support photo complaint create failed", err, "tg_id", sender.ID)
+		b.logger.Error("support complaint photo download failed", err, "tg_id", sender.ID)
 		return c.Send(msgSupportCreateFailed)
 	}
+	defer reader.Close()
+
+	photoBytes, err := io.ReadAll(reader)
+	if err != nil {
+		b.logger.Error("support complaint photo download failed", err, "tg_id", sender.ID)
+		return c.Send(msgSupportCreateFailed)
+	}
+
+	b.logger.Info("support complaint photo upload started", "tg_id", sender.ID, "has_photo", true)
+	complaint, err := b.deps.Support.CreateComplaint(service.CreateComplaintInput{
+		TgID: sender.ID,
+		Text: caption,
+		Photo: &service.ComplaintPhotoInput{
+			FileName:       message.Photo.UniqueID + ".jpg",
+			MimeType:       "image/jpeg",
+			Data:           photoBytes,
+			TelegramFileID: message.Photo.FileID,
+			TelegramUnique: message.Photo.UniqueID,
+		},
+	})
+	if err != nil {
+		b.logger.Error("support complaint photo upload failed", err, "tg_id", sender.ID)
+		return c.Send(msgSupportCreateFailed)
+	}
+	b.logger.Info("support complaint photo uploaded", "tg_id", sender.ID, "complaint_id", complaint.ID, "photo_object_key", complaint.PhotoObjectKey)
 
 	b.state.ClearMode(sender.ID)
 	b.logger.Info("support photo complaint created", "tg_id", sender.ID, "complaint_id", complaint.ID, "has_photo", complaint.Photo)

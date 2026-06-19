@@ -203,9 +203,11 @@ func (c *TelegramRepo) CreateComplaint(tgID int64, username, text string) (model
 func (c *TelegramRepo) UpdateComplaintPhotoURL(id uint, photoURL string) error {
 	return c.DB.Model(&models.Complaint{}).
 		Where("id = ?", id).
-		Update("photo", true).
-		Update("photo_url", photoURL).
-		Error
+		Updates(map[string]any{
+			"photo":            true,
+			"photo_url":        photoURL,
+			"photo_object_key": photoURL,
+		}).Error
 }
 
 // Update complaint

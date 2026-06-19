@@ -33,6 +33,21 @@ func (c *ComplaintRepository) Update(complaint *models.Complaint) error {
 	return c.DB.Save(complaint).Error
 }
 
+func (c *ComplaintRepository) SetPhoto(id uint, objectKey string, photoURL string, telegramFileID string) (models.Complaint, error) {
+	updates := map[string]any{
+		"photo":            true,
+		"photo_object_key": objectKey,
+		"photo_url":        photoURL,
+		"photo_file_id":    telegramFileID,
+	}
+
+	if err := c.DB.Model(&models.Complaint{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		return models.Complaint{}, err
+	}
+
+	return c.GetByID(id)
+}
+
 func (c *ComplaintRepository) UpdateReply(id uint, reply string) error {
 	_, err := c.SetReply(id, reply, 0)
 	return err

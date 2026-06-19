@@ -19,7 +19,7 @@ func NewMediaController(repo *repository.StorageRepo) *MediaController {
 }
 
 func (s MediaController) Register(r *gin.RouterGroup) {
-	r.GET("/:path", s.GetFile)
+	r.GET("/*path", s.GetFile)
 }
 
 type MediaPath struct {
