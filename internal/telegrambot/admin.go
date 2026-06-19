@@ -21,13 +21,28 @@ func (b *Bot) isAdmin(tgID int64) bool {
 	return false
 }
 
+func (b *Bot) adminOnly(handler string, next telebot.HandlerFunc) telebot.HandlerFunc {
+	return func(c telebot.Context) error {
+		sender := c.Sender()
+		logMsg := "admin command ignored for non-admin"
+		if c.Callback() != nil {
+			logMsg = "admin callback ignored for non-admin"
+		}
+		if sender == nil {
+			b.logger.Warn(logMsg, "handler", handler)
+			return nil
+		}
+		if !b.isAdmin(sender.ID) {
+			b.logger.Warn(logMsg, "tg_id", sender.ID, "handler", handler)
+			return nil
+		}
+		return next(c)
+	}
+}
+
 func (b *Bot) handleGetUsers(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
-		return nil
-	}
-	if !b.isAdmin(sender.ID) {
-		b.logger.Warn("admin getusers access denied", "admin_tg_id", sender.ID)
 		return nil
 	}
 

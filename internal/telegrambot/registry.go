@@ -17,7 +17,7 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle("/instruction", b.handleInstruction)
 	b.bot.Handle("/help", b.handleHelp)
 	b.bot.Handle("/cancel", b.handleCancel)
-	b.bot.Handle("/getusers", b.handleGetUsers)
+	b.registerAdminHandlers()
 	b.bot.Handle(telebot.OnText, b.handleText)
 	b.bot.Handle(telebot.OnPhoto, b.handlePhoto)
 
@@ -35,5 +35,13 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle(&btnInstructionPrev, b.handleInstructionPrev)
 	b.bot.Handle(&btnInstructionMenu, b.handleInstructionMenu)
 	b.bot.Handle(&btnSupportCancel, b.handleSupportCancel)
-	b.bot.Handle(&btnSupportReply, b.handleSupportReplyStart)
+}
+
+func (b *Bot) registerAdminHandlers() {
+	if b == nil || b.bot == nil {
+		return
+	}
+
+	b.bot.Handle("/getusers", b.adminOnly("getusers", b.handleGetUsers))
+	b.bot.Handle(&btnSupportReply, b.adminOnly("support_reply", b.handleSupportReplyStart))
 }
