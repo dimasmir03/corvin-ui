@@ -86,10 +86,15 @@ const (
 )
 
 const (
-	msgSupportPrompt           = "Напишите ваше обращение одним сообщением.\nМожно описать проблему текстом."
-	msgSupportSent             = "✅ Обращение отправлено в поддержку."
-	msgSupportCreateFailed     = "Не удалось отправить обращение. Попробуйте позже."
-	msgSupportCanceled         = "Обращение отменено."
-	msgSupportReplyPlaceholder = "Ответ на обращение будет подключён следующим шагом."
-	msgUnknownText             = "Выберите действие в меню."
+	msgSupportPrompt               = "Напишите ваше обращение одним сообщением.\nМожно описать проблему текстом."
+	msgSupportSent                 = "✅ Обращение отправлено в поддержку."
+	msgSupportCreateFailed         = "Не удалось отправить обращение. Попробуйте позже."
+	msgSupportCanceled             = "Обращение отменено."
+	msgSupportReplyPrompt          = "Напишите ответ на обращение #%d."
+	msgSupportReplySent            = "✅ Ответ отправлен пользователю."
+	msgSupportReplySavedSendFailed = "Ответ сохранён, но не удалось отправить сообщение пользователю."
+	msgSupportReplyFailed          = "Не удалось сохранить ответ. Попробуйте позже."
+	msgSupportReplyCanceled        = "Ответ отменён."
+	msgAccessDenied                = "Нет доступа."
+	msgUnknownText                 = "Выберите действие в меню."
 )

@@ -11,6 +11,8 @@ func (b *Bot) handleText(c telebot.Context) error {
 	switch b.state.GetMode(sender.ID) {
 	case ModeSupport:
 		return b.handleSupportText(c)
+	case ModeSupportReply:
+		return b.handleSupportReplyText(c)
 	default:
 		return b.handleUnknownText(c)
 	}

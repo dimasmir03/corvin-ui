@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
@@ -15,6 +16,18 @@ type CreateComplaintInput struct {
 	TgID      int64
 	Text      string
 	PhotoFile string
+}
+
+type ReplyToComplaintInput struct {
+	AdminTgID   int64
+	ComplaintID uint
+	Text        string
+}
+
+type SupportReplyResult struct {
+	ComplaintID uint
+	UserTgID    int64
+	Text        string
 }
 
 func NewSupportService(telegramRepo *repository.TelegramRepo, complaintRepo *repository.ComplaintRepository) *SupportService {
@@ -51,4 +64,36 @@ func (s *SupportService) CreateComplaint(input CreateComplaintInput) (models.Com
 		return models.Complaint{}, err
 	}
 	return *complaint, nil
+}
+
+func (s *SupportService) ReplyToComplaint(input ReplyToComplaintInput) (*SupportReplyResult, error) {
+	replyText := strings.TrimSpace(input.Text)
+	if replyText == "" {
+		return nil, errors.New("reply text is empty")
+	}
+
+	complaint, err := s.complaintRepo.GetByID(input.ComplaintID)
+	if err != nil {
+		return nil, err
+	}
+
+	complaint, err = s.complaintRepo.SetReply(complaint.ID, replyText, input.AdminTgID)
+	if err != nil {
+		return nil, err
+	}
+
+	userTgID := complaint.TgID
+	if complaint.UserID != 0 {
+		telegram, err := s.telegramRepo.GetByUserID(complaint.UserID)
+		if err != nil {
+			return nil, err
+		}
+		userTgID = telegram.TgID
+	}
+
+	return &SupportReplyResult{
+		ComplaintID: complaint.ID,
+		UserTgID:    userTgID,
+		Text:        replyText,
+	}, nil
 }

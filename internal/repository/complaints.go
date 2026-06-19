@@ -34,12 +34,21 @@ func (c *ComplaintRepository) Update(complaint *models.Complaint) error {
 }
 
 func (c *ComplaintRepository) UpdateReply(id uint, reply string) error {
-	return c.DB.Model(&models.Complaint{}).
-		Where("id = ?", id).
-		Updates(map[string]any{
-			"reply":  reply,
-			"status": "resolved",
-		}).Error
+	_, err := c.SetReply(id, reply, 0)
+	return err
+}
+
+func (c *ComplaintRepository) SetReply(id uint, replyText string, adminTgID int64) (models.Complaint, error) {
+	updates := map[string]any{
+		"reply":  replyText,
+		"status": "resolved",
+	}
+
+	if err := c.DB.Model(&models.Complaint{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		return models.Complaint{}, err
+	}
+
+	return c.GetByID(id)
 }
 
 func (c *ComplaintRepository) Delete(id uint) error {

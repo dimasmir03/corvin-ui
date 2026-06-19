@@ -18,6 +18,7 @@ const (
 	callbackInstructionMenu = "instruction:menu"
 
 	callbackSupportCancel = "support:cancel"
+	callbackSupportReply  = "support:reply"
 )
 
 var (
@@ -45,6 +46,7 @@ var (
 	supportMarkup = &telebot.ReplyMarkup{}
 
 	btnSupportCancel = supportMarkup.Data("❌ Отмена", callbackSupportCancel)
+	btnSupportReply  = supportMarkup.Data("Ответить", callbackSupportReply)
 )
 
 func startMenu() *telebot.ReplyMarkup {

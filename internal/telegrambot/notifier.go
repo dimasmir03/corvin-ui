@@ -51,13 +51,28 @@ func (n *Notifier) SendSupportAdminNotification(adminIDs []int64, data SupportAd
 		n.logger.Info("support admin notification skipped", "complaint_id", data.ComplaintID)
 		return nil
 	}
+	if n == nil || n.bot == nil {
+		return ErrNotifierDisabled
+	}
+
+	markup := &telebot.ReplyMarkup{}
+	btnReply := markup.Data("Ответить", callbackSupportReply, fmt.Sprint(data.ComplaintID))
+	markup.Inline(markup.Row(btnReply))
 
 	message := fmt.Sprintf("💬 Новое обращение в поддержку\n\nID: %d\nПользователь: @%s / %d\n\nТекст:\n%s", data.ComplaintID, data.Username, data.TgID, data.Text)
-	if err := n.SendText(adminIDs[0], message); err != nil {
-		return err
+	var firstErr error
+	for _, adminID := range adminIDs {
+		if _, err := n.bot.Send(telebot.ChatID(adminID), message, markup); err != nil {
+			n.logger.Error("support admin notification failed", err, "complaint_id", data.ComplaintID, "admin_id", adminID)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		n.logger.Info("support admin notification sent", "complaint_id", data.ComplaintID, "admin_id", adminID)
 	}
-	n.logger.Info("support admin notification sent", "complaint_id", data.ComplaintID, "admin_id", adminIDs[0])
-	return nil
+
+	return firstErr
 }
 
 func (n *Notifier) SendSupportReply(tgID int64, text string) error {

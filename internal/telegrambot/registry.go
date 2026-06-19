@@ -30,4 +30,5 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle(&btnInstructionPrev, b.handleInstructionPrev)
 	b.bot.Handle(&btnInstructionMenu, b.handleInstructionMenu)
 	b.bot.Handle(&btnSupportCancel, b.handleSupportCancel)
+	b.bot.Handle(&btnSupportReply, b.handleSupportReplyStart)
 }
