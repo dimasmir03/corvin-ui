@@ -70,6 +70,7 @@ type SessionConfig struct {
 type DefaultsConfig struct {
 	AMQPExchangeComplaints string
 	AMQPExchangeUsers      string
+	AMQPExchangeCommands   string
 	CertFile               string
 	KeyFile                string
 	CAFile                 string
@@ -118,6 +119,7 @@ func Load() (Config, error) {
 		Defaults: DefaultsConfig{
 			AMQPExchangeComplaints: getEnv("AMQP_EXCHANGE_COMPLAINTS", "vpn.complaints"),
 			AMQPExchangeUsers:      getEnv("AMQP_EXCHANGE_USERS", "vpn.users"),
+			AMQPExchangeCommands:   getEnv("AMQP_EXCHANGE_COMMANDS", "corvin.commands"),
 			CertFile:               getEnv("CERT_FILE", "/opt/corvin-ui/cert/cert.pem"),
 			KeyFile:                getEnv("KEY_FILE", "/opt/corvin-ui/cert/key.pem"),
 			CAFile:                 getEnv("CA_FILE", "/opt/corvin-ui/cert/ca.pem"),
@@ -156,6 +158,7 @@ func (c Config) DefaultSettings() map[string]string {
 	return map[string]string{
 		"amqp_exchange_complaints": c.Defaults.AMQPExchangeComplaints,
 		"amqp_exchange_users":      c.Defaults.AMQPExchangeUsers,
+		"amqp_exchange_commands":   c.Defaults.AMQPExchangeCommands,
 		"minio_access_key":         c.MinIO.AccessKey,
 		"minio_bucket":             c.MinIO.Bucket,
 		"minio_endpoint":           c.MinIO.Endpoint,

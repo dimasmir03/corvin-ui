@@ -17,13 +17,15 @@ type Producer struct {
 	publisherComplaints *rabbitmq.Publisher
 	publisherUsers      *rabbitmq.Publisher
 	publisherJobs       *rabbitmq.Publisher
+	publisherCommands   *rabbitmq.Publisher
 
 	exchangeComplaints string
 	exchangeUsers      string
 	exchangeJobs       string
+	exchangeCommands   string
 }
 
-func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafile string) (*Producer, error) {
+func NewProducer(url, exchangeComplaints, exchangeUsers, exchangeCommands, certfile, keyfile, cafile string) (*Producer, error) {
 	rootCAs, err := loadRootCAs(cafile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load root CAs: %w", err)
@@ -85,14 +87,27 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, certfile, keyfile, cafi
 		return nil, fmt.Errorf("failed to create publisher for jobs: %w", err)
 	}
 
+	publisherCommands, err := rabbitmq.NewPublisher(
+		conn,
+		rabbitmq.WithPublisherOptionsExchangeName(exchangeCommands),
+		rabbitmq.WithPublisherOptionsExchangeKind("topic"),
+		rabbitmq.WithPublisherOptionsExchangeDeclare,
+		rabbitmq.WithPublisherOptionsLogging,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create publisher for commands: %w", err)
+	}
+
 	return &Producer{
 		conn:                conn,
 		publisherComplaints: publisherComplaints,
 		publisherUsers:      publisherUsers,
 		publisherJobs:       publisherJobs,
+		publisherCommands:   publisherCommands,
 		exchangeComplaints:  exchangeComplaints,
 		exchangeUsers:       exchangeUsers,
 		exchangeJobs:        exchangeJobs,
+		exchangeCommands:    exchangeCommands,
 	}, nil
 }
 
@@ -106,6 +121,17 @@ func (p *Producer) PublishCreateUser(msg any) error {
 
 func (p *Producer) PublishJob(msg JobTask) error {
 	return p.publish(p.publisherJobs, p.exchangeJobs, msg)
+}
+
+func (p *Producer) PublishCollectSnapshotCommand(msg CollectSnapshotCommand) error {
+	routingKey := "collect.node." + msg.TargetNodeID
+	if msg.TargetNodeID == "" && msg.TargetGroup != "" {
+		routingKey = "collect.group." + msg.TargetGroup
+	}
+	if msg.TargetNodeID == "" && msg.TargetGroup == "" {
+		routingKey = "collect.group.all"
+	}
+	return p.publishWithRoutingKey(p.publisherCommands, p.exchangeCommands, routingKey, msg)
 }
 
 func (p *Producer) StartResultConsumer(queue string, handler func(JobResultEvent) error) (*rabbitmq.Consumer, error) {
@@ -224,6 +250,10 @@ func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, s
 }
 
 func (p *Producer) publish(pub *rabbitmq.Publisher, exchange string, msg any) error {
+	return p.publishWithRoutingKey(pub, exchange, "", msg)
+}
+
+func (p *Producer) publishWithRoutingKey(pub *rabbitmq.Publisher, exchange, routingKey string, msg any) error {
 	if p == nil || pub == nil {
 		return fmt.Errorf("rabbitmq publisher is not initialized")
 	}
@@ -235,7 +265,7 @@ func (p *Producer) publish(pub *rabbitmq.Publisher, exchange string, msg any) er
 
 	return pub.Publish(
 		data,
-		[]string{""},
+		[]string{routingKey},
 		rabbitmq.WithPublishOptionsContentType("application/json"),
 		rabbitmq.WithPublishOptionsExchange(exchange),
 	)
@@ -250,6 +280,9 @@ func (p *Producer) Close() {
 	}
 	if p.publisherJobs != nil {
 		p.publisherJobs.Close()
+	}
+	if p.publisherCommands != nil {
+		p.publisherCommands.Close()
 	}
 	if p.conn != nil {
 		p.conn.Close()
@@ -272,7 +305,7 @@ func loadRootCAs(cafile string) (*x509.CertPool, error) {
 }
 
 func (p *Producer) IsReady() bool {
-	return p != nil && p.conn != nil && p.publisherComplaints != nil && p.publisherUsers != nil && p.publisherJobs != nil
+	return p != nil && p.conn != nil && p.publisherComplaints != nil && p.publisherUsers != nil && p.publisherJobs != nil && p.publisherCommands != nil
 }
 
 func IsReady() bool {

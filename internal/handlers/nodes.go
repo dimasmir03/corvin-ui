@@ -20,6 +20,7 @@ func (h *NodesController) Register(r *gin.RouterGroup) {
 	r.GET("", h.ListNodes)
 	r.GET("/", h.ListNodes)
 	r.GET("/:node_id", h.GetNode)
+	r.POST("/:node_id/refresh", h.RefreshNode)
 }
 
 func (h *NodesController) ListNodes(c *gin.Context) {
@@ -43,4 +44,18 @@ func (h *NodesController) GetNode(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, Response{Success: true, Obj: node})
+}
+
+func (h *NodesController) RefreshNode(c *gin.Context) {
+	nodeID := strings.TrimSpace(c.Param("node_id"))
+	if nodeID == "" {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: "node_id is required"})
+		return
+	}
+	result, err := h.nodes.RequestSnapshot(c.Request.Context(), nodeID, "admin")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }

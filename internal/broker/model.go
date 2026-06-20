@@ -107,3 +107,12 @@ type NodeSnapshotEvent struct {
 	LastError     string    `json:"last_error,omitempty"`
 	SentAt        time.Time `json:"sent_at"`
 }
+
+type CollectSnapshotCommand struct {
+	EventType    string    `json:"event_type"`
+	CommandID    string    `json:"command_id"`
+	TargetNodeID string    `json:"target_node_id,omitempty"`
+	TargetGroup  string    `json:"target_group,omitempty"`
+	RequestedBy  string    `json:"requested_by,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+}

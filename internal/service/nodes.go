@@ -6,8 +6,11 @@ import (
 	"strings"
 	"time"
 	"vpnpanel/internal/broker"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -17,13 +20,60 @@ const (
 	nodeStaleWindow  = 5 * time.Minute
 )
 
-type NodeService struct {
-	nodeRepo *repository.NodeRepo
-	now      func() time.Time
+type SnapshotCommandPublisher interface {
+	PublishCollectSnapshotCommand(msg broker.CollectSnapshotCommand) error
 }
 
-func NewNodeService(nodeRepo *repository.NodeRepo) *NodeService {
-	return &NodeService{nodeRepo: nodeRepo, now: time.Now}
+type RequestSnapshotResult struct {
+	CommandID string `json:"command_id"`
+	NodeID    string `json:"node_id"`
+	Status    string `json:"status"`
+}
+
+type NodeService struct {
+	nodeRepo  *repository.NodeRepo
+	publisher SnapshotCommandPublisher
+	now       func() time.Time
+}
+
+func NewNodeService(nodeRepo *repository.NodeRepo, publisher SnapshotCommandPublisher) *NodeService {
+	return &NodeService{nodeRepo: nodeRepo, publisher: publisher, now: time.Now}
+}
+
+func (s *NodeService) RequestSnapshot(ctx context.Context, nodeID string, requestedBy string) (RequestSnapshotResult, error) {
+	_ = ctx
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return RequestSnapshotResult{}, fmt.Errorf("node_id is required")
+	}
+	if requestedBy == "" {
+		requestedBy = "admin"
+	}
+	if _, err := s.nodeRepo.GetByNodeID(nodeID); err != nil {
+		return RequestSnapshotResult{}, err
+	}
+	if s.publisher == nil {
+		return RequestSnapshotResult{}, fmt.Errorf("snapshot command publisher is not initialized")
+	}
+
+	commandID := uuid.NewString()
+	cmd := broker.CollectSnapshotCommand{
+		EventType:    "collect_snapshot",
+		CommandID:    commandID,
+		TargetNodeID: nodeID,
+		RequestedBy:  requestedBy,
+		CreatedAt:    s.now().UTC(),
+	}
+
+	loggerFields := []any{"command_id", commandID, "node_id", nodeID, "requested_by", requestedBy}
+	logger.Info("node snapshot refresh requested", loggerFields...)
+	if err := s.publisher.PublishCollectSnapshotCommand(cmd); err != nil {
+		logger.Error("node snapshot refresh publish failed", err, loggerFields...)
+		return RequestSnapshotResult{}, err
+	}
+	logger.Info("node snapshot refresh command published", loggerFields...)
+
+	return RequestSnapshotResult{CommandID: commandID, NodeID: nodeID, Status: "queued"}, nil
 }
 
 func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapshotEvent) (models.NodeState, bool, error) {

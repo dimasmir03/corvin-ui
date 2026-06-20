@@ -21,6 +21,7 @@ func NewPanelController() *PanelController {
 func (s PanelController) Register(r *gin.RouterGroup) {
 	r.GET("/", s.DashboardHandler)
 	r.GET("/servers", s.ServersPage)
+	r.GET("/nodes", s.NodesRedirect)
 	r.GET("/servers/new", s.NewServerPage)
 	r.GET("/servers/edit/:id", s.EditServerPage)
 
@@ -104,6 +105,10 @@ func (s PanelController) ServersPage(c *gin.Context) {
 		c.Error(err)
 		return
 	}
+}
+
+func (s PanelController) NodesRedirect(c *gin.Context) {
+	c.Redirect(http.StatusFound, "/panel/servers")
 }
 
 // NewServerPage renders the server add page template, allowing the user to create a new server in the database.
