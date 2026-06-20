@@ -72,24 +72,36 @@ func startMenu() *telebot.ReplyMarkup {
 	return menuMarkup
 }
 
-func vpnMenu() *telebot.ReplyMarkup {
-	vpnMarkup.Inline(
-		vpnMarkup.Row(btnVPNVLESS),
-		vpnMarkup.Row(btnVPNTrojan),
-		vpnMarkup.Row(btnCreateVLESS),
-		vpnMarkup.Row(btnCreateTrojan),
-		vpnMarkup.Row(btnMainMenu),
-	)
+func vpnMenu(hasVless bool, hasTrojan bool) *telebot.ReplyMarkup {
+	rows := make([]telebot.Row, 0, 5)
+	if hasVless {
+		rows = append(rows, vpnMarkup.Row(btnVPNVLESS))
+	}
+	if hasTrojan {
+		rows = append(rows, vpnMarkup.Row(btnVPNTrojan))
+	}
+	if !hasVless {
+		rows = append(rows, vpnMarkup.Row(btnCreateVLESS))
+	}
+	if !hasTrojan {
+		rows = append(rows, vpnMarkup.Row(btnCreateTrojan))
+	}
+	rows = append(rows, vpnMarkup.Row(btnMainMenu))
+	vpnMarkup.Inline(rows...)
 
 	return vpnMarkup
 }
 
-func vpnCreateMenu() *telebot.ReplyMarkup {
-	vpnCreateMarkup.Inline(
-		vpnCreateMarkup.Row(btnCreateVLESS),
-		vpnCreateMarkup.Row(btnCreateTrojan),
-		vpnCreateMarkup.Row(btnMainMenu),
-	)
+func vpnCreateMenu(hasVless bool, hasTrojan bool) *telebot.ReplyMarkup {
+	rows := make([]telebot.Row, 0, 3)
+	if !hasVless {
+		rows = append(rows, vpnCreateMarkup.Row(btnCreateVLESS))
+	}
+	if !hasTrojan {
+		rows = append(rows, vpnCreateMarkup.Row(btnCreateTrojan))
+	}
+	rows = append(rows, vpnCreateMarkup.Row(btnMainMenu))
+	vpnCreateMarkup.Inline(rows...)
 
 	return vpnCreateMarkup
 }
