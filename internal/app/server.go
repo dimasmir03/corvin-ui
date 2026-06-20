@@ -119,14 +119,14 @@ func NewServer(cfg config.Config) (*Server, error) {
 		agentEventsConsumer, err := broker.GlobalProducer.StartAgentEventConsumer(
 			cfg.RabbitMQ.EventsExchange,
 			cfg.RabbitMQ.EventsQueue,
-			cfg.RabbitMQ.HeartbeatRouting,
-			func(event broker.NodeHeartbeatEvent) error {
-				_, err := nodeService.ApplyHeartbeat(context.Background(), event)
-				return err
+			cfg.RabbitMQ.EventsRouting,
+			func(event broker.NodeSnapshotEvent) (bool, error) {
+				_, stale, err := nodeService.ApplySnapshot(context.Background(), event)
+				return stale, err
 			},
 		)
 		if err != nil {
-			logger.Error("failed to start RabbitMQ agent events consumer", err, "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.HeartbeatRouting)
+			logger.Error("failed to start RabbitMQ agent events consumer", err, "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.EventsRouting)
 		} else {
 			s.AgentEventsConsumer = agentEventsConsumer
 		}
@@ -173,7 +173,7 @@ func (s *Server) CronStart() {
 		return
 	}
 
-	projectlogger.Println("legacy online polling cron disabled; node monitoring uses agent heartbeat events")
+	projectlogger.Println("legacy online polling cron disabled; node monitoring uses agent snapshot events")
 	s.Cron.AddFunc("@daily", func() {
 		s.ServersService.ClearStats()
 	})

@@ -151,7 +151,7 @@ func (p *Producer) StartResultConsumer(queue string, handler func(JobResultEvent
 	return consumer, nil
 }
 
-func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, handler func(NodeHeartbeatEvent) error) (*rabbitmq.Consumer, error) {
+func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, snapshotHandler func(NodeSnapshotEvent) (bool, error)) (*rabbitmq.Consumer, error) {
 	if p == nil || p.conn == nil {
 		return nil, fmt.Errorf("rabbitmq connection is not initialized")
 	}
@@ -162,7 +162,7 @@ func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, h
 		return nil, fmt.Errorf("events queue is required")
 	}
 	if routingKey == "" {
-		routingKey = "node.heartbeat"
+		routingKey = "node.snapshot"
 	}
 
 	consumer, err := rabbitmq.NewConsumer(
@@ -187,27 +187,32 @@ func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, h
 				EventType string `json:"event_type"`
 			}
 			if err := json.Unmarshal(d.Body, &envelope); err != nil {
-				logger.Error("panel node heartbeat invalid", err)
+				logger.Error("panel node snapshot invalid", err)
 				return rabbitmq.Ack
 			}
-			if envelope.EventType != "node_heartbeat" {
+			if envelope.EventType != "node_snapshot" {
 				logger.Info("panel agent event ignored", "event_type", envelope.EventType)
 				return rabbitmq.Ack
 			}
 
-			var event NodeHeartbeatEvent
+			var event NodeSnapshotEvent
 			if err := json.Unmarshal(d.Body, &event); err != nil {
-				logger.Error("panel node heartbeat invalid", err, "event_type", envelope.EventType)
+				logger.Error("panel node snapshot invalid", err, "event_type", envelope.EventType)
 				return rabbitmq.Ack
 			}
 
-			logger.Info("panel agent event received", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "sent_at", event.SentAt)
-			if err := handler(event); err != nil {
-				logger.Error("panel node heartbeat apply failed", err, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "sent_at", event.SentAt)
+			logger.Info("panel node snapshot received", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+			stale, err := snapshotHandler(event)
+			if err != nil {
+				logger.Error("panel node snapshot apply failed", err, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
 				return rabbitmq.NackRequeue
 			}
+			if stale {
+				logger.Info("panel node snapshot ignored as stale", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+				return rabbitmq.Ack
+			}
 
-			logger.Info("panel node heartbeat applied", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "sent_at", event.SentAt)
+			logger.Info("panel node snapshot applied", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
 			return rabbitmq.Ack
 		})
 		if err != nil {

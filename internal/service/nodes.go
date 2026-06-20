@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	NodeHeartbeatEventType = "node_heartbeat"
+	NodeSnapshotEventType = "node_snapshot"
 
 	nodeOnlineWindow = 2 * time.Minute
 	nodeStaleWindow  = 5 * time.Minute
@@ -26,51 +26,50 @@ func NewNodeService(nodeRepo *repository.NodeRepo) *NodeService {
 	return &NodeService{nodeRepo: nodeRepo, now: time.Now}
 }
 
-func (s *NodeService) ApplyHeartbeat(ctx context.Context, event broker.NodeHeartbeatEvent) (models.NodeState, error) {
+func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapshotEvent) (models.NodeState, bool, error) {
 	_ = ctx
-	if strings.TrimSpace(event.EventType) != NodeHeartbeatEventType {
-		return models.NodeState{}, fmt.Errorf("unsupported event_type %q", event.EventType)
+	if strings.TrimSpace(event.EventType) != NodeSnapshotEventType {
+		return models.NodeState{}, false, fmt.Errorf("unsupported event_type %q", event.EventType)
 	}
 	nodeID := strings.TrimSpace(event.NodeID)
 	if nodeID == "" {
-		return models.NodeState{}, fmt.Errorf("node_id is required")
+		return models.NodeState{}, false, fmt.Errorf("node_id is required")
 	}
 	endpointGroup := strings.TrimSpace(event.EndpointGroup)
 	if endpointGroup == "" {
-		return models.NodeState{}, fmt.Errorf("endpoint_group is required")
+		return models.NodeState{}, false, fmt.Errorf("endpoint_group is required")
 	}
 	protocol := strings.TrimSpace(event.Protocol)
 	if protocol == "" {
-		return models.NodeState{}, fmt.Errorf("protocol is required")
+		return models.NodeState{}, false, fmt.Errorf("protocol is required")
 	}
 
-	status := strings.TrimSpace(event.Status)
-	if status == "" {
-		status = models.ServerStatusOnline
-	}
-
-	now := s.now().UTC()
-	var sentAt *time.Time
+	snapshotAt := s.now().UTC()
 	if !event.SentAt.IsZero() {
-		value := event.SentAt.UTC()
-		sentAt = &value
+		snapshotAt = event.SentAt.UTC()
 	}
 
-	node, err := s.nodeRepo.UpsertHeartbeat(repository.NodeHeartbeatUpdate{
-		NodeID:        nodeID,
-		EndpointGroup: endpointGroup,
-		Protocol:      protocol,
-		AgentVersion:  strings.TrimSpace(event.AgentVersion),
-		Status:        status,
-		LastSeenAt:    now,
-		LastError:     event.LastError,
-		SentAt:        sentAt,
+	node, stale, err := s.nodeRepo.ApplySnapshot(repository.NodeSnapshotUpdate{
+		NodeID:         nodeID,
+		EndpointGroup:  endpointGroup,
+		Protocol:       protocol,
+		AgentVersion:   strings.TrimSpace(event.AgentVersion),
+		XUIAvailable:   event.XUIAvailable,
+		InboundID:      event.InboundID,
+		InboundRemark:  strings.TrimSpace(event.InboundRemark),
+		ClientsCount:   event.ClientsCount,
+		OnlineCount:    event.OnlineCount,
+		TrafficUp:      event.TrafficUp,
+		TrafficDown:    event.TrafficDown,
+		LastError:      event.LastError,
+		LastSeenAt:     snapshotAt,
+		LastSnapshotAt: snapshotAt,
 	})
 	if err != nil {
-		return models.NodeState{}, err
+		return models.NodeState{}, false, err
 	}
 	node.Status = s.CalculateStatus(node.LastSeenAt)
-	return node, nil
+	return node, stale, nil
 }
 
 func (s *NodeService) ListNodes(ctx context.Context) ([]models.NodeState, error) {

@@ -91,17 +91,25 @@ type NodeStatsSnapshot struct {
 }
 
 type NodeState struct {
-	ID            uint       `gorm:"primary_key;autoIncrement" json:"id"`
-	NodeID        string     `gorm:"uniqueIndex;not null" json:"node_id"`
-	EndpointGroup string     `gorm:"not null;index" json:"endpoint_group"`
-	Protocol      string     `gorm:"not null;index" json:"protocol"`
-	AgentVersion  string     `json:"agent_version"`
-	Status        string     `gorm:"not null;index" json:"status"`
-	LastSeenAt    time.Time  `gorm:"not null;index" json:"last_seen"`
-	LastError     string     `json:"last_error"`
-	SentAt        *time.Time `json:"sent_at,omitempty"`
-	CreatedAt     time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt     time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	ID             uint       `gorm:"primary_key;autoIncrement" json:"id"`
+	NodeID         string     `gorm:"uniqueIndex;not null" json:"node_id"`
+	EndpointGroup  string     `gorm:"not null;index" json:"endpoint_group"`
+	Protocol       string     `gorm:"not null;index" json:"protocol"`
+	AgentVersion   string     `json:"agent_version"`
+	Status         string     `gorm:"not null;index" json:"status"`
+	LastSeenAt     time.Time  `gorm:"not null;index" json:"last_seen"`
+	LastSnapshotAt *time.Time `gorm:"index" json:"last_snapshot_at,omitempty"`
+	XUIAvailable   *bool      `json:"xui_available,omitempty"`
+	InboundID      *int       `json:"inbound_id,omitempty"`
+	InboundRemark  string     `json:"inbound_remark"`
+	ClientsCount   int        `gorm:"not null;default:0" json:"clients_count"`
+	OnlineCount    int        `gorm:"not null;default:0" json:"online_count"`
+	TrafficUp      int64      `gorm:"not null;default:0" json:"traffic_up"`
+	TrafficDown    int64      `gorm:"not null;default:0" json:"traffic_down"`
+	LastError      string     `json:"last_error"`
+	SentAt         *time.Time `json:"sent_at,omitempty"`
+	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 type Telegram struct {

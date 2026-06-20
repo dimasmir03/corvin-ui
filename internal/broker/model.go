@@ -90,13 +90,20 @@ type JobResultEvent struct {
 	ResultJSON     *json.RawMessage `json:"result_json,omitempty"`
 }
 
-type NodeHeartbeatEvent struct {
+type NodeSnapshotEvent struct {
 	EventType     string    `json:"event_type"`
 	NodeID        string    `json:"node_id"`
 	EndpointGroup string    `json:"endpoint_group"`
 	Protocol      string    `json:"protocol"`
 	AgentVersion  string    `json:"agent_version,omitempty"`
-	Status        string    `json:"status"`
+	AgentAlive    bool      `json:"agent_alive"`
+	InboundID     *int      `json:"inbound_id,omitempty"`
+	InboundRemark string    `json:"inbound_remark,omitempty"`
+	XUIAvailable  bool      `json:"xui_available"`
+	ClientsCount  int       `json:"clients_count"`
+	OnlineCount   int       `json:"online_count"`
+	TrafficUp     int64     `json:"traffic_up"`
+	TrafficDown   int64     `json:"traffic_down"`
 	LastError     string    `json:"last_error,omitempty"`
 	SentAt        time.Time `json:"sent_at"`
 }

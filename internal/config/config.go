@@ -40,11 +40,11 @@ type DBConfig struct {
 }
 
 type RabbitMQConfig struct {
-	URL              string
-	ResultQueue      string
-	EventsExchange   string
-	EventsQueue      string
-	HeartbeatRouting string
+	URL            string
+	ResultQueue    string
+	EventsExchange string
+	EventsQueue    string
+	EventsRouting  string
 }
 
 type TelegramConfig struct {
@@ -92,11 +92,11 @@ func Load() (Config, error) {
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		RabbitMQ: RabbitMQConfig{
-			URL:              getEnv("RABBITMQ_URL", ""),
-			ResultQueue:      getEnv("RABBITMQ_RESULT_QUEUE", "corvin.job.results"),
-			EventsExchange:   getEnv("RABBITMQ_EVENTS_EXCHANGE", "corvin.events"),
-			EventsQueue:      getEnv("RABBITMQ_EVENTS_QUEUE", "corvin.agent.events"),
-			HeartbeatRouting: getEnv("RABBITMQ_HEARTBEAT_ROUTING_KEY", "node.heartbeat"),
+			URL:            getEnv("RABBITMQ_URL", ""),
+			ResultQueue:    getEnv("RABBITMQ_RESULT_QUEUE", "corvin.job.results"),
+			EventsExchange: getEnv("RABBITMQ_EVENTS_EXCHANGE", "corvin.events"),
+			EventsQueue:    getEnv("RABBITMQ_EVENTS_QUEUE", "corvin.agent.events"),
+			EventsRouting:  getEnv("RABBITMQ_EVENTS_ROUTING_KEY", "node.snapshot"),
 		},
 		Telegram: TelegramConfig{
 			Enabled:            getEnvBool("TELEGRAM_ENABLED", false),
