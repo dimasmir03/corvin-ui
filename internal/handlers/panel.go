@@ -3,10 +3,10 @@ package handlers
 import (
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	ui "vpnpanel/internal"
 	"vpnpanel/internal/db"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -34,14 +34,14 @@ func (s PanelController) Register(r *gin.RouterGroup) {
 func renderTemplate(c *gin.Context, files []string, data any) {
 	tmpl, err := template.ParseFS(ui.StaticFS, files...)
 	if err != nil {
-		log.Println("Template parse error:", err)
+		logger.Println("Template parse error:", err)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.ExecuteTemplate(c.Writer, "layout", data)
 	if err != nil {
-		log.Println("Template execute error:", err)
+		logger.Println("Template execute error:", err)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
@@ -61,12 +61,12 @@ type DashboardData struct {
 func (s PanelController) DashboardHandler(c *gin.Context) {
 	var serverCount int64
 	if err := db.DB.Model(&models.Server{}).Count(&serverCount).Error; err != nil {
-		log.Printf("Dashboard server count error: %v", err)
+		logger.Printf("Dashboard server count error: %v", err)
 	}
 
 	var activeUsers int64
 	if err := db.DB.Model(&models.User{}).Where("status = ?", true).Count(&activeUsers).Error; err != nil {
-		log.Printf("Dashboard active users count error: %v", err)
+		logger.Printf("Dashboard active users count error: %v", err)
 	}
 
 	onlineNow := 0
@@ -90,7 +90,7 @@ func (s PanelController) DashboardHandler(c *gin.Context) {
 func (s PanelController) ServersPage(c *gin.Context) {
 	tmpl, err := template.ParseFS(ui.StaticFS, "templates/layout.html", "templates/servers.html")
 	if err != nil {
-		log.Println("Template parse error:", err)
+		logger.Println("Template parse error:", err)
 		c.Error(err)
 		return
 	}
@@ -100,7 +100,7 @@ func (s PanelController) ServersPage(c *gin.Context) {
 	}
 
 	if err := tmpl.ExecuteTemplate(c.Writer, "layout", data); err != nil {
-		log.Println("Template execute error:", err)
+		logger.Println("Template execute error:", err)
 		c.Error(err)
 		return
 	}

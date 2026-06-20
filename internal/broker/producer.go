@@ -5,8 +5,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
+	"vpnpanel/internal/logger"
 
 	"github.com/wagslane/go-rabbitmq"
 )
@@ -132,19 +132,19 @@ func (p *Producer) StartResultConsumer(queue string, handler func(JobResultEvent
 		err := consumer.Run(func(d rabbitmq.Delivery) rabbitmq.Action {
 			var event JobResultEvent
 			if err := json.Unmarshal(d.Body, &event); err != nil {
-				log.Printf("invalid job result event: %v", err)
+				logger.Printf("invalid job result event: %v", err)
 				return rabbitmq.Ack
 			}
 
 			if err := handler(event); err != nil {
-				log.Printf("failed to apply job result event job_id=%d batch_id=%d: %v", event.JobID, event.BatchID, err)
+				logger.Printf("failed to apply job result event job_id=%d batch_id=%d: %v", event.JobID, event.BatchID, err)
 				return rabbitmq.Ack
 			}
 
 			return rabbitmq.Ack
 		})
 		if err != nil {
-			log.Printf("job result consumer stopped: %v", err)
+			logger.Printf("job result consumer stopped: %v", err)
 		}
 	}()
 

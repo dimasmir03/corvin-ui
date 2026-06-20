@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/jobsvc"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 
@@ -177,7 +177,7 @@ func (s ServersController) CreateServer(c *gin.Context) {
 	var req ServerRequest
 
 	if err := c.ShouldBind(&req); err != nil {
-		log.Printf("Failed to bind data: %v\n", err)
+		logger.Printf("Failed to bind data: %v\n", err)
 		c.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to bind server data"})
 		return
 	}
@@ -185,7 +185,7 @@ func (s ServersController) CreateServer(c *gin.Context) {
 	server := req.toModel()
 
 	if err := s.Repo.Create(&server); err != nil {
-		log.Printf("CreateServer db error: %v\n", err)
+		logger.Printf("CreateServer db error: %v\n", err)
 		c.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to create server"})
 		return
 	}

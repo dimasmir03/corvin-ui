@@ -3,8 +3,8 @@ package db
 import (
 	"fmt"
 	"io"
-	"log"
 	"time"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 
 	"gorm.io/driver/postgres"
@@ -25,7 +25,7 @@ type DBOptions struct {
 
 func Init(options DBOptions, w io.Writer) {
 	if options.Host == "" || options.Port == 0 || options.User == "" || options.Pass == "" || options.DBName == "" {
-		log.Fatal("database options are empty")
+		logger.Fatal("database options are empty")
 	}
 
 	dsn := fmt.Sprintf(
@@ -39,7 +39,7 @@ func Init(options DBOptions, w io.Writer) {
 	)
 
 	newLogger := gormlogger.New(
-		log.New(w, "\r\n", log.LstdFlags),
+		logger.NewWithWriter(w, "info", "text"),
 		gormlogger.Config{
 			SlowThreshold: time.Second,
 			LogLevel:      gormlogger.Info,
@@ -53,11 +53,11 @@ func Init(options DBOptions, w io.Writer) {
 	})
 
 	if err != nil {
-		log.Fatal("failed to connect database:", err)
+		logger.Fatal("failed to connect database:", err)
 	}
 
 	if err := migrate(); err != nil {
-		log.Fatal("failed migration:", err)
+		logger.Fatal("failed migration:", err)
 	}
 }
 

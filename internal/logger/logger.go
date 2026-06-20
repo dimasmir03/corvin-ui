@@ -2,11 +2,13 @@ package logger
 
 import (
 	"context"
+	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"strings"
 	"sync"
+
+	slogger "log/slog"
 )
 
 const (
@@ -15,7 +17,8 @@ const (
 )
 
 type Logger struct {
-	logger *slog.Logger
+	logger *slogger.Logger
+	writer io.Writer
 }
 
 var (
@@ -25,6 +28,16 @@ var (
 
 func New(level string, format string) *Logger {
 	return newLogger(os.Stdout, level, format)
+}
+
+func NewWithWriter(writer io.Writer, level string, format string) *Logger {
+	return newLogger(writer, level, format)
+}
+
+func Configure(writer io.Writer, level string, format string) *Logger {
+	log := newLogger(writer, level, format)
+	SetDefault(log)
+	return log
 }
 
 func NewLogger(dest string, level string) *Logger {
@@ -50,6 +63,10 @@ func Default() *Logger {
 	return log
 }
 
+func Writer() io.Writer {
+	return Default().Writer()
+}
+
 func With(args ...any) *Logger {
 	return Default().With(args...)
 }
@@ -70,33 +87,86 @@ func Error(msg string, err error, args ...any) {
 	Default().Error(msg, err, args...)
 }
 
+func Print(args ...any) {
+	Default().Print(args...)
+}
+
+func Println(args ...any) {
+	Default().Println(args...)
+}
+
+func Printf(format string, args ...any) {
+	Default().Printf(format, args...)
+}
+
+func Fatal(args ...any) {
+	Default().Print(args...)
+	os.Exit(1)
+}
+
+func Fatalf(format string, args ...any) {
+	Default().Printf(format, args...)
+	os.Exit(1)
+}
+
+func Panic(args ...any) {
+	msg := fmt.Sprint(args...)
+	Default().Info(msg)
+	panic(msg)
+}
+
+func Panicf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	Default().Info(msg)
+	panic(msg)
+}
+
 func (l *Logger) With(args ...any) *Logger {
 	if l == nil || l.logger == nil {
 		return Default().With(args...)
 	}
-	return &Logger{logger: l.logger.With(args...)}
+	return &Logger{logger: l.logger.With(args...), writer: l.writer}
+}
+
+func (l *Logger) Writer() io.Writer {
+	if l == nil || l.writer == nil {
+		return os.Stdout
+	}
+	return l.writer
 }
 
 func (l *Logger) Debug(msg string, args ...any) {
-	l.log(slog.LevelDebug, msg, args...)
+	l.log(slogger.LevelDebug, msg, args...)
 }
 
 func (l *Logger) Info(msg string, args ...any) {
-	l.log(slog.LevelInfo, msg, args...)
+	l.log(slogger.LevelInfo, msg, args...)
 }
 
 func (l *Logger) Warn(msg string, args ...any) {
-	l.log(slog.LevelWarn, msg, args...)
+	l.log(slogger.LevelWarn, msg, args...)
 }
 
 func (l *Logger) Error(msg string, err error, args ...any) {
 	if err != nil {
 		args = append(args, "error", err)
 	}
-	l.log(slog.LevelError, msg, args...)
+	l.log(slogger.LevelError, msg, args...)
 }
 
-func (l *Logger) log(level slog.Level, msg string, args ...any) {
+func (l *Logger) Print(args ...any) {
+	l.Info(fmt.Sprint(args...))
+}
+
+func (l *Logger) Println(args ...any) {
+	l.Info(fmt.Sprintln(args...))
+}
+
+func (l *Logger) Printf(format string, args ...any) {
+	l.Info(fmt.Sprintf(format, args...))
+}
+
+func (l *Logger) log(level slogger.Level, msg string, args ...any) {
 	if l == nil || l.logger == nil {
 		Default().log(level, msg, args...)
 		return
@@ -109,27 +179,27 @@ func newLogger(writer io.Writer, level string, format string) *Logger {
 		writer = os.Stdout
 	}
 
-	var slogLevel slog.Level
+	var slogLevel slogger.Level
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug":
-		slogLevel = slog.LevelDebug
+		slogLevel = slogger.LevelDebug
 	case "warn", "warning":
-		slogLevel = slog.LevelWarn
+		slogLevel = slogger.LevelWarn
 	case "error":
-		slogLevel = slog.LevelError
+		slogLevel = slogger.LevelError
 	default:
-		slogLevel = slog.LevelInfo
+		slogLevel = slogger.LevelInfo
 	}
 
-	opts := &slog.HandlerOptions{Level: slogLevel}
-	var handler slog.Handler
+	opts := &slogger.HandlerOptions{Level: slogLevel}
+	var handler slogger.Handler
 	if strings.EqualFold(strings.TrimSpace(format), "json") {
-		handler = slog.NewJSONHandler(writer, opts)
+		handler = slogger.NewJSONHandler(writer, opts)
 	} else {
-		handler = slog.NewTextHandler(writer, opts)
+		handler = slogger.NewTextHandler(writer, opts)
 	}
 
-	return &Logger{logger: slog.New(handler)}
+	return &Logger{logger: slogger.New(handler), writer: writer}
 }
 
 func writerForDest(dest string) io.Writer {
@@ -144,7 +214,7 @@ func writerForDest(dest string) io.Writer {
 }
 
 func logFileWriter() io.Writer {
-	file, err := os.OpenFile("log.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	file, err := os.OpenFile("logger.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return os.Stdout
 	}

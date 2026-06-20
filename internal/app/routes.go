@@ -2,10 +2,10 @@ package app
 
 import (
 	"io/fs"
-	"log"
 	"net/http"
 	ui "vpnpanel/internal"
 	"vpnpanel/internal/handlers"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/middleware"
 
 	nice "github.com/ekyoung/gin-nice-recovery"
@@ -17,7 +17,7 @@ import (
 func (s *Server) Routes() *gin.Engine {
 	r := gin.New()
 
-	r.Use(gin.LoggerWithWriter(log.Writer()))
+	r.Use(gin.LoggerWithWriter(logger.Writer()))
 	r.Use(nice.Recovery(recoveryHandler))
 	r.Use(cors.Default())
 
@@ -27,7 +27,7 @@ func (s *Server) Routes() *gin.Engine {
 	r.GET("/ready", s.Ready)
 
 	if err := mountStatic(r); err != nil {
-		log.Printf("WARN: failed to mount static files: %v", err)
+		logger.Printf("WARN: failed to mount static files: %v", err)
 	}
 
 	// public routes

@@ -46,7 +46,7 @@ func (l *Logger) Log(event Event) error {
 		return nil
 	}
 
-	log := &models.AuditLog{
+	auditLog := &models.AuditLog{
 		ActorType:  event.ActorType,
 		ActorID:    event.ActorID,
 		Action:     event.Action,
@@ -59,17 +59,17 @@ func (l *Logger) Log(event Event) error {
 	}
 
 	var err error
-	if log.OldValueJSON, err = marshalOptional(event.OldValue); err != nil {
+	if auditLog.OldValueJSON, err = marshalOptional(event.OldValue); err != nil {
 		return err
 	}
-	if log.NewValueJSON, err = marshalOptional(event.NewValue); err != nil {
+	if auditLog.NewValueJSON, err = marshalOptional(event.NewValue); err != nil {
 		return err
 	}
-	if log.MetadataJSON, err = marshalOptional(event.Metadata); err != nil {
+	if auditLog.MetadataJSON, err = marshalOptional(event.Metadata); err != nil {
 		return err
 	}
 
-	return l.repo.Create(log)
+	return l.repo.Create(auditLog)
 }
 
 func StringID(value any) *string {

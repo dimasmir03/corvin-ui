@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/config"
 	"vpnpanel/internal/db"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/repository"
 )
 
@@ -22,7 +22,7 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.Fatalf("Failed to load config: %v", err)
 	}
 
 	dbOptions := db.DBOptions{
@@ -39,7 +39,7 @@ func main() {
 	settingsRepo := repository.NewSettingsRepo(db.DB)
 
 	if err := InitDefaultSettings(settingsRepo, cfg); err != nil {
-		log.Fatalf("Failed to initialize default settings: %v", err)
+		logger.Fatalf("Failed to initialize default settings: %v", err)
 	}
 
 	// CLI mode
@@ -54,15 +54,15 @@ func main() {
 	// Server init
 	server, err := app.NewServer(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize server: %v", err)
+		logger.Fatalf("Failed to initialize server: %v", err)
 	}
 	server.CronStart()
 
 	defer server.Close()
 
-	log.Printf("Server Started on %s", cfg.HTTP.Addr)
+	logger.Printf("Server Started on %s", cfg.HTTP.Addr)
 	if err := http.ListenAndServe(cfg.HTTP.Addr, server.Router); err != nil {
-		log.Fatalf("HTTP server error: %v", err)
+		logger.Fatalf("HTTP server error: %v", err)
 	}
 }
 
@@ -73,12 +73,11 @@ func initLogger() io.Writer {
 		path+"vpnpanel.log",
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	mw := io.MultiWriter(os.Stdout, f)
-	log.SetOutput(mw)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	logger.Configure(mw, "info", "text")
 
 	return mw
 }
@@ -102,7 +101,7 @@ func initRabbitMQ(cfg config.Config, settings *repository.SettingsRepo) {
 
 	values, err := settings.GetKeys(keys...)
 	if err != nil {
-		log.Fatalf("Failed to get settings: %v", err)
+		logger.Fatalf("Failed to get settings: %v", err)
 	}
 
 	amqpURL, amqpSource := envFirst(cfg.RabbitMQ.URL, values["amqp_url"])
@@ -122,7 +121,7 @@ func initRabbitMQ(cfg config.Config, settings *repository.SettingsRepo) {
 	)
 
 	if err != nil && runtime.GOOS != "windows" {
-		log.Fatalf("Failed to init RabbitMQ producer: %v", err)
+		logger.Fatalf("Failed to init RabbitMQ producer: %v", err)
 	}
 
 	broker.GlobalProducer = p
@@ -155,7 +154,7 @@ func envSettingsFallback(envKey, defaultValue, settingsValue string) string {
 func logAMQPConfig(source, rawURL string) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		log.Printf("AMQP config source=%s url_user= host= port= password_len=0 parse_error=%v", source, err)
+		logger.Printf("AMQP config source=%s url_user= host= port= password_len=0 parse_error=%v", source, err)
 		return
 	}
 
@@ -164,7 +163,7 @@ func logAMQPConfig(source, rawURL string) {
 		passwordLen = len(password)
 	}
 
-	log.Printf(
+	logger.Printf(
 		"AMQP config source=%s url_user=%s host=%s port=%s password_len=%d",
 		source,
 		parsed.User.Username(),
