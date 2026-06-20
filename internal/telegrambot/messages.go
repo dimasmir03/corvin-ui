@@ -1,40 +1,45 @@
 package telegrambot
 
 const (
-	msgStart = `Привет, %s!
-Добро пожаловать в Corvin VPN.`
+	msgStart = `Привет, %s  
+Добро пожаловать в Raven VPN! 
+Мы рады здесь вас видеть!  
+
+🦾 устойчивость к блокировкам  
+😏 Швейцарский сервер
+🔐 полноценная конфиденциальность 
+🚀 высокая скорость 
+
+VPN в режиме тестирования, тем самым он на данный момент бесплатный.
+
+⬇️ ⬇️  Жмите кнопку!  ⬇️ ⬇️`
 
 	msgRegistrationFailed    = "Не удалось зарегистрировать пользователя. Попробуйте позже."
 	msgTelegramIDFailed      = "Не удалось определить Telegram ID."
-	msgStartMenu             = "Главное меню"
+	msgStartMenu             = "Меню управления:"
 	msgPingOK                = "ok"
 	msgVPNComingSoon         = "Раздел VPN будет подключён позже."
 	msgInstructionComingSoon = "Инструкция будет подключена позже."
 	msgSupportComingSoon     = "Поддержка будет подключена позже."
 
-	msgVPNReady = `🔐 Ваш VPN уже создан.
+	msgVPNReady = `📋 Ваши VPN:
+%s
 
 Выберите протокол:`
-	msgVPNMissing = `🔐 VPN пока не создан.
+	msgVPNMissing     = "🚀 VPN не настроен\n\nВыберите протокол для создания:"
+	msgVPNFetchFailed = "❌ Ошибка проверки VPN"
+	msgVLESSMissing   = "⏳ Ссылка создаётся. Попробуйте через минуту."
+	msgTrojanMissing  = "⏳ Ссылка создаётся. Попробуйте через минуту."
 
-Создание VPN будет подключено следующим шагом.`
-	msgVPNFetchFailed = "Не удалось получить VPN. Попробуйте позже."
-	msgVLESSMissing   = "VLESS-ссылка пока не создана."
-	msgTrojanMissing  = "Trojan-ссылка пока не создана."
+	msgVPNCreateRequested     = "⏳ Ссылка создаётся. Попробуйте через минуту."
+	msgVPNAlreadyExists       = "✅ VPN уже создан\n\n%s\n\nВыберите протокол:"
+	msgVPNUnsupportedProtocol = "❌ Ошибка создания VPN"
+	msgVPNCreateFailed        = "Ошибка создания VPN.\n Попробуйте позже."
 
-	msgVPNCreateRequested = `⏳ Запрос на создание VPN отправлен.
-
-Я пришлю ссылку, когда сервер подготовит конфигурацию.`
-	msgVPNAlreadyExists = `VPN уже создан.
-
-Откройте раздел VPN, чтобы получить ссылку.`
-	msgVPNUnsupportedProtocol = "Неподдерживаемый протокол VPN."
-	msgVPNCreateFailed        = "Не удалось создать VPN. Попробуйте позже."
-
-	msgLinkChooseProtocol      = "Выберите протокол:"
-	msgLinkUnsupportedProtocol = "Неподдерживаемый протокол VPN.\nДоступные варианты: vless, trojan."
-	msgLinkMissing             = "Ссылка пока не создана.\n\nОткройте /vpn и создайте VPN."
-	msgLinkFetchFailed         = "Не удалось получить ссылку. Попробуйте позже."
+	msgLinkChooseProtocol      = "  VPN не настроен\n\nНажмите /create для создания\nили выберите протокол:"
+	msgLinkUnsupportedProtocol = "❌ Ошибка получения ссылки"
+	msgLinkMissing             = "⏳ Ссылка создаётся. Попробуйте через минуту."
+	msgLinkFetchFailed         = "что-то пошло не так! попробуйте еще раз"
 )
 
 type InstructionStep struct {
@@ -44,12 +49,13 @@ type InstructionStep struct {
 
 var instructionSteps = []InstructionStep{
 	{
-		Text:      `Скопируйте ссылку, отправленную ботом: просто нажмите на текст ссылки, чтобы она автоматически скопировалась.`,
+		Text: ` 
+Скопируйте ссылку отправленную ботом, просто нажав на текст ссылки, чтобы она автоматически скопировалась.`,
 		ImagePath: "0.jpg",
 	},
 	{
-		Text: `Приложения:
-
+		Text: `
+Приложения:
 Android:
 <a href="https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box">V2Box</a>
 <a href="https://play.google.com/store/apps/details?id=com.v2ray.ang&pli=1">v2rayNG</a> / <a href="https://github.com/2dust/v2rayNG">Github</a>
@@ -60,50 +66,49 @@ iOS:
 <a href="https://apps.apple.com/ca/app/v2box-v2ray-client/id6446814690">V2Box - V2ray Client</a>
 <a href="https://apps.apple.com/ru/app/foxray/id6448898396">FoXray</a>
 <a href="https://apps.apple.com/ru/app/foxray/id6448898396">Streisand</a>
-<a href="https://apps.apple.com/ru/app/v2raytun/id6476628951">v2RayTun</a>`,
+<a href="https://apps.apple.com/ru/app/v2raytun/id6476628951">v2RayTun</a>
+`,
 		ImagePath: "01.jpg",
 	},
 	{
-		Text: `Это инструкция для приложения V2Box. Перейдите в приложение V2Box.
-
-1️⃣ Снизу по центру откройте вкладку "Config".`,
+		Text:      `Это инструкция для приложения V2Box. Переходи в приложение V2Box` + "\n" + `1️⃣) Снизу по центру Вкладка "Config" `,
 		ImagePath: "1.jpg",
 	},
 	{
-		Text:      `2️⃣ Справа сверху нажмите "+".`,
+		Text:      `2️⃣) Справа Сверху нажимаем на"+"`,
 		ImagePath: "2.jpg",
 	},
 	{
-		Text:      `3️⃣ Выберите "Import v2ray uri from clipboard": ваша ссылка на подписку -> OK/Add.`,
+		Text:      `3️⃣) Import v2ray uri from clipboard: твоя_ссылка_на_подписку -> OK/Add.`,
 		ImagePath: "3.jpg",
 	},
 	{
-		Text:      `4️⃣ После добавления ссылки внизу появятся серверы для подключения. Нажмите кнопку рядом с протоколом VLESS, затем вручную перетащите ползунок "Slide to Connect".`,
+		Text:      "4️⃣) Как только получили список протоколов после добавления ссылки внизу появятся сервера для подключения, обычно возле них есть кнопка слева от надписи (VLESS) -> Тыкаем на неё -> снизу перетаскиваем ползунок вручную (Slide to Connect) ",
 		ImagePath: "4.jpg",
 	},
 	{
-		Text:      `5️⃣ Готово! ✅`,
+		Text:      "5️⃣) Готово! ✅",
 		ImagePath: "5.jpg",
 	},
 }
 
 const (
-	msgInstructionFirst = "Это первый шаг."
-	msgInstructionLast  = "Это последний шаг."
+	msgInstructionFirst = "Конец"
+	msgInstructionLast  = "Конец"
 )
 
 const (
-	msgSupportPrompt               = "Напишите ваше обращение одним сообщением.\nМожно описать проблему текстом."
-	msgSupportSent                 = "✅ Обращение отправлено в поддержку."
-	msgSupportPhotoSent            = "✅ Обращение с фото отправлено в поддержку."
-	msgSupportPhotoPrompt          = "Чтобы отправить фото в поддержку, сначала откройте /help."
-	msgSupportCreateFailed         = "Не удалось отправить обращение. Попробуйте позже."
-	msgSupportCanceled             = "Обращение отменено."
-	msgSupportReplyPrompt          = "Напишите ответ на обращение #%d."
-	msgSupportReplySent            = "✅ Ответ отправлен пользователю."
+	msgSupportPrompt               = "Опишите вашу проблему... (Можно приложить скриншот)"
+	msgSupportSent                 = "✅ Спасибо! Ваша жалоба отправлена администратору (ID: %d)"
+	msgSupportPhotoSent            = "✅ Фото и описание отправлены администратору!\n(ID жалобы: %d)"
+	msgSupportPhotoPrompt          = "Опишите вашу проблему... (Можно приложить скриншот)"
+	msgSupportCreateFailed         = "❌ Ошибка отправки жалобы."
+	msgSupportCanceled             = "❌ Отправка жалобы отменена."
+	msgSupportReplyPrompt          = "Введите ваш ответ пользователю:"
+	msgSupportReplySent            = "✅ Ответ отправлен в панель!"
 	msgSupportReplySavedSendFailed = "Ответ сохранён, но не удалось отправить сообщение пользователю."
-	msgSupportReplyFailed          = "Не удалось сохранить ответ. Попробуйте позже."
-	msgSupportReplyCanceled        = "Ответ отменён."
+	msgSupportReplyFailed          = "❌ Ошибка: неверный ID пользователя."
+	msgSupportReplyCanceled        = "❌ Отправка жалобы отменена."
 	msgAdminGetUsersEmpty          = "Пользователей пока нет."
 	msgAdminGetUsersFailed         = "Не удалось получить список пользователей. Попробуйте позже."
 	msgAdminSendUserUsage          = "Использование:\n/senduser <tg_id> <message>"
@@ -117,5 +122,5 @@ const (
 	msgAdminBroadcastCancelled     = "Рассылка отменена."
 	msgActionCancelled             = "Действие отменено."
 	msgNoActiveAction              = "Нет активного действия."
-	msgUnknownText                 = "Выберите действие в меню."
+	msgUnknownText                 = "Извините, я не понимаю эту команду."
 )

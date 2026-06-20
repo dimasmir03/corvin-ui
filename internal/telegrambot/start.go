@@ -39,10 +39,11 @@ func (b *Bot) handleID(c telebot.Context) error {
 		return b.send(c, msgTelegramIDFailed)
 	}
 
-	message := fmt.Sprintf("Ваш Telegram ID: %d", sender.ID)
-	if strings.TrimSpace(sender.Username) != "" {
-		message += fmt.Sprintf("\nUsername: @%s", sender.Username)
-	}
+	message := "Username @" + sender.Username + "\n"
+	message += fmt.Sprintf("ID %d\n", sender.ID)
+	message += "FirstName " + sender.FirstName + "\n"
+	message += "LastName " + sender.LastName + "\n"
+	message += "Lang " + sender.LanguageCode + "\n"
 	b.logger.Debug("telegram id requested", "tg_id", sender.ID)
 	return b.send(c, message)
 }

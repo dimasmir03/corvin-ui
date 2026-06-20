@@ -2,6 +2,7 @@ package telegrambot
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"vpnpanel/internal/service"
 
@@ -30,7 +31,7 @@ func (b *Bot) handleVPN(c telebot.Context) error {
 		return b.send(c, msgVPNMissing, vpnCreateMenu())
 	}
 
-	return b.send(c, msgVPNReady, vpnMenu())
+	return b.send(c, fmt.Sprintf(msgVPNReady, buildVPNStatus(vpn.VlessLink, vpn.TrojanLink)), vpnMenu())
 }
 
 func (b *Bot) handleVPNVLESS(c telebot.Context) error {
@@ -78,7 +79,7 @@ func (b *Bot) handleCreateTrojan(c telebot.Context) error {
 	return b.requestCreateVPN(c, "trojan")
 }
 
-func (b *Bot) handleVPNBack(c telebot.Context) error {
+func (b *Bot) handleMainMenu(c telebot.Context) error {
 	if err := b.respond(c); err != nil {
 		b.logger.Error("telegram callback failed", err)
 	}
@@ -106,7 +107,7 @@ func (b *Bot) sendVPNLink(c telebot.Context, protocol string, missingMessage str
 		return b.send(c, missingMessage)
 	}
 
-	return b.send(c, link)
+	return b.send(c, formatLinkMessage(protocol, link), telebot.ModeMarkdown)
 }
 
 func (b *Bot) sendLink(c telebot.Context, protocol string) error {
@@ -141,19 +142,34 @@ func (b *Bot) sendLink(c telebot.Context, protocol string) error {
 		return b.send(c, msgLinkMissing)
 	}
 
-	if err := b.send(c, formatLinkMessage(protocol, link)); err != nil {
+	if err := b.send(c, formatLinkMessage(protocol, link), telebot.ModeMarkdown); err != nil {
 		b.logger.Error("telegram link send failed", err, "tg_id", sender.ID, "protocol", protocol)
 		return err
 	}
 	return nil
 }
 
+func buildVPNStatus(vlessLink string, trojanLink string) string {
+	status := []string{}
+	if strings.TrimSpace(vlessLink) != "" && strings.TrimSpace(vlessLink) != "null" {
+		status = append(status, "✅ Основной")
+	} else {
+		status = append(status, "❌ Основной")
+	}
+	if strings.TrimSpace(trojanLink) != "" && strings.TrimSpace(trojanLink) != "null" {
+		status = append(status, "✅ Обход")
+	} else {
+		status = append(status, "❌ Обход")
+	}
+	return fmt.Sprintf("%s | %s", status[0], status[1])
+}
+
 func formatLinkMessage(protocol string, link string) string {
 	switch protocol {
 	case "vless":
-		return "🔗 Ваша VLESS-ссылка:\n\n" + link
+		return fmt.Sprintf("🔗 **%s ссылка:**\n```\n%s\n```", "основная VLESS", link)
 	case "trojan":
-		return "🔗 Ваша Trojan-ссылка:\n\n" + link
+		return fmt.Sprintf("🔗 **%s ссылка:**\n```\n%s\n```", "обхода Trojan", link)
 	default:
 		return link
 	}
@@ -175,7 +191,10 @@ func (b *Bot) requestCreateVPN(c telebot.Context, protocol string) error {
 	})
 	if errors.Is(err, service.ErrVPNAlreadyExists) {
 		b.logger.Info("telegram vpn already exists", "tg_id", sender.ID, "protocol", protocol)
-		return b.send(c, msgVPNAlreadyExists)
+		if vpn, getErr := b.deps.VPN.GetVPNByTelegramID(sender.ID); getErr == nil {
+			return b.send(c, fmt.Sprintf(msgVPNAlreadyExists, buildVPNStatus(vpn.VlessLink, vpn.TrojanLink)), vpnMenu())
+		}
+		return b.send(c, "✅ VPN уже создан", vpnMenu())
 	}
 	if errors.Is(err, service.ErrUnsupportedProtocol) {
 		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol)

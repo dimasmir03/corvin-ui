@@ -24,10 +24,6 @@ func (b *Bot) registerUserHandlers() {
 		b.bot.Handle(endpoint, b.withLogging(name, handler))
 		b.logger.Debug("telegram endpoint registered", "endpoint", endpoint, "handler", name)
 	}
-	registerCallback := func(button *telebot.Btn, callback string, name string, handler telebot.HandlerFunc) {
-		b.bot.Handle(button, b.withLogging(name, handler))
-		b.logger.Debug("telegram callback registered", "callback", callback, "handler", name)
-	}
 
 	registerCommand("/ping", "ping", b.handlePing)
 	registerCommand("/start", "start", b.handleStart)
@@ -41,21 +37,22 @@ func (b *Bot) registerUserHandlers() {
 	registerCommand("/cancel", "cancel", b.handleCancel)
 	registerEndpoint(telebot.OnText, "text", b.handleText)
 	registerEndpoint(telebot.OnPhoto, "photo", b.handlePhoto)
+	registerEndpoint(telebot.OnCallback, "callback", b.handleCallback)
 
-	registerCallback(&btnMenuVPN, callbackMenuVPN, "menu_vpn", b.handleMenuVPN)
-	registerCallback(&btnMenuInstruction, callbackMenuInstruction, "menu_instruction", b.handleMenuInstruction)
-	registerCallback(&btnMenuSupport, callbackMenuSupport, "support_open", b.handleSupportOpen)
-	registerCallback(&btnVPNVLESS, callbackVPNVLESS, "vpn_vless", b.handleVPNVLESS)
-	registerCallback(&btnVPNTrojan, callbackVPNTrojan, "vpn_trojan", b.handleVPNTrojan)
-	registerCallback(&btnCreateVLESS, callbackCreateVLESS, "vpn_create_vless", b.handleCreateVLESS)
-	registerCallback(&btnCreateTrojan, callbackCreateTrojan, "vpn_create_trojan", b.handleCreateTrojan)
-	registerCallback(&btnVPNBack, callbackVPNBack, "vpn_back", b.handleVPNBack)
-	registerCallback(&btnLinkVLESS, callbackLinkVLESS, "link_vless", b.handleLinkVLESS)
-	registerCallback(&btnLinkTrojan, callbackLinkTrojan, "link_trojan", b.handleLinkTrojan)
-	registerCallback(&btnInstructionNext, callbackInstructionNext, "instruction_next", b.handleInstructionNext)
-	registerCallback(&btnInstructionPrev, callbackInstructionPrev, "instruction_prev", b.handleInstructionPrev)
-	registerCallback(&btnInstructionMenu, callbackInstructionMenu, "instruction_menu", b.handleInstructionMenu)
-	registerCallback(&btnSupportCancel, callbackSupportCancel, "support_cancel", b.handleSupportCancel)
+	b.logger.Debug("telegram callback route registered", "callback", callbackMenuVPN, "handler", "menu_vpn")
+	b.logger.Debug("telegram callback route registered", "callback", callbackMenuInstruction, "handler", "menu_instruction")
+	b.logger.Debug("telegram callback route registered", "callback", callbackMenuSupport, "handler", "support_open")
+	b.logger.Debug("telegram callback route registered", "callback", callbackVPNVLESS, "handler", "vpn_vless")
+	b.logger.Debug("telegram callback route registered", "callback", callbackVPNTrojan, "handler", "vpn_trojan")
+	b.logger.Debug("telegram callback route registered", "callback", callbackCreateVLESS, "handler", "vpn_create_vless")
+	b.logger.Debug("telegram callback route registered", "callback", callbackCreateTrojan, "handler", "vpn_create_trojan")
+	b.logger.Debug("telegram callback route registered", "callback", callbackMainMenu, "handler", "main_menu")
+	b.logger.Debug("telegram callback route registered", "callback", callbackLinkVLESS, "handler", "link_vless")
+	b.logger.Debug("telegram callback route registered", "callback", callbackLinkTrojan, "handler", "link_trojan")
+	b.logger.Debug("telegram callback route registered", "callback", callbackInstructionNext, "handler", "instruction_next")
+	b.logger.Debug("telegram callback route registered", "callback", callbackInstructionPrev, "handler", "instruction_prev")
+	b.logger.Debug("telegram callback route registered", "callback", callbackInstructionMenu, "handler", "instruction_menu")
+	b.logger.Debug("telegram callback route registered", "callback", callbackSupportCancel, "handler", "support_cancel")
 }
 
 func (b *Bot) registerAdminHandlers() {
@@ -68,15 +65,12 @@ func (b *Bot) registerAdminHandlers() {
 		admin.Handle(command, b.withLogging(name, handler))
 		b.logger.Debug("telegram admin command registered", "command", command, "handler", name)
 	}
-	registerCallback := func(button *telebot.Btn, callback string, name string, handler telebot.HandlerFunc) {
-		admin.Handle(button, b.withLogging(name, handler))
-		b.logger.Debug("telegram admin callback registered", "callback", callback, "handler", name)
-	}
 
 	registerCommand("/getusers", "admin_getusers", b.handleGetUsers)
 	registerCommand("/senduser", "admin_senduser", b.handleSendUser)
 	registerCommand("/send", "admin_send", b.handleSendBroadcast)
-	registerCallback(&btnSupportReply, callbackSupportReply, "support_reply", b.handleSupportReplyStart)
-	registerCallback(&btnBroadcastConfirm, callbackBroadcastConfirm, "admin_broadcast_confirm", b.handleBroadcastConfirm)
-	registerCallback(&btnBroadcastCancel, callbackBroadcastCancel, "admin_broadcast_cancel", b.handleBroadcastCancel)
+
+	b.logger.Debug("telegram admin callback route registered", "callback", callbackSupportReply, "handler", "support_reply")
+	b.logger.Debug("telegram admin callback route registered", "callback", callbackBroadcastConfirm, "handler", "admin_broadcast_confirm")
+	b.logger.Debug("telegram admin callback route registered", "callback", callbackBroadcastCancel, "handler", "admin_broadcast_cancel")
 }

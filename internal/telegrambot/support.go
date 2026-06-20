@@ -60,7 +60,7 @@ func (b *Bot) handleSupportText(c telebot.Context) error {
 	b.state.ClearMode(sender.ID)
 	b.logger.Info("support complaint created", "tg_id", sender.ID, "complaint_id", complaint.ID)
 
-	if err := b.send(c, msgSupportSent); err != nil {
+	if err := b.send(c, fmt.Sprintf(msgSupportSent, complaint.ID)); err != nil {
 		b.logger.Error("telegram send failed", err, "tg_id", sender.ID)
 		return err
 	}
@@ -133,7 +133,7 @@ func (b *Bot) handleSupportPhoto(c telebot.Context) error {
 	b.state.ClearMode(sender.ID)
 	b.logger.Info("support photo complaint created", "tg_id", sender.ID, "complaint_id", complaint.ID, "has_photo", complaint.Photo)
 
-	if err := b.send(c, msgSupportPhotoSent); err != nil {
+	if err := b.send(c, fmt.Sprintf(msgSupportPhotoSent, complaint.ID)); err != nil {
 		b.logger.Error("telegram send failed", err, "tg_id", sender.ID)
 		return err
 	}
@@ -183,7 +183,14 @@ func (b *Bot) handleSupportReplyStart(c telebot.Context) error {
 		return b.send(c, msgSupportReplyFailed)
 	}
 
-	complaintID64, err := strconv.ParseUint(strings.TrimSpace(callback.Data), 10, 64)
+	complaintIDText := strings.TrimSpace(callback.Data)
+	if complaintIDText == "" {
+		complaintIDText = strings.TrimSpace(callback.Unique)
+	}
+	if strings.HasPrefix(complaintIDText, callbackSupportReply+":") {
+		complaintIDText = strings.TrimPrefix(complaintIDText, callbackSupportReply+":")
+	}
+	complaintID64, err := strconv.ParseUint(complaintIDText, 10, 64)
 	if err != nil || complaintID64 == 0 {
 		b.logger.Error("support reply start failed", err, "admin_tg_id", sender.ID)
 		return b.send(c, msgSupportReplyFailed)
@@ -192,7 +199,7 @@ func (b *Bot) handleSupportReplyStart(c telebot.Context) error {
 	complaintID := uint(complaintID64)
 	b.state.SetSupportReply(sender.ID, complaintID)
 	b.logger.Info("support reply started", "admin_tg_id", sender.ID, "complaint_id", complaintID)
-	return b.send(c, fmt.Sprintf(msgSupportReplyPrompt, complaintID), supportMenu())
+	return b.send(c, msgSupportReplyPrompt, supportMenu())
 }
 
 func (b *Bot) handleSupportReplyText(c telebot.Context) error {
@@ -214,7 +221,7 @@ func (b *Bot) handleSupportReplyText(c telebot.Context) error {
 
 	text := strings.TrimSpace(c.Text())
 	if text == "" {
-		return b.send(c, fmt.Sprintf(msgSupportReplyPrompt, state.ComplaintID), supportMenu())
+		return b.send(c, msgSupportReplyPrompt, supportMenu())
 	}
 
 	result, err := b.deps.Support.ReplyToComplaint(service.ReplyToComplaintInput{
