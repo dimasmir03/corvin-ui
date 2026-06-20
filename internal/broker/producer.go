@@ -151,6 +151,73 @@ func (p *Producer) StartResultConsumer(queue string, handler func(JobResultEvent
 	return consumer, nil
 }
 
+func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, handler func(NodeHeartbeatEvent) error) (*rabbitmq.Consumer, error) {
+	if p == nil || p.conn == nil {
+		return nil, fmt.Errorf("rabbitmq connection is not initialized")
+	}
+	if exchange == "" {
+		return nil, fmt.Errorf("events exchange is required")
+	}
+	if queue == "" {
+		return nil, fmt.Errorf("events queue is required")
+	}
+	if routingKey == "" {
+		routingKey = "node.heartbeat"
+	}
+
+	consumer, err := rabbitmq.NewConsumer(
+		p.conn,
+		queue,
+		rabbitmq.WithConsumerOptionsExchangeName(exchange),
+		rabbitmq.WithConsumerOptionsExchangeKind("topic"),
+		rabbitmq.WithConsumerOptionsExchangeDeclare,
+		rabbitmq.WithConsumerOptionsRoutingKey(routingKey),
+		rabbitmq.WithConsumerOptionsQueueDurable,
+		rabbitmq.WithConsumerOptionsConcurrency(1),
+		rabbitmq.WithConsumerOptionsQOSPrefetch(10),
+		rabbitmq.WithConsumerOptionsLogging,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent events consumer: %w", err)
+	}
+
+	go func() {
+		err := consumer.Run(func(d rabbitmq.Delivery) rabbitmq.Action {
+			var envelope struct {
+				EventType string `json:"event_type"`
+			}
+			if err := json.Unmarshal(d.Body, &envelope); err != nil {
+				logger.Error("panel node heartbeat invalid", err)
+				return rabbitmq.Ack
+			}
+			if envelope.EventType != "node_heartbeat" {
+				logger.Info("panel agent event ignored", "event_type", envelope.EventType)
+				return rabbitmq.Ack
+			}
+
+			var event NodeHeartbeatEvent
+			if err := json.Unmarshal(d.Body, &event); err != nil {
+				logger.Error("panel node heartbeat invalid", err, "event_type", envelope.EventType)
+				return rabbitmq.Ack
+			}
+
+			logger.Info("panel agent event received", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "sent_at", event.SentAt)
+			if err := handler(event); err != nil {
+				logger.Error("panel node heartbeat apply failed", err, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "sent_at", event.SentAt)
+				return rabbitmq.NackRequeue
+			}
+
+			logger.Info("panel node heartbeat applied", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "sent_at", event.SentAt)
+			return rabbitmq.Ack
+		})
+		if err != nil {
+			logger.Error("agent events consumer stopped", err)
+		}
+	}()
+
+	return consumer, nil
+}
+
 func (p *Producer) publish(pub *rabbitmq.Publisher, exchange string, msg any) error {
 	if p == nil || pub == nil {
 		return fmt.Errorf("rabbitmq publisher is not initialized")

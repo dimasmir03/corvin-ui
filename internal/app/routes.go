@@ -55,6 +55,7 @@ func (s *Server) Routes() *gin.Engine {
 	s.ComplaintsController.Register(api.Group("/complaints"))
 	s.MediaController.Register(api.Group("/media"))
 	s.JobsController.Register(api.Group("/jobs"))
+	s.NodesController.Register(api.Group("/nodes"))
 
 	return r
 }

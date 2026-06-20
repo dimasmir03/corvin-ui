@@ -22,6 +22,7 @@ type User struct {
 const (
 	ServerStatusUnknown  = "unknown"
 	ServerStatusOnline   = "online"
+	ServerStatusStale    = "stale"
 	ServerStatusOffline  = "offline"
 	ServerStatusDegraded = "degraded"
 	ServerStatusDisabled = "disabled"
@@ -87,6 +88,20 @@ type NodeStatsSnapshot struct {
 	Error         *string        `json:"error,omitempty"`
 	RawJSON       datatypes.JSON `gorm:"type:jsonb" json:"raw_json,omitempty"`
 	CreatedAt     time.Time      `gorm:"autoCreateTime" json:"created_at"`
+}
+
+type NodeState struct {
+	ID            uint       `gorm:"primary_key;autoIncrement" json:"id"`
+	NodeID        string     `gorm:"uniqueIndex;not null" json:"node_id"`
+	EndpointGroup string     `gorm:"not null;index" json:"endpoint_group"`
+	Protocol      string     `gorm:"not null;index" json:"protocol"`
+	AgentVersion  string     `json:"agent_version"`
+	Status        string     `gorm:"not null;index" json:"status"`
+	LastSeenAt    time.Time  `gorm:"not null;index" json:"last_seen"`
+	LastError     string     `json:"last_error"`
+	SentAt        *time.Time `json:"sent_at,omitempty"`
+	CreatedAt     time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt     time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 type Telegram struct {

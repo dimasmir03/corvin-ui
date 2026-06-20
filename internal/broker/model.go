@@ -89,3 +89,14 @@ type JobResultEvent struct {
 	CreatedAt      *time.Time       `json:"created_at,omitempty"`
 	ResultJSON     *json.RawMessage `json:"result_json,omitempty"`
 }
+
+type NodeHeartbeatEvent struct {
+	EventType     string    `json:"event_type"`
+	NodeID        string    `json:"node_id"`
+	EndpointGroup string    `json:"endpoint_group"`
+	Protocol      string    `json:"protocol"`
+	AgentVersion  string    `json:"agent_version,omitempty"`
+	Status        string    `json:"status"`
+	LastError     string    `json:"last_error,omitempty"`
+	SentAt        time.Time `json:"sent_at"`
+}

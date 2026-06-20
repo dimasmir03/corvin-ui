@@ -67,6 +67,7 @@ func migrate() error {
 		&models.Server{},
 		&models.ServerStat{},
 		&models.NodeStatsSnapshot{},
+		&models.NodeState{},
 		&models.Telegram{},
 		&models.Vpn{},
 		&models.Complaint{},

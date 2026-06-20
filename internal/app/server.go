@@ -1,13 +1,12 @@
 package app
 
 import (
-	"time"
+	"context"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/config"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers"
-	"vpnpanel/internal/jobs"
 	"vpnpanel/internal/jobsvc"
 	projectlogger "vpnpanel/internal/logger"
 	"vpnpanel/internal/repository"
@@ -34,12 +33,14 @@ type Server struct {
 	VpnController        *handlers.VpnController
 	MediaController      *handlers.MediaController
 	JobsController       *handlers.JobsController
+	NodesController      *handlers.NodesController
 
 	telegramBot      *telegrambot.Bot
 	telegramNotifier *telegrambot.Notifier
 
-	ResultConsumer *rabbitmq.Consumer
-	Cron           *cron.Cron
+	ResultConsumer      *rabbitmq.Consumer
+	AgentEventsConsumer *rabbitmq.Consumer
+	Cron                *cron.Cron
 
 	Config config.Config
 }
@@ -64,6 +65,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 	serversRepo := repository.NewServerRepo(db.DB)
 	vpnRepo := repository.NewVpnRepo(db.DB)
 	storageRepo := repository.NewStorageRepo(minioClient)
+	nodeRepo := repository.NewNodeRepo(db.DB)
 	logger := projectlogger.Default()
 	auditLogger := audit.NewLogger(repository.NewAuditRepo(db.DB))
 	usersService := service.NewUsersService(teleRepo, auditLogger)
@@ -75,6 +77,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 	)
 	vpnService := service.NewVPNService(vpnRepo, teleRepo, jobService, auditLogger)
 	supportService := service.NewSupportService(teleRepo, complaintRepo, storageRepo)
+	nodeService := service.NewNodeService(nodeRepo)
 
 	tgBot, err := telegrambot.New(cfg.Telegram, telegrambot.Deps{
 		Users:   usersService,
@@ -103,6 +106,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 		VpnController:        handlers.NewVpnController(vpnRepo),
 		MediaController:      handlers.NewMediaController(storageRepo),
 		JobsController:       handlers.NewJobsController(jobService),
+		NodesController:      handlers.NewNodesController(nodeService),
 
 		telegramBot:      tgBot,
 		telegramNotifier: tgNotifier,
@@ -112,6 +116,21 @@ func NewServer(cfg config.Config) (*Server, error) {
 	}
 
 	if broker.GlobalProducer != nil {
+		agentEventsConsumer, err := broker.GlobalProducer.StartAgentEventConsumer(
+			cfg.RabbitMQ.EventsExchange,
+			cfg.RabbitMQ.EventsQueue,
+			cfg.RabbitMQ.HeartbeatRouting,
+			func(event broker.NodeHeartbeatEvent) error {
+				_, err := nodeService.ApplyHeartbeat(context.Background(), event)
+				return err
+			},
+		)
+		if err != nil {
+			logger.Error("failed to start RabbitMQ agent events consumer", err, "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.HeartbeatRouting)
+		} else {
+			s.AgentEventsConsumer = agentEventsConsumer
+		}
+
 		consumer, err := broker.GlobalProducer.StartResultConsumer(cfg.RabbitMQ.ResultQueue, func(event broker.JobResultEvent) error {
 			_, job, err := jobService.ApplyResult(event)
 			if err != nil {
@@ -150,19 +169,11 @@ func NewServer(cfg config.Config) (*Server, error) {
 
 func (s *Server) CronStart() {
 	if s.ServersService == nil {
-		projectlogger.Println("⚠️ ServersService is nil — Cron jobs skipped")
+		projectlogger.Println("ServersService is nil; cron jobs skipped")
 		return
 	}
 
-	collectInterval := s.Config.OnlineCollectInterval
-	if _, err := time.ParseDuration(collectInterval); err != nil {
-		projectlogger.Printf("invalid ONLINE_COLLECT_INTERVAL %q, fallback to 30s: %v", collectInterval, err)
-		collectInterval = "30s"
-	}
-	if _, err := s.Cron.AddJob("@every "+collectInterval, jobs.NewCollectTotalOnlineJob(s.ServersService)); err != nil {
-		projectlogger.Printf("failed to schedule online collect job: %v", err)
-	}
-
+	projectlogger.Println("legacy online polling cron disabled; node monitoring uses agent heartbeat events")
 	s.Cron.AddFunc("@daily", func() {
 		s.ServersService.ClearStats()
 	})
@@ -176,6 +187,9 @@ func (s *Server) Close() {
 	}
 	if s.ResultConsumer != nil {
 		s.ResultConsumer.Close()
+	}
+	if s.AgentEventsConsumer != nil {
+		s.AgentEventsConsumer.Close()
 	}
 	if s.Cron != nil {
 		s.Cron.Stop()
