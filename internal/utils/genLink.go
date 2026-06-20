@@ -61,8 +61,6 @@ func GenVlessLink(tgID int64) VlessParams {
 		Fragment: name,
 	}
 
-	fmt.Println(u.User)
-
 	return VlessParams{
 		Link:       u.String(),
 		UID:        uid,
@@ -111,8 +109,6 @@ func GenTrojanLink(tgID int64) TrojanParams {
 		}.Encode(),
 		Fragment: name,
 	}
-
-	fmt.Println(u.User)
 
 	return TrojanParams{
 		Link:     u.String(),

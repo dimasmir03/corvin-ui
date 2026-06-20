@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
@@ -128,9 +127,25 @@ func (s *VPNService) RequestCreateVPN(input RequestCreateVPNInput) (*RequestCrea
 		return nil, errors.New("jobs service is not configured")
 	}
 
+	vlessParams := utils.GenVlessLink(input.TgID)
+	trojanParams := utils.GenTrojanLink(input.TgID)
+	clientCode := vlessParams.Name
+	technicalClientID := vlessParams.UID
+	if protocol == "trojan" {
+		technicalClientID = trojanParams.Password
+		clientCode = trojanParams.Name
+	}
+
 	batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
 		UserID:            telegram.UserID,
-		TechnicalClientID: fmt.Sprintf("tg-%d-%s", input.TgID, protocol),
+		TelegramID:        input.TgID,
+		ClientCode:        clientCode,
+		Email:             clientCode,
+		VlessUUID:         vlessParams.UID,
+		VlessFlow:         vlessParams.Flow,
+		TrojanPassword:    trojanParams.Password,
+		Enable:            true,
+		TechnicalClientID: technicalClientID,
 		Protocols:         []string{protocol},
 	})
 	if err != nil {
@@ -250,6 +265,13 @@ func (s *VPNService) CreateVPN(input CreateVPNInput) (models.Vpn, error) {
 	if s.jobs != nil {
 		batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
 			UserID:            telegram.UserID,
+			TelegramID:        input.TgID,
+			ClientCode:        vlessParams.Name,
+			Email:             vlessParams.Name,
+			VlessUUID:         vlessParams.UID,
+			VlessFlow:         vlessParams.Flow,
+			TrojanPassword:    trojanParams.Password,
+			Enable:            true,
 			TechnicalClientID: vlessParams.UID,
 			Protocols:         []string{"vless", "trojan"},
 		})
@@ -340,6 +362,13 @@ func (s *VPNService) CreateVPNProtocol(input CreateVPNProtocolInput) (models.Vpn
 		}
 		batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
 			UserID:            telegram.UserID,
+			TelegramID:        input.TgID,
+			ClientCode:        username,
+			Email:             username,
+			VlessUUID:         vlessParams.UID,
+			VlessFlow:         vlessParams.Flow,
+			TrojanPassword:    trojanParams.Password,
+			Enable:            true,
 			TechnicalClientID: technicalClientID,
 			Protocols:         []string{input.Protocol},
 		})

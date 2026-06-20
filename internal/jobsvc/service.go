@@ -15,6 +15,12 @@ import (
 )
 
 const (
+	EndpointGroupDirect = "direct"
+	EndpointGroupRU     = "ru"
+
+	VPNProfileVLESS  = "vless"
+	VPNProfileTrojan = "trojan"
+
 	BatchTypeCreateUserConfig = "create_user_config"
 	BatchTypeProbeNode        = "probe_node"
 	BatchTypeCollectNodeStats = "collect_node_stats"
@@ -49,6 +55,15 @@ type JobPublisher interface {
 
 type CreateUserConfigInput struct {
 	UserID            uint
+	TelegramID        int64
+	ClientCode        string
+	Email             string
+	VlessUUID         string
+	VlessFlow         string
+	TrojanPassword    string
+	Enable            bool
+	ExpiryTime        int64
+	TotalGB           int64
 	TechnicalClientID string
 	Protocols         []string
 }
@@ -291,18 +306,13 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 				continue
 			}
 			for _, protocol := range input.Protocols {
-				if !serverSupportsProtocol(server, protocol) {
+				profile := normalizeProfile(protocol)
+				targetGroup := endpointGroupForProfile(profile)
+				if !serverSupportsEndpointProfile(server, profile, targetGroup) {
 					continue
 				}
 
-				payload := broker.JobTask{
-					BatchID:           batch.ID,
-					ServerID:          server.Id,
-					Action:            ActionCreateClient,
-					Protocol:          protocol,
-					UserID:            input.UserID,
-					TechnicalClientID: input.TechnicalClientID,
-				}
+				payload := createClientJobTask(batch.ID, server.Id, profile, targetGroup, input)
 
 				payloadJSON, err := json.Marshal(payload)
 				if err != nil {
@@ -313,11 +323,11 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 				job := models.Job{
 					BatchID:        batch.ID,
 					ServerID:       &serverID,
-					Protocol:       protocol,
+					Protocol:       profile,
 					Action:         ActionCreateClient,
 					Status:         JobStatusPending,
 					PayloadJSON:    datatypes.JSON(payloadJSON),
-					IdempotencyKey: idempotencyKey(ActionCreateClient, input.UserID, server.Id, protocol),
+					IdempotencyKey: idempotencyKey(ActionCreateClient, input.UserID, server.Id, profile),
 				}
 
 				if err := txJobsRepo.CreateJob(&job); err != nil {
@@ -752,8 +762,84 @@ func valueOrEmpty(value *string) string {
 	return *value
 }
 
+func normalizeProfile(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case VPNProfileTrojan:
+		return VPNProfileTrojan
+	default:
+		return VPNProfileVLESS
+	}
+}
+
+func endpointGroupForProfile(profile string) string {
+	switch normalizeProfile(profile) {
+	case VPNProfileTrojan:
+		return EndpointGroupRU
+	default:
+		return EndpointGroupDirect
+	}
+}
+
 func serverSupportsProtocol(server models.Server, protocol string) bool {
 	return strings.EqualFold(strings.TrimSpace(server.Type), strings.TrimSpace(protocol))
+}
+
+func serverSupportsEndpointProfile(server models.Server, profile string, targetGroup string) bool {
+	return serverSupportsProtocol(server, profile) && strings.EqualFold(strings.TrimSpace(server.NodeRole), targetGroup)
+}
+
+func createClientJobTask(batchID uint, serverID int, profile string, targetGroup string, input CreateUserConfigInput) broker.JobTask {
+	clientCode := strings.TrimSpace(input.ClientCode)
+	if clientCode == "" {
+		clientCode = strings.TrimSpace(input.TechnicalClientID)
+	}
+	email := strings.TrimSpace(input.Email)
+	if email == "" {
+		email = clientCode
+	}
+	enable := input.Enable
+	if !enable {
+		enable = true
+	}
+
+	technicalClientID := strings.TrimSpace(input.TechnicalClientID)
+	if technicalClientID == "" {
+		switch normalizeProfile(profile) {
+		case VPNProfileTrojan:
+			technicalClientID = input.TrojanPassword
+		default:
+			technicalClientID = input.VlessUUID
+		}
+	}
+
+	return broker.JobTask{
+		EventType:         ActionCreateClient,
+		BatchID:           batchID,
+		ServerID:          serverID,
+		Action:            ActionCreateClient,
+		CommandType:       ActionCreateClient,
+		Protocol:          normalizeProfile(profile),
+		Profile:           normalizeProfile(profile),
+		TargetGroup:       targetGroup,
+		TelegramID:        input.TelegramID,
+		UserID:            input.UserID,
+		ClientCode:        clientCode,
+		Email:             email,
+		Enable:            enable,
+		ExpiryTime:        input.ExpiryTime,
+		TotalGB:           input.TotalGB,
+		TechnicalClientID: technicalClientID,
+		CreatedAt:         time.Now().UTC(),
+		Credentials: broker.VPNCredentials{
+			VLESS: broker.VLESSCredentials{
+				ID:   input.VlessUUID,
+				Flow: input.VlessFlow,
+			},
+			Trojan: broker.TrojanCredentials{
+				Password: input.TrojanPassword,
+			},
+		},
+	}
 }
 
 func idempotencyKey(action string, userID uint, serverID int, protocol string) string {
