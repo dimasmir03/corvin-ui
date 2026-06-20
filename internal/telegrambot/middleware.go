@@ -2,9 +2,66 @@ package telegrambot
 
 import (
 	"fmt"
+	"vpnpanel/internal/service"
 
 	telebot "gopkg.in/telebot.v4"
 )
+
+func (b *Bot) maintenanceMiddleware(next telebot.HandlerFunc) telebot.HandlerFunc {
+	return func(c telebot.Context) error {
+		if !b.maintenanceEnabled {
+			return next(c)
+		}
+
+		sender := c.Sender()
+		if sender != nil && b.isAdmin(sender.ID) {
+			b.logger.Debug("telegram maintenance bypassed for admin", "tg_id", sender.ID)
+			return next(c)
+		}
+
+		if sender != nil {
+			b.logger.Info("telegram maintenance response sent", "tg_id", sender.ID)
+		} else {
+			b.logger.Info("telegram maintenance response sent", "reason", "sender is nil")
+		}
+
+		if c.Callback() != nil {
+			if err := b.respond(c); err != nil {
+				return err
+			}
+		}
+		return b.send(c, msgMaintenance)
+	}
+}
+
+func (b *Bot) ensureTelegramUserMiddleware(next telebot.HandlerFunc) telebot.HandlerFunc {
+	return func(c telebot.Context) error {
+		sender := c.Sender()
+		if sender == nil {
+			b.logger.Warn("telegram user check skipped", "reason", "sender is nil")
+			return next(c)
+		}
+
+		_, err := b.deps.Users.EnsureTelegramUser(service.TelegramUserInput{
+			TgID:      sender.ID,
+			Username:  sender.Username,
+			Firstname: sender.FirstName,
+			Lastname:  sender.LastName,
+		})
+		if err != nil {
+			b.logger.Error("telegram user check failed", err, "tg_id", sender.ID)
+			if c.Callback() != nil {
+				if respondErr := b.respond(c); respondErr != nil {
+					return respondErr
+				}
+			}
+			return b.send(c, msgRegistrationFailed)
+		}
+
+		b.logger.Debug("telegram user checked", "tg_id", sender.ID)
+		return next(c)
+	}
+}
 
 func (b *Bot) withLogging(name string, next telebot.HandlerFunc) telebot.HandlerFunc {
 	return func(c telebot.Context) error {

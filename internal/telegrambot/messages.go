@@ -123,4 +123,5 @@ const (
 	msgActionCancelled             = "Действие отменено."
 	msgNoActiveAction              = "Нет активного действия."
 	msgUnknownText                 = "Извините, я не понимаю эту команду."
+	msgMaintenance                 = "Идут технические работы. Попробуйте позже."
 )

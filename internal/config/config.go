@@ -45,9 +45,10 @@ type RabbitMQConfig struct {
 }
 
 type TelegramConfig struct {
-	Enabled  bool
-	Token    string
-	AdminIDs []int64
+	Enabled            bool
+	Token              string
+	AdminIDs           []int64
+	MaintenanceEnabled bool
 }
 
 type MinIOConfig struct {
@@ -92,9 +93,10 @@ func Load() (Config, error) {
 			ResultQueue: getEnv("RABBITMQ_RESULT_QUEUE", "corvin.job.results"),
 		},
 		Telegram: TelegramConfig{
-			Enabled:  getEnvBool("TELEGRAM_ENABLED", false),
-			Token:    getEnv("TELEGRAM_BOT_TOKEN", ""),
-			AdminIDs: getEnvInt64Slice("TELEGRAM_ADMIN_IDS"),
+			Enabled:            getEnvBool("TELEGRAM_ENABLED", false),
+			Token:              getEnv("TELEGRAM_BOT_TOKEN", ""),
+			AdminIDs:           getEnvInt64Slice("TELEGRAM_ADMIN_IDS"),
+			MaintenanceEnabled: getEnvBool("TELEGRAM_MAINTENANCE_ENABLED", false),
 		},
 		MinIO: MinIOConfig{
 			Endpoint:  getEnv("MINIO_ENDPOINT", "127.0.0.1:9000"),

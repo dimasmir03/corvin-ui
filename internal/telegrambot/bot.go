@@ -19,12 +19,13 @@ type Deps struct {
 }
 
 type Bot struct {
-	bot      *telebot.Bot
-	deps     Deps
-	logger   *projectlogger.Logger
-	adminIDs []int64
-	notifier *Notifier
-	state    *StateStore
+	bot                *telebot.Bot
+	deps               Deps
+	logger             *projectlogger.Logger
+	adminIDs           []int64
+	maintenanceEnabled bool
+	notifier           *Notifier
+	state              *StateStore
 }
 
 func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
@@ -60,12 +61,13 @@ func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 	}
 
 	bot := &Bot{
-		bot:      tb,
-		deps:     deps,
-		logger:   technicalLog,
-		adminIDs: cfg.AdminIDs,
-		notifier: NewNotifier(tb, technicalLog),
-		state:    NewStateStore(),
+		bot:                tb,
+		deps:               deps,
+		logger:             technicalLog,
+		adminIDs:           cfg.AdminIDs,
+		maintenanceEnabled: cfg.MaintenanceEnabled,
+		notifier:           NewNotifier(tb, technicalLog),
+		state:              NewStateStore(),
 	}
 	bot.registerHandlers()
 	return bot, nil
