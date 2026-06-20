@@ -54,6 +54,7 @@ type JobPublisher interface {
 }
 
 type CreateUserConfigInput struct {
+	ProfileID         uint
 	UserID            uint
 	TelegramID        int64
 	ClientCode        string
@@ -819,6 +820,7 @@ func createClientJobTask(batchID uint, serverID int, profile string, targetGroup
 		Action:            ActionCreateClient,
 		CommandType:       ActionCreateClient,
 		Protocol:          normalizeProfile(profile),
+		ProfileID:         input.ProfileID,
 		Profile:           normalizeProfile(profile),
 		TargetGroup:       targetGroup,
 		TelegramID:        input.TelegramID,

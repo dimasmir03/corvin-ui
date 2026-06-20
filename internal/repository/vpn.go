@@ -1,9 +1,13 @@
 package repository
 
 import (
+	"crypto/sha1"
 	"errors"
 	"fmt"
+	"time"
 	"vpnpanel/internal/models"
+
+	"github.com/google/uuid"
 
 	"gorm.io/gorm"
 )
@@ -64,4 +68,94 @@ func (r *VpnRepo) UpsertLinkByUserID(userID uint, protocol string, link string) 
 		return r.Create(vpn)
 	}
 	return r.Save(vpn)
+}
+
+func (r *VpnRepo) GetOrCreateVPNClient(userID uint, telegramID int64) (models.VPNClient, bool, error) {
+	var client models.VPNClient
+	err := r.DB.Where("user_id = ?", userID).Take(&client).Error
+	if err == nil {
+		return client, false, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.VPNClient{}, false, err
+	}
+
+	code := generateClientCode()
+	client = models.VPNClient{
+		UserID:         userID,
+		TelegramID:     telegramID,
+		ClientCode:     code,
+		Email:          code,
+		VlessUUID:      uuid.NewString(),
+		TrojanPassword: uuid.NewString(),
+	}
+	if err := r.DB.Create(&client).Error; err != nil {
+		return models.VPNClient{}, false, err
+	}
+	return client, true, nil
+}
+
+func generateClientCode() string {
+	sum := sha1.Sum([]byte(uuid.NewString()))
+	return fmt.Sprintf("cvn_%x", sum[:4])
+}
+
+func (r *VpnRepo) GetOrCreateEndpointGroup(code string) (models.EndpointGroup, error) {
+	var group models.EndpointGroup
+	if err := r.DB.Where("code = ?", code).Take(&group).Error; err == nil {
+		return group, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.EndpointGroup{}, err
+	}
+
+	switch code {
+	case "direct":
+		group = models.EndpointGroup{Code: "direct", Name: "Direct", Protocol: "vless", PublicHost: "raven.net.ru", PublicPort: 443, Security: "reality", Network: "tcp", SNI: "yahoo.com", Flow: "xtls-rprx-vision", Enabled: true}
+	case "ru":
+		group = models.EndpointGroup{Code: "ru", Name: "RU", Protocol: "trojan", PublicHost: "br.raven.net.ru", PublicPort: 443, Security: "tls", Network: "tcp", SNI: "lofin.raven.net.ru", Enabled: true}
+	default:
+		return models.EndpointGroup{}, fmt.Errorf("unsupported endpoint group %q", code)
+	}
+	if err := r.DB.Create(&group).Error; err != nil {
+		return models.EndpointGroup{}, err
+	}
+	return group, nil
+}
+
+func (r *VpnRepo) EnabledNodesByGroup(group string) ([]models.NodeState, error) {
+	var nodes []models.NodeState
+	if err := r.DB.Where("endpoint_group = ? AND enabled = ?", group, true).Order("node_id ASC").Find(&nodes).Error; err != nil {
+		return nil, err
+	}
+	return nodes, nil
+}
+
+func (r *VpnRepo) GetProfile(clientID uint, profile string) (models.VPNProfile, error) {
+	var vpnProfile models.VPNProfile
+	err := r.DB.Preload("Nodes").Where("vpn_client_id = ? AND profile = ?", clientID, profile).Take(&vpnProfile).Error
+	return vpnProfile, err
+}
+
+func (r *VpnRepo) CreateProfileWithNodes(profile models.VPNProfile, nodes []models.NodeState) (models.VPNProfile, error) {
+	err := r.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&profile).Error; err != nil {
+			return err
+		}
+		for _, node := range nodes {
+			profileNode := models.VPNProfileNode{VPNProfileID: profile.ID, NodeID: node.NodeID, Protocol: profile.Protocol, Status: models.VPNProfileNodeStatusPending}
+			if err := tx.Create(&profileNode).Error; err != nil {
+				return err
+			}
+			profile.Nodes = append(profile.Nodes, profileNode)
+		}
+		return nil
+	})
+	if err != nil {
+		return models.VPNProfile{}, err
+	}
+	return profile, nil
+}
+
+func (r *VpnRepo) TouchProfilePublishError(profileID uint, errText string) error {
+	return r.DB.Model(&models.VPNProfile{}).Where("id = ?", profileID).Updates(map[string]any{"last_error": errText, "updated_at": time.Now()}).Error
 }

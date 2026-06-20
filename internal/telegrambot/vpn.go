@@ -68,7 +68,7 @@ func (b *Bot) handleLinkTrojan(c telebot.Context) error {
 }
 
 func (b *Bot) handleCreateVPN(c telebot.Context) error {
-	return b.requestCreateVPN(c, "vless")
+	return b.requestCreateVPN(c, "all")
 }
 
 func (b *Bot) handleCreateVLESS(c telebot.Context) error {

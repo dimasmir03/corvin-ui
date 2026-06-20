@@ -79,7 +79,7 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, exchangeCommands, certf
 	publisherJobs, err := rabbitmq.NewPublisher(
 		conn,
 		rabbitmq.WithPublisherOptionsExchangeName(exchangeJobs),
-		rabbitmq.WithPublisherOptionsExchangeKind("fanout"),
+		rabbitmq.WithPublisherOptionsExchangeKind("topic"),
 		rabbitmq.WithPublisherOptionsExchangeDeclare,
 		rabbitmq.WithPublisherOptionsLogging,
 	)
@@ -120,7 +120,11 @@ func (p *Producer) PublishCreateUser(msg any) error {
 }
 
 func (p *Producer) PublishJob(msg JobTask) error {
-	return p.publish(p.publisherJobs, p.exchangeJobs, msg)
+	routingKey := ""
+	if msg.EventType == "create_client" || msg.Action == "create_client" {
+		routingKey = "create." + msg.TargetGroup
+	}
+	return p.publishWithRoutingKey(p.publisherJobs, p.exchangeJobs, routingKey, msg)
 }
 
 func (p *Producer) PublishCollectSnapshotCommand(msg CollectSnapshotCommand) error {

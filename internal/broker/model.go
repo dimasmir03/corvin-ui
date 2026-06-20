@@ -41,6 +41,7 @@ type JobTask struct {
 	Action            string         `json:"action"`
 	CommandType       string         `json:"command_type,omitempty"`
 	Protocol          string         `json:"protocol"`
+	ProfileID         uint           `json:"profile_id,omitempty"`
 	Profile           string         `json:"profile,omitempty"`
 	TargetGroup       string         `json:"target_group,omitempty"`
 	TelegramID        int64          `json:"telegram_id,omitempty"`

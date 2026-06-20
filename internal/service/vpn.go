@@ -3,10 +3,13 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/url"
 	"strings"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/jobsvc"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 	"vpnpanel/internal/utils"
@@ -93,76 +96,175 @@ func NewVPNService(
 }
 
 func (s *VPNService) RequestCreateVPN(input RequestCreateVPNInput) (*RequestCreateVPNResult, error) {
-	protocol := strings.ToLower(strings.TrimSpace(input.Protocol))
-	if protocol == "" {
-		protocol = "vless"
-	}
-	if protocol != "vless" && protocol != "trojan" {
-		return nil, ErrUnsupportedProtocol
+	profiles, err := requestedVPNProfiles(input.Protocol)
+	if err != nil {
+		return nil, err
 	}
 
 	telegram, err := s.telegramRepo.GetTelegramByTgID(input.TgID)
 	if err != nil {
 		return nil, err
 	}
+	logger.Info("vpn create requested", "user_id", telegram.UserID, "telegram_id", input.TgID, "profile", strings.Join(profiles, ","))
 
-	vpn, err := s.vpnRepo.GetByUserID(telegram.UserID)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	client, created, err := s.vpnRepo.GetOrCreateVPNClient(telegram.UserID, input.TgID)
+	if err != nil {
 		return nil, err
 	}
-	if err == nil {
-		switch protocol {
-		case "vless":
-			if strings.TrimSpace(vpn.VlessLink) != "" {
-				return nil, ErrVPNAlreadyExists
-			}
-		case "trojan":
-			if strings.TrimSpace(vpn.TrojanLink) != "" {
-				return nil, ErrVPNAlreadyExists
-			}
+	if created {
+		logger.Info("vpn canonical client created", "user_id", telegram.UserID, "telegram_id", input.TgID, "client_code", client.ClientCode)
+	} else {
+		logger.Info("vpn canonical client reused", "user_id", telegram.UserID, "telegram_id", input.TgID, "client_code", client.ClientCode)
+	}
+
+	result := &RequestCreateVPNResult{TgID: input.TgID, Protocol: strings.Join(profiles, ",")}
+	for _, profileName := range profiles {
+		profile, batchID, jobID, err := s.ensureVPNProfile(telegram.UserID, input.TgID, client, profileName)
+		if err != nil {
+			return nil, err
+		}
+		if result.BatchID == 0 {
+			result.BatchID = batchID
+		}
+		if result.JobID == 0 {
+			result.JobID = jobID
+		}
+		if len(profiles) == 1 {
+			result.Protocol = profile.Profile
 		}
 	}
+	return result, nil
+}
 
-	if s.jobs == nil {
-		return nil, errors.New("jobs service is not configured")
+func requestedVPNProfiles(protocol string) ([]string, error) {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "", "all":
+		return []string{jobsvc.VPNProfileVLESS, jobsvc.VPNProfileTrojan}, nil
+	case jobsvc.VPNProfileVLESS:
+		return []string{jobsvc.VPNProfileVLESS}, nil
+	case jobsvc.VPNProfileTrojan:
+		return []string{jobsvc.VPNProfileTrojan}, nil
+	default:
+		return nil, ErrUnsupportedProtocol
+	}
+}
+
+func (s *VPNService) ensureVPNProfile(userID uint, tgID int64, client models.VPNClient, profileName string) (models.VPNProfile, uint, uint, error) {
+	endpointGroup := endpointGroupForVPNProfile(profileName)
+	group, err := s.vpnRepo.GetOrCreateEndpointGroup(endpointGroup)
+	if err != nil {
+		return models.VPNProfile{}, 0, 0, err
 	}
 
-	vlessParams := utils.GenVlessLink(input.TgID)
-	trojanParams := utils.GenTrojanLink(input.TgID)
-	clientCode := vlessParams.Name
-	technicalClientID := vlessParams.UID
-	if protocol == "trojan" {
-		technicalClientID = trojanParams.Password
-		clientCode = trojanParams.Name
+	existing, err := s.vpnRepo.GetProfile(client.ID, profileName)
+	if err == nil {
+		logger.Info("vpn profile reused", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", existing.ID)
+		return existing, 0, 0, nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.VPNProfile{}, 0, 0, err
+	}
+
+	nodes, err := s.vpnRepo.EnabledNodesByGroup(endpointGroup)
+	if err != nil {
+		return models.VPNProfile{}, 0, 0, err
+	}
+
+	profileStatus := models.VPNProfileStatusPending
+	lastError := ""
+	if len(nodes) == 0 {
+		profileStatus = models.VPNProfileStatusFailed
+		lastError = "no enabled nodes in endpoint group"
+	}
+
+	profile := models.VPNProfile{
+		VPNClientID:   client.ID,
+		Profile:       profileName,
+		EndpointGroup: endpointGroup,
+		Protocol:      group.Protocol,
+		Status:        profileStatus,
+		FinalLink:     buildProfileLink(group, client, profileName),
+		LastError:     lastError,
+	}
+	profile, err = s.vpnRepo.CreateProfileWithNodes(profile, nodes)
+	if err != nil {
+		return models.VPNProfile{}, 0, 0, err
+	}
+	logger.Info("vpn profile created", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(nodes))
+	logger.Info("vpn profile pending nodes created", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(nodes))
+
+	if len(nodes) == 0 {
+		return profile, 0, 0, nil
+	}
+	if s.jobs == nil {
+		return models.VPNProfile{}, 0, 0, errors.New("jobs service is not configured")
 	}
 
 	batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
-		UserID:            telegram.UserID,
-		TelegramID:        input.TgID,
-		ClientCode:        clientCode,
-		Email:             clientCode,
-		VlessUUID:         vlessParams.UID,
-		VlessFlow:         vlessParams.Flow,
-		TrojanPassword:    trojanParams.Password,
-		Enable:            true,
-		TechnicalClientID: technicalClientID,
-		Protocols:         []string{protocol},
+		ProfileID:      profile.ID,
+		UserID:         userID,
+		TelegramID:     tgID,
+		ClientCode:     client.ClientCode,
+		Email:          client.Email,
+		VlessUUID:      client.VlessUUID,
+		VlessFlow:      group.Flow,
+		TrojanPassword: client.TrojanPassword,
+		Enable:         true,
+		Protocols:      []string{profileName},
 	})
 	if err != nil {
-		return nil, &VPNFlowError{Kind: VPNErrorKindJobs, Err: err}
+		_ = s.vpnRepo.TouchProfilePublishError(profile.ID, err.Error())
+		logger.Error("vpn create job publish failed", err, "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(nodes))
+		return models.VPNProfile{}, 0, 0, &VPNFlowError{Kind: VPNErrorKindJobs, Err: err}
 	}
 
 	var jobID uint
 	if len(jobs) > 0 {
 		jobID = jobs[0].ID
 	}
+	logger.Info("vpn create job published", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "batch_id", batch.ID, "job_id", jobID, "nodes_count", len(nodes))
+	return profile, batch.ID, jobID, nil
+}
 
-	return &RequestCreateVPNResult{
-		TgID:     input.TgID,
-		Protocol: protocol,
-		BatchID:  batch.ID,
-		JobID:    jobID,
-	}, nil
+func endpointGroupForVPNProfile(profile string) string {
+	if strings.EqualFold(strings.TrimSpace(profile), jobsvc.VPNProfileTrojan) {
+		return jobsvc.EndpointGroupRU
+	}
+	return jobsvc.EndpointGroupDirect
+}
+
+func buildProfileLink(group models.EndpointGroup, client models.VPNClient, profileName string) string {
+	host := strings.TrimSpace(group.PublicHost)
+	if host == "" {
+		return ""
+	}
+	port := group.PublicPort
+	if port == 0 {
+		port = 443
+	}
+	query := url.Values{}
+	network := strings.TrimSpace(group.Network)
+	if network == "" {
+		network = "tcp"
+	}
+	query.Set("type", network)
+	if group.Security != "" {
+		query.Set("security", group.Security)
+	}
+	if group.SNI != "" {
+		query.Set("sni", group.SNI)
+	}
+	if group.Path != "" {
+		query.Set("path", group.Path)
+	}
+	if strings.EqualFold(profileName, jobsvc.VPNProfileVLESS) {
+		if group.Flow != "" {
+			query.Set("flow", group.Flow)
+		}
+		query.Set("encryption", "none")
+		return (&url.URL{Scheme: "vless", User: url.User(client.VlessUUID), Host: fmt.Sprintf("%s:%d", host, port), RawQuery: query.Encode(), Fragment: client.ClientCode}).String()
+	}
+	return (&url.URL{Scheme: "trojan", User: url.User(client.TrojanPassword), Host: fmt.Sprintf("%s:%d", host, port), RawQuery: query.Encode(), Fragment: client.ClientCode}).String()
 }
 
 func (s *VPNService) ApplyAgentCreateResult(job *models.Job, event broker.JobResultEvent) (*VPNReadyNotification, error) {

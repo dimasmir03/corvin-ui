@@ -107,9 +107,78 @@ type NodeState struct {
 	TrafficUp      int64      `gorm:"not null;default:0" json:"traffic_up"`
 	TrafficDown    int64      `gorm:"not null;default:0" json:"traffic_down"`
 	LastError      string     `json:"last_error"`
+	Enabled        bool       `gorm:"not null;default:true" json:"enabled"`
 	SentAt         *time.Time `json:"sent_at,omitempty"`
 	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+type EndpointGroup struct {
+	ID         uint      `gorm:"primary_key;autoIncrement" json:"id"`
+	Code       string    `gorm:"uniqueIndex;not null" json:"code"`
+	Name       string    `gorm:"not null" json:"name"`
+	Protocol   string    `gorm:"not null;index" json:"protocol"`
+	PublicHost string    `json:"public_host"`
+	PublicPort int       `gorm:"not null;default:443" json:"public_port"`
+	Security   string    `json:"security"`
+	Network    string    `json:"network"`
+	SNI        string    `json:"sni"`
+	Path       string    `json:"path"`
+	Flow       string    `json:"flow"`
+	Enabled    bool      `gorm:"not null;default:true" json:"enabled"`
+	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt  time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+type VPNClient struct {
+	ID             uint      `gorm:"primary_key;autoIncrement" json:"id"`
+	UserID         uint      `gorm:"uniqueIndex;not null" json:"user_id"`
+	TelegramID     int64     `gorm:"index;not null" json:"telegram_id"`
+	ClientCode     string    `gorm:"uniqueIndex;not null" json:"client_code"`
+	Email          string    `gorm:"uniqueIndex;not null" json:"email"`
+	VlessUUID      string    `gorm:"not null" json:"-"`
+	TrojanPassword string    `gorm:"not null" json:"-"`
+	CreatedAt      time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+const (
+	VPNProfileStatusPending = "pending"
+	VPNProfileStatusActive  = "active"
+	VPNProfileStatusPartial = "partial"
+	VPNProfileStatusFailed  = "failed"
+
+	VPNProfileNodeStatusPending = "pending"
+	VPNProfileNodeStatusSuccess = "success"
+	VPNProfileNodeStatusFailed  = "failed"
+)
+
+type VPNProfile struct {
+	ID            uint             `gorm:"primary_key;autoIncrement" json:"id"`
+	VPNClientID   uint             `gorm:"index;not null;uniqueIndex:idx_vpn_profile_unique" json:"vpn_client_id"`
+	VPNClient     VPNClient        `gorm:"foreignKey:VPNClientID" json:"vpn_client,omitempty"`
+	Profile       string           `gorm:"not null;index;uniqueIndex:idx_vpn_profile_unique" json:"profile"`
+	EndpointGroup string           `gorm:"not null;index;uniqueIndex:idx_vpn_profile_unique" json:"endpoint_group"`
+	Protocol      string           `gorm:"not null;index" json:"protocol"`
+	Status        string           `gorm:"not null;index" json:"status"`
+	FinalLink     string           `json:"final_link"`
+	LastError     string           `json:"last_error"`
+	CreatedAt     time.Time        `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt     time.Time        `gorm:"autoUpdateTime" json:"updated_at"`
+	Nodes         []VPNProfileNode `gorm:"foreignKey:VPNProfileID" json:"nodes,omitempty"`
+}
+
+type VPNProfileNode struct {
+	ID           uint       `gorm:"primary_key;autoIncrement" json:"id"`
+	VPNProfileID uint       `gorm:"index;not null;uniqueIndex:idx_vpn_profile_node_unique" json:"vpn_profile_id"`
+	NodeID       string     `gorm:"not null;index;uniqueIndex:idx_vpn_profile_node_unique" json:"node_id"`
+	Protocol     string     `gorm:"not null;index" json:"protocol"`
+	Status       string     `gorm:"not null;index" json:"status"`
+	InboundID    *int       `json:"inbound_id,omitempty"`
+	LastError    string     `json:"last_error"`
+	AppliedAt    *time.Time `json:"applied_at,omitempty"`
+	CreatedAt    time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt    time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 type Telegram struct {
