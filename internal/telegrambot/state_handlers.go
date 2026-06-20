@@ -11,11 +11,11 @@ func (b *Bot) handleCancel(c telebot.Context) error {
 	state := b.state.GetState(sender.ID)
 	hasInstruction := b.state.HasInstruction(sender.ID)
 	if state.Mode == ModeNone && !hasInstruction {
-		return c.Send(msgNoActiveAction)
+		return b.send(c, msgNoActiveAction)
 	}
 
 	b.state.ClearMode(sender.ID)
 	b.state.ClearInstruction(sender.ID)
 	b.logger.Info("user action cancelled", "tg_id", sender.ID, "mode", state.Mode)
-	return c.Send(msgActionCancelled, startMenu())
+	return b.send(c, msgActionCancelled, startMenu())
 }

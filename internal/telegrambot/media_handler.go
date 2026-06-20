@@ -8,7 +8,14 @@ func (b *Bot) handlePhoto(c telebot.Context) error {
 		return nil
 	}
 
-	switch b.state.GetMode(sender.ID) {
+	mode := b.state.GetMode(sender.ID)
+	hasCaption := false
+	if message := c.Message(); message != nil {
+		hasCaption = message.Caption != ""
+	}
+	b.logger.Info("telegram photo received", "tg_id", sender.ID, "mode", mode, "has_caption", hasCaption)
+
+	switch mode {
 	case ModeSupport:
 		return b.handleSupportPhoto(c)
 	default:
@@ -17,5 +24,5 @@ func (b *Bot) handlePhoto(c telebot.Context) error {
 }
 
 func (b *Bot) handleUnknownPhoto(c telebot.Context) error {
-	return c.Send(msgSupportPhotoPrompt, startMenu())
+	return b.send(c, msgSupportPhotoPrompt, startMenu())
 }

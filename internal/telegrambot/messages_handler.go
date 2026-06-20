@@ -8,7 +8,10 @@ func (b *Bot) handleText(c telebot.Context) error {
 		return nil
 	}
 
-	switch b.state.GetMode(sender.ID) {
+	mode := b.state.GetMode(sender.ID)
+	b.logger.Info("telegram text received", "tg_id", sender.ID, "mode", mode, "text_len", len(c.Text()))
+
+	switch mode {
 	case ModeSupport:
 		return b.handleSupportText(c)
 	case ModeSupportReply:
@@ -19,5 +22,5 @@ func (b *Bot) handleText(c telebot.Context) error {
 }
 
 func (b *Bot) handleUnknownText(c telebot.Context) error {
-	return c.Send(msgUnknownText, startMenu())
+	return b.send(c, msgUnknownText, startMenu())
 }

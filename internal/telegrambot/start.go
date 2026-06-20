@@ -12,7 +12,7 @@ func (b *Bot) handleStart(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("telegram start handler failed", nil, "reason", "sender is nil")
-		return c.Send(msgRegistrationFailed)
+		return b.send(c, msgRegistrationFailed)
 	}
 
 	_, err := b.deps.Users.EnsureTelegramUser(service.TelegramUserInput{
@@ -23,10 +23,10 @@ func (b *Bot) handleStart(c telebot.Context) error {
 	})
 	if err != nil {
 		b.logger.Error("telegram start handler failed", err, "tg_id", sender.ID)
-		return c.Send(msgRegistrationFailed)
+		return b.send(c, msgRegistrationFailed)
 	}
 
-	if err := c.Send(fmt.Sprintf(msgStart, displayName(sender)), startMenu()); err != nil {
+	if err := b.send(c, fmt.Sprintf(msgStart, displayName(sender)), startMenu()); err != nil {
 		b.logger.Error("telegram send failed", err, "tg_id", sender.ID)
 		return err
 	}
@@ -36,7 +36,7 @@ func (b *Bot) handleStart(c telebot.Context) error {
 func (b *Bot) handleID(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
-		return c.Send(msgTelegramIDFailed)
+		return b.send(c, msgTelegramIDFailed)
 	}
 
 	message := fmt.Sprintf("Ваш Telegram ID: %d", sender.ID)
@@ -44,7 +44,7 @@ func (b *Bot) handleID(c telebot.Context) error {
 		message += fmt.Sprintf("\nUsername: @%s", sender.Username)
 	}
 	b.logger.Debug("telegram id requested", "tg_id", sender.ID)
-	return c.Send(message)
+	return b.send(c, message)
 }
 
 func displayName(user *telebot.User) string {

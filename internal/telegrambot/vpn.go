@@ -15,22 +15,22 @@ func (b *Bot) handleVPN(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("telegram vpn handler failed", nil, "reason", "sender is nil")
-		return c.Send(msgVPNFetchFailed)
+		return b.send(c, msgVPNFetchFailed)
 	}
 
 	vpn, err := b.deps.VPN.GetVPNByTelegramID(sender.ID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return c.Send(msgVPNMissing, vpnCreateMenu())
+		return b.send(c, msgVPNMissing, vpnCreateMenu())
 	}
 	if err != nil {
 		b.logger.Error("telegram vpn handler failed", err, "tg_id", sender.ID)
-		return c.Send(msgVPNFetchFailed)
+		return b.send(c, msgVPNFetchFailed)
 	}
 	if strings.TrimSpace(vpn.VlessLink) == "" && strings.TrimSpace(vpn.TrojanLink) == "" {
-		return c.Send(msgVPNMissing, vpnCreateMenu())
+		return b.send(c, msgVPNMissing, vpnCreateMenu())
 	}
 
-	return c.Send(msgVPNReady, vpnMenu())
+	return b.send(c, msgVPNReady, vpnMenu())
 }
 
 func (b *Bot) handleVPNVLESS(c telebot.Context) error {
@@ -45,13 +45,13 @@ func (b *Bot) handleLink(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("telegram link requested failed", nil, "reason", "sender is nil")
-		return c.Send(msgLinkFetchFailed)
+		return b.send(c, msgLinkFetchFailed)
 	}
 
 	args := c.Args()
 	if len(args) == 0 {
 		b.logger.Info("telegram link requested", "tg_id", sender.ID)
-		return c.Send(msgLinkChooseProtocol, linkMenu())
+		return b.send(c, msgLinkChooseProtocol, linkMenu())
 	}
 
 	protocol := strings.ToLower(strings.TrimSpace(args[0]))
@@ -79,10 +79,10 @@ func (b *Bot) handleCreateTrojan(c telebot.Context) error {
 }
 
 func (b *Bot) handleVPNBack(c telebot.Context) error {
-	if err := c.Respond(); err != nil {
+	if err := b.respond(c); err != nil {
 		b.logger.Error("telegram callback failed", err)
 	}
-	return c.Send(msgStartMenu, startMenu())
+	return b.send(c, msgStartMenu, startMenu())
 }
 
 func (b *Bot) sendVPNLink(c telebot.Context, protocol string, missingMessage string) error {
@@ -91,22 +91,22 @@ func (b *Bot) sendVPNLink(c telebot.Context, protocol string, missingMessage str
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("telegram vpn link handler failed", nil, "reason", "sender is nil", "protocol", protocol)
-		return c.Send(msgVPNFetchFailed)
+		return b.send(c, msgVPNFetchFailed)
 	}
 
 	link, err := b.deps.VPN.GetVPNLinkByProtocol(sender.ID, protocol)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return c.Send(missingMessage)
+		return b.send(c, missingMessage)
 	}
 	if err != nil {
 		b.logger.Error("telegram vpn link handler failed", err, "tg_id", sender.ID, "protocol", protocol)
-		return c.Send(msgVPNFetchFailed)
+		return b.send(c, msgVPNFetchFailed)
 	}
 	if strings.TrimSpace(link) == "" {
-		return c.Send(missingMessage)
+		return b.send(c, missingMessage)
 	}
 
-	return c.Send(link)
+	return b.send(c, link)
 }
 
 func (b *Bot) sendLink(c telebot.Context, protocol string) error {
@@ -115,33 +115,33 @@ func (b *Bot) sendLink(c telebot.Context, protocol string) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("telegram link requested failed", nil, "reason", "sender is nil", "protocol", protocol)
-		return c.Send(msgLinkFetchFailed)
+		return b.send(c, msgLinkFetchFailed)
 	}
 
 	if protocol != "vless" && protocol != "trojan" {
 		b.logger.Info("telegram link requested", "tg_id", sender.ID, "protocol", protocol)
-		return c.Send(msgLinkUnsupportedProtocol)
+		return b.send(c, msgLinkUnsupportedProtocol)
 	}
 
 	b.logger.Info("telegram link requested", "tg_id", sender.ID, "protocol", protocol)
 	link, err := b.deps.VPN.GetVPNLinkByProtocol(sender.ID, protocol)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		b.logger.Info("telegram link not found", "tg_id", sender.ID, "protocol", protocol)
-		return c.Send(msgLinkMissing)
+		return b.send(c, msgLinkMissing)
 	}
 	if errors.Is(err, service.ErrUnsupportedProtocol) {
-		return c.Send(msgLinkUnsupportedProtocol)
+		return b.send(c, msgLinkUnsupportedProtocol)
 	}
 	if err != nil {
 		b.logger.Error("telegram link send failed", err, "tg_id", sender.ID, "protocol", protocol)
-		return c.Send(msgLinkFetchFailed)
+		return b.send(c, msgLinkFetchFailed)
 	}
 	if strings.TrimSpace(link) == "" {
 		b.logger.Info("telegram link not found", "tg_id", sender.ID, "protocol", protocol)
-		return c.Send(msgLinkMissing)
+		return b.send(c, msgLinkMissing)
 	}
 
-	if err := c.Send(formatLinkMessage(protocol, link)); err != nil {
+	if err := b.send(c, formatLinkMessage(protocol, link)); err != nil {
 		b.logger.Error("telegram link send failed", err, "tg_id", sender.ID, "protocol", protocol)
 		return err
 	}
@@ -165,7 +165,7 @@ func (b *Bot) requestCreateVPN(c telebot.Context, protocol string) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("telegram vpn create request failed", nil, "reason", "sender is nil", "protocol", protocol)
-		return c.Send(msgVPNCreateFailed)
+		return b.send(c, msgVPNCreateFailed)
 	}
 
 	b.logger.Info("telegram vpn create requested", "tg_id", sender.ID, "protocol", protocol)
@@ -175,26 +175,26 @@ func (b *Bot) requestCreateVPN(c telebot.Context, protocol string) error {
 	})
 	if errors.Is(err, service.ErrVPNAlreadyExists) {
 		b.logger.Info("telegram vpn already exists", "tg_id", sender.ID, "protocol", protocol)
-		return c.Send(msgVPNAlreadyExists)
+		return b.send(c, msgVPNAlreadyExists)
 	}
 	if errors.Is(err, service.ErrUnsupportedProtocol) {
 		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol)
-		return c.Send(msgVPNUnsupportedProtocol)
+		return b.send(c, msgVPNUnsupportedProtocol)
 	}
 	if err != nil {
 		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol)
-		return c.Send(msgVPNCreateFailed)
+		return b.send(c, msgVPNCreateFailed)
 	}
 
 	b.logger.Info("telegram vpn create request queued", "tg_id", sender.ID, "protocol", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID)
-	return c.Send(msgVPNCreateRequested)
+	return b.send(c, msgVPNCreateRequested)
 }
 
 func (b *Bot) respondToCallback(c telebot.Context) {
 	if c.Callback() == nil {
 		return
 	}
-	if err := c.Respond(); err != nil {
+	if err := b.respond(c); err != nil {
 		b.logger.Error("telegram callback failed", err)
 	}
 }

@@ -7,5 +7,5 @@ func (b *Bot) handlePing(c telebot.Context) error {
 	if sender != nil {
 		b.logger.Debug("telegram ping requested", "tg_id", sender.ID)
 	}
-	return c.Send(msgPingOK)
+	return b.send(c, msgPingOK)
 }

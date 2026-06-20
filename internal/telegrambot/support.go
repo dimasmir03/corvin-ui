@@ -16,12 +16,12 @@ func (b *Bot) handleSupportOpen(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("support flow opened failed", nil, "reason", "sender is nil")
-		return c.Send(msgSupportCreateFailed)
+		return b.send(c, msgSupportCreateFailed)
 	}
 
 	b.state.SetMode(sender.ID, ModeSupport)
 	b.logger.Info("support flow opened", "tg_id", sender.ID)
-	return c.Send(msgSupportPrompt, supportMenu())
+	return b.send(c, msgSupportPrompt, supportMenu())
 }
 
 func (b *Bot) handleSupport(c telebot.Context) error {
@@ -40,12 +40,12 @@ func (b *Bot) handleSupportText(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("support complaint create failed", nil, "reason", "sender is nil")
-		return c.Send(msgSupportCreateFailed)
+		return b.send(c, msgSupportCreateFailed)
 	}
 
 	text := strings.TrimSpace(c.Text())
 	if text == "" {
-		return c.Send(msgSupportPrompt, supportMenu())
+		return b.send(c, msgSupportPrompt, supportMenu())
 	}
 
 	complaint, err := b.deps.Support.CreateComplaint(service.CreateComplaintInput{
@@ -54,13 +54,13 @@ func (b *Bot) handleSupportText(c telebot.Context) error {
 	})
 	if err != nil {
 		b.logger.Error("support complaint create failed", err, "tg_id", sender.ID)
-		return c.Send(msgSupportCreateFailed)
+		return b.send(c, msgSupportCreateFailed)
 	}
 
 	b.state.ClearMode(sender.ID)
 	b.logger.Info("support complaint created", "tg_id", sender.ID, "complaint_id", complaint.ID)
 
-	if err := c.Send(msgSupportSent); err != nil {
+	if err := b.send(c, msgSupportSent); err != nil {
 		b.logger.Error("telegram send failed", err, "tg_id", sender.ID)
 		return err
 	}
@@ -84,13 +84,13 @@ func (b *Bot) handleSupportPhoto(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("support photo complaint create failed", nil, "reason", "sender is nil")
-		return c.Send(msgSupportCreateFailed)
+		return b.send(c, msgSupportCreateFailed)
 	}
 
 	message := c.Message()
 	if message == nil || message.Photo == nil || strings.TrimSpace(message.Photo.FileID) == "" {
 		b.logger.Error("support photo complaint create failed", nil, "tg_id", sender.ID, "reason", "photo file_id is empty")
-		return c.Send(msgSupportCreateFailed)
+		return b.send(c, msgSupportCreateFailed)
 	}
 
 	caption := strings.TrimSpace(message.Caption)
@@ -102,14 +102,14 @@ func (b *Bot) handleSupportPhoto(c telebot.Context) error {
 	reader, err := b.bot.File(&photoFile)
 	if err != nil {
 		b.logger.Error("support complaint photo download failed", err, "tg_id", sender.ID)
-		return c.Send(msgSupportCreateFailed)
+		return b.send(c, msgSupportCreateFailed)
 	}
 	defer reader.Close()
 
 	photoBytes, err := io.ReadAll(reader)
 	if err != nil {
 		b.logger.Error("support complaint photo download failed", err, "tg_id", sender.ID)
-		return c.Send(msgSupportCreateFailed)
+		return b.send(c, msgSupportCreateFailed)
 	}
 
 	b.logger.Info("support complaint photo upload started", "tg_id", sender.ID, "has_photo", true)
@@ -126,14 +126,14 @@ func (b *Bot) handleSupportPhoto(c telebot.Context) error {
 	})
 	if err != nil {
 		b.logger.Error("support complaint photo upload failed", err, "tg_id", sender.ID)
-		return c.Send(msgSupportCreateFailed)
+		return b.send(c, msgSupportCreateFailed)
 	}
-	b.logger.Info("support complaint photo uploaded", "tg_id", sender.ID, "complaint_id", complaint.ID, "photo_object_key", complaint.PhotoObjectKey)
+	b.logger.Info("support complaint photo uploaded", "tg_id", sender.ID, "complaint_id", complaint.ID)
 
 	b.state.ClearMode(sender.ID)
 	b.logger.Info("support photo complaint created", "tg_id", sender.ID, "complaint_id", complaint.ID, "has_photo", complaint.Photo)
 
-	if err := c.Send(msgSupportPhotoSent); err != nil {
+	if err := b.send(c, msgSupportPhotoSent); err != nil {
 		b.logger.Error("telegram send failed", err, "tg_id", sender.ID)
 		return err
 	}
@@ -165,10 +165,10 @@ func (b *Bot) handleSupportCancel(c telebot.Context) error {
 	b.state.ClearMode(sender.ID)
 	if state.Mode == ModeSupportReply {
 		b.logger.Info("support reply canceled", "admin_tg_id", sender.ID, "complaint_id", state.ComplaintID)
-		return c.Send(msgSupportReplyCanceled, startMenu())
+		return b.send(c, msgSupportReplyCanceled, startMenu())
 	}
 
-	return c.Send(msgSupportCanceled, startMenu())
+	return b.send(c, msgSupportCanceled, startMenu())
 }
 
 func (b *Bot) handleSupportReplyStart(c telebot.Context) error {
@@ -180,19 +180,19 @@ func (b *Bot) handleSupportReplyStart(c telebot.Context) error {
 	}
 	callback := c.Callback()
 	if callback == nil {
-		return c.Send(msgSupportReplyFailed)
+		return b.send(c, msgSupportReplyFailed)
 	}
 
 	complaintID64, err := strconv.ParseUint(strings.TrimSpace(callback.Data), 10, 64)
 	if err != nil || complaintID64 == 0 {
 		b.logger.Error("support reply start failed", err, "admin_tg_id", sender.ID)
-		return c.Send(msgSupportReplyFailed)
+		return b.send(c, msgSupportReplyFailed)
 	}
 
 	complaintID := uint(complaintID64)
 	b.state.SetSupportReply(sender.ID, complaintID)
 	b.logger.Info("support reply started", "admin_tg_id", sender.ID, "complaint_id", complaintID)
-	return c.Send(fmt.Sprintf(msgSupportReplyPrompt, complaintID), supportMenu())
+	return b.send(c, fmt.Sprintf(msgSupportReplyPrompt, complaintID), supportMenu())
 }
 
 func (b *Bot) handleSupportReplyText(c telebot.Context) error {
@@ -209,12 +209,12 @@ func (b *Bot) handleSupportReplyText(c telebot.Context) error {
 	state := b.state.GetState(sender.ID)
 	if state.Mode != ModeSupportReply || state.ComplaintID == 0 {
 		b.state.ClearMode(sender.ID)
-		return c.Send(msgSupportReplyFailed)
+		return b.send(c, msgSupportReplyFailed)
 	}
 
 	text := strings.TrimSpace(c.Text())
 	if text == "" {
-		return c.Send(fmt.Sprintf(msgSupportReplyPrompt, state.ComplaintID), supportMenu())
+		return b.send(c, fmt.Sprintf(msgSupportReplyPrompt, state.ComplaintID), supportMenu())
 	}
 
 	result, err := b.deps.Support.ReplyToComplaint(service.ReplyToComplaintInput{
@@ -224,7 +224,7 @@ func (b *Bot) handleSupportReplyText(c telebot.Context) error {
 	})
 	if err != nil {
 		b.logger.Error("support reply save failed", err, "admin_tg_id", sender.ID, "complaint_id", state.ComplaintID)
-		return c.Send(msgSupportReplyFailed)
+		return b.send(c, msgSupportReplyFailed)
 	}
 
 	b.state.ClearMode(sender.ID)
@@ -232,9 +232,9 @@ func (b *Bot) handleSupportReplyText(c telebot.Context) error {
 
 	if err := b.Notifier().SendSupportReply(result.UserTgID, result.Text); err != nil {
 		b.logger.Error("support reply send failed", err, "admin_tg_id", sender.ID, "complaint_id", result.ComplaintID, "user_tg_id", result.UserTgID)
-		return c.Send(msgSupportReplySavedSendFailed)
+		return b.send(c, msgSupportReplySavedSendFailed)
 	}
 
 	b.logger.Info("support reply sent", "admin_tg_id", sender.ID, "complaint_id", result.ComplaintID, "user_tg_id", result.UserTgID)
-	return c.Send(msgSupportReplySent)
+	return b.send(c, msgSupportReplySent)
 }

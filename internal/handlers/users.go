@@ -129,17 +129,17 @@ func (s *UserController) UpdateStatusUser(c *gin.Context) {
 	////////////////////////////
 	// body, err := io.ReadAll(c.Request.Body)
 	// if err != nil {
-	// 	log.Printf("Failed to read response.Response body: %v\n", err)
+	// 	logger.Printf("Failed to read response.Response body: %v\n", err)
 	// }
 	// // req url
-	// log.Println("Request URL:", c.Request.URL.String())
+	// logger.Println("Request URL:", c.Request.URL.String())
 
 	// // req header X-API-KEY
-	// log.Println("Request Header X-API-KEY:", c.Request.Header.Get("X-API-KEY"))
+	// logger.Println("Request Header X-API-KEY:", c.Request.Header.Get("X-API-KEY"))
 
-	// // log.Println("response.Response status code:", c.Request.StatusCode)
+	// // logger.Println("response.Response status code:", c.Request.StatusCode)
 	// // response.Response body as string
-	// log.Printf("response.Response body: %s\n", string(body))
+	// logger.Printf("response.Response body: %s\n", string(body))
 	/////////////////////////////
 
 	var userStatus struct {

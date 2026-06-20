@@ -17,7 +17,7 @@ func (b *Bot) handleInstruction(c telebot.Context) error {
 	sender := c.Sender()
 	if sender == nil {
 		b.logger.Error("instruction opened failed", nil, "reason", "sender is nil")
-		return c.Send(msgVPNFetchFailed)
+		return b.send(c, msgVPNFetchFailed)
 	}
 
 	b.logger.Info("instruction opened", "tg_id", sender.ID)
@@ -33,7 +33,7 @@ func (b *Bot) handleInstructionNext(c telebot.Context) error {
 
 	step := b.state.GetInstructionStep(sender.ID)
 	if step >= len(instructionSteps)-1 {
-		return c.Respond(&telebot.CallbackResponse{Text: msgInstructionLast})
+		return b.respond(c, &telebot.CallbackResponse{Text: msgInstructionLast})
 	}
 	b.respondToCallback(c)
 	if err := b.sendInstructionStep(c, sender.ID, step+1); err != nil {
@@ -52,7 +52,7 @@ func (b *Bot) handleInstructionPrev(c telebot.Context) error {
 
 	step := b.state.GetInstructionStep(sender.ID)
 	if step <= 0 {
-		return c.Respond(&telebot.CallbackResponse{Text: msgInstructionFirst})
+		return b.respond(c, &telebot.CallbackResponse{Text: msgInstructionFirst})
 	}
 	b.respondToCallback(c)
 	if err := b.sendInstructionStep(c, sender.ID, step-1); err != nil {
@@ -69,12 +69,12 @@ func (b *Bot) handleInstructionMenu(c telebot.Context) error {
 	if sender != nil {
 		b.state.ClearInstruction(sender.ID)
 	}
-	return c.Send(msgStartMenu, startMenu())
+	return b.send(c, msgStartMenu, startMenu())
 }
 
 func (b *Bot) sendInstructionStep(c telebot.Context, tgID int64, step int) error {
 	if len(instructionSteps) == 0 {
-		return c.Send(msgInstructionComingSoon)
+		return b.send(c, msgInstructionComingSoon)
 	}
 	if step < 0 {
 		step = 0
@@ -88,13 +88,13 @@ func (b *Bot) sendInstructionStep(c telebot.Context, tgID int64, step int) error
 	menu := instructionMenu(step)
 
 	if current.ImagePath == "" {
-		return c.Send(current.Text, telebot.ModeHTML, menu)
+		return b.send(c, current.Text, telebot.ModeHTML, menu)
 	}
 
 	file, err := instructionAssets.Open(instructionAssetPath(current.ImagePath))
 	if err != nil {
 		b.logger.Error("instruction image send failed", err, "tg_id", tgID, "step", step)
-		return c.Send(current.Text, telebot.ModeHTML, menu)
+		return b.send(c, current.Text, telebot.ModeHTML, menu)
 	}
 	defer file.Close()
 
@@ -103,9 +103,9 @@ func (b *Bot) sendInstructionStep(c telebot.Context, tgID int64, step int) error
 		Caption: current.Text,
 	}
 
-	if err := c.Send(photo, telebot.ModeHTML, menu); err != nil {
+	if err := b.send(c, photo, telebot.ModeHTML, menu); err != nil {
 		b.logger.Error("instruction image send failed", err, "tg_id", tgID, "step", step)
-		return c.Send(current.Text, telebot.ModeHTML, menu)
+		return b.send(c, current.Text, telebot.ModeHTML, menu)
 	}
 	return nil
 }

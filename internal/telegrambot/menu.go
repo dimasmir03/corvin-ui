@@ -7,7 +7,7 @@ func (b *Bot) handleMenu(c telebot.Context) error {
 	if sender != nil {
 		b.logger.Info("menu command opened", "tg_id", sender.ID)
 	}
-	return b.handleMenu(c)
+	return b.send(c, msgStartMenu, startMenu())
 }
 
 func (b *Bot) handleMenuVPN(c telebot.Context) error {
@@ -23,10 +23,10 @@ func (b *Bot) handleMenuSupport(c telebot.Context) error {
 }
 
 func (b *Bot) respondWithStub(c telebot.Context, text string) error {
-	if err := c.Respond(); err != nil {
+	if err := b.respond(c); err != nil {
 		b.logger.Error("telegram callback failed", err)
 	}
-	if err := c.Send(text); err != nil {
+	if err := b.send(c, text); err != nil {
 		b.logger.Error("telegram send failed", err)
 		return err
 	}

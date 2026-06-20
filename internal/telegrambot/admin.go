@@ -28,18 +28,19 @@ func (b *Bot) isAdmin(tgID int64) bool {
 func (b *Bot) adminMiddleware(next telebot.HandlerFunc) telebot.HandlerFunc {
 	return func(c telebot.Context) error {
 		sender := c.Sender()
-		logMsg := "admin command ignored for non-admin"
+		logMsg := "telegram admin command ignored for non-admin"
 		if c.Callback() != nil {
-			logMsg = "admin callback ignored for non-admin"
+			logMsg = "telegram admin callback ignored for non-admin"
 		}
 		if sender == nil {
-			b.logger.Debug(logMsg)
+			b.logger.Warn(logMsg, "reason", "sender is nil")
 			return nil
 		}
 		if !b.isAdmin(sender.ID) {
-			b.logger.Debug(logMsg, "tg_id", sender.ID)
+			b.logger.Warn(logMsg, "tg_id", sender.ID)
 			return nil
 		}
+		b.logger.Debug("telegram admin middleware passed", "tg_id", sender.ID)
 		return next(c)
 	}
 }
@@ -54,11 +55,11 @@ func (b *Bot) handleGetUsers(c telebot.Context) error {
 	users, err := b.deps.Users.ListTelegramUsers()
 	if err != nil {
 		b.logger.Error("admin getusers failed", err, "admin_tg_id", sender.ID)
-		return c.Send(msgAdminGetUsersFailed)
+		return b.send(c, msgAdminGetUsersFailed)
 	}
 
 	b.logger.Info("admin getusers completed", "admin_tg_id", sender.ID, "users_count", len(users))
-	return c.Send(formatAdminTelegramUsers(users))
+	return b.send(c, formatAdminTelegramUsers(users))
 }
 
 func (b *Bot) handleSendUser(c telebot.Context) error {
@@ -69,32 +70,32 @@ func (b *Bot) handleSendUser(c telebot.Context) error {
 
 	args := c.Args()
 	if len(args) < 2 {
-		return c.Send(msgAdminSendUserUsage)
+		return b.send(c, msgAdminSendUserUsage)
 	}
 
 	targetTgID, err := strconv.ParseInt(strings.TrimSpace(args[0]), 10, 64)
 	if err != nil || targetTgID == 0 {
-		return c.Send(msgAdminSendUserInvalidID)
+		return b.send(c, msgAdminSendUserInvalidID)
 	}
 
 	message := strings.TrimSpace(strings.Join(args[1:], " "))
 	if message == "" {
-		return c.Send(msgAdminSendUserUsage)
+		return b.send(c, msgAdminSendUserUsage)
 	}
 
 	b.logger.Info("admin senduser requested", "admin_tg_id", sender.ID, "target_tg_id", targetTgID, "message_len", len(message))
 	if _, err := b.deps.Users.GetTelegramByTgID(targetTgID); err != nil {
 		b.logger.Warn("admin senduser target not found", "admin_tg_id", sender.ID, "target_tg_id", targetTgID)
-		return c.Send(msgAdminSendUserNotFound)
+		return b.send(c, msgAdminSendUserNotFound)
 	}
 
 	if err := b.Notifier().SendAdminDirectMessage(targetTgID, message); err != nil {
 		b.logger.Error("admin senduser failed", err, "admin_tg_id", sender.ID, "target_tg_id", targetTgID, "message_len", len(message))
-		return c.Send(msgAdminSendUserFailed)
+		return b.send(c, msgAdminSendUserFailed)
 	}
 
 	b.logger.Info("admin senduser sent", "admin_tg_id", sender.ID, "target_tg_id", targetTgID, "message_len", len(message))
-	return c.Send(msgAdminSendUserSent)
+	return b.send(c, msgAdminSendUserSent)
 }
 
 func (b *Bot) handleSendBroadcast(c telebot.Context) error {
@@ -105,16 +106,16 @@ func (b *Bot) handleSendBroadcast(c telebot.Context) error {
 
 	message := strings.TrimSpace(strings.Join(c.Args(), " "))
 	if message == "" {
-		return c.Send(msgAdminBroadcastUsage)
+		return b.send(c, msgAdminBroadcastUsage)
 	}
 
 	users, err := b.deps.Users.ListTelegramUsers()
 	if err != nil {
 		b.logger.Error("admin broadcast draft failed", err, "admin_tg_id", sender.ID, "message_len", len(message))
-		return c.Send(msgAdminGetUsersFailed)
+		return b.send(c, msgAdminGetUsersFailed)
 	}
 	if len(users) == 0 {
-		return c.Send(msgAdminBroadcastNoRecipients)
+		return b.send(c, msgAdminBroadcastNoRecipients)
 	}
 
 	b.state.SetBroadcastDraft(sender.ID, BroadcastDraft{
@@ -124,7 +125,7 @@ func (b *Bot) handleSendBroadcast(c telebot.Context) error {
 	})
 	b.logger.Info("admin broadcast draft created", "admin_tg_id", sender.ID, "recipients_count", len(users), "message_len", len(message))
 
-	return c.Send(formatBroadcastPreview(message, len(users)), broadcastConfirmMenu())
+	return b.send(c, formatBroadcastPreview(message, len(users)), broadcastConfirmMenu())
 }
 
 func (b *Bot) handleBroadcastConfirm(c telebot.Context) error {
@@ -137,13 +138,13 @@ func (b *Bot) handleBroadcastConfirm(c telebot.Context) error {
 
 	draft, ok := b.state.GetBroadcastDraft(sender.ID)
 	if !ok || strings.TrimSpace(draft.Text) == "" {
-		return c.Send(msgAdminBroadcastNoDraft)
+		return b.send(c, msgAdminBroadcastNoDraft)
 	}
 
 	users, err := b.deps.Users.ListTelegramUsers()
 	if err != nil {
 		b.logger.Error("admin broadcast failed", err, "admin_tg_id", sender.ID, "message_len", len(draft.Text))
-		return c.Send(msgAdminGetUsersFailed)
+		return b.send(c, msgAdminGetUsersFailed)
 	}
 
 	total := len(users)
@@ -162,7 +163,7 @@ func (b *Bot) handleBroadcastConfirm(c telebot.Context) error {
 
 	b.state.ClearBroadcastDraft(sender.ID)
 	b.logger.Info("admin broadcast finished", "admin_tg_id", sender.ID, "recipients_count", total, "sent", sent, "failed", failed, "message_len", len(draft.Text))
-	return c.Send(formatBroadcastResult(total, sent, failed))
+	return b.send(c, formatBroadcastResult(total, sent, failed))
 }
 
 func (b *Bot) handleBroadcastCancel(c telebot.Context) error {
@@ -174,7 +175,7 @@ func (b *Bot) handleBroadcastCancel(c telebot.Context) error {
 	}
 	b.state.ClearBroadcastDraft(sender.ID)
 	b.logger.Info("admin broadcast cancelled", "admin_tg_id", sender.ID)
-	return c.Send(msgAdminBroadcastCancelled)
+	return b.send(c, msgAdminBroadcastCancelled)
 }
 
 func formatAdminTelegramUsers(users []service.AdminTelegramUserView) string {
