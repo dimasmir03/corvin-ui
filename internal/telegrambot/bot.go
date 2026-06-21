@@ -51,10 +51,23 @@ func New(cfg config.TelegramConfig, deps Deps) (*Bot, error) {
 		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN is required when TELEGRAM_ENABLED=true")
 	}
 
-	tb, err := telebot.NewBot(telebot.Settings{
+	client, err := NewTelegramHTTPClient(cfg.ProxyURL)
+	if err != nil {
+		technicalLog.Error("telegram proxy config invalid", err, telegramProxyLogFields(cfg.ProxyURL)...)
+		return nil, err
+	}
+	settings := telebot.Settings{
 		Token:  token,
 		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
-	})
+	}
+	if client != nil {
+		settings.Client = client
+		technicalLog.Info("telegram proxy enabled", telegramProxyLogFields(cfg.ProxyURL)...)
+	} else {
+		technicalLog.Info("telegram proxy disabled")
+	}
+
+	tb, err := telebot.NewBot(settings)
 	if err != nil {
 		technicalLog.Error("telegram bot init failed", err)
 		return nil, err

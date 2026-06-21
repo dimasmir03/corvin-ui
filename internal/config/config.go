@@ -52,6 +52,7 @@ type TelegramConfig struct {
 	Token              string
 	AdminIDs           []int64
 	MaintenanceEnabled bool
+	ProxyURL           string
 }
 
 type MinIOConfig struct {
@@ -104,6 +105,7 @@ func Load() (Config, error) {
 			Token:              getEnv("TELEGRAM_BOT_TOKEN", ""),
 			AdminIDs:           getEnvInt64Slice("TELEGRAM_ADMIN_IDS"),
 			MaintenanceEnabled: getEnvBool("TELEGRAM_MAINTENANCE_ENABLED", false),
+			ProxyURL:           getEnv("TELEGRAM_PROXY_URL", ""),
 		},
 		MinIO: MinIOConfig{
 			Endpoint:  getEnv("MINIO_ENDPOINT", "127.0.0.1:9000"),
