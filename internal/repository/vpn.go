@@ -70,6 +70,20 @@ func (r *VpnRepo) UpsertLinkByUserID(userID uint, protocol string, link string) 
 	return r.Save(vpn)
 }
 
+func (r *VpnRepo) GetVPNClientByUserID(userID uint) (models.VPNClient, error) {
+	var client models.VPNClient
+	err := r.DB.Where("user_id = ?", userID).Take(&client).Error
+	return client, err
+}
+
+func (r *VpnRepo) ListProfilesByClientID(clientID uint) ([]models.VPNProfile, error) {
+	var profiles []models.VPNProfile
+	err := r.DB.Preload("Nodes", func(db *gorm.DB) *gorm.DB {
+		return db.Order("node_id ASC")
+	}).Where("vpn_client_id = ?", clientID).Order("profile ASC").Find(&profiles).Error
+	return profiles, err
+}
+
 func (r *VpnRepo) GetOrCreateVPNClient(userID uint, telegramID int64) (models.VPNClient, bool, error) {
 	var client models.VPNClient
 	err := r.DB.Where("user_id = ?", userID).Take(&client).Error

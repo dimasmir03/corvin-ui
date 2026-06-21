@@ -76,6 +76,41 @@ type VPNReadyNotification struct {
 	Link     string
 }
 
+type UserVPNDetails struct {
+	Client   *UserVPNClientView   `json:"client"`
+	Profiles []UserVPNProfileView `json:"profiles"`
+}
+
+type UserVPNClientView struct {
+	ID         uint   `json:"id"`
+	ClientCode string `json:"client_code"`
+	Email      string `json:"email"`
+}
+
+type UserVPNProfileView struct {
+	ID            uint                     `json:"id,omitempty"`
+	Exists        bool                     `json:"exists"`
+	Profile       string                   `json:"profile"`
+	EndpointGroup string                   `json:"endpoint_group"`
+	Protocol      string                   `json:"protocol"`
+	Status        string                   `json:"status,omitempty"`
+	FinalLink     string                   `json:"final_link,omitempty"`
+	LastError     string                   `json:"last_error,omitempty"`
+	CreatedAt     *time.Time               `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time               `json:"updated_at,omitempty"`
+	Nodes         []UserVPNProfileNodeView `json:"nodes"`
+}
+
+type UserVPNProfileNodeView struct {
+	NodeID    string     `json:"node_id"`
+	Status    string     `json:"status"`
+	Protocol  string     `json:"protocol"`
+	InboundID *int       `json:"inbound_id,omitempty"`
+	LastError string     `json:"last_error,omitempty"`
+	AppliedAt *time.Time `json:"applied_at,omitempty"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
 type VPNService struct {
 	vpnRepo      *repository.VpnRepo
 	telegramRepo *repository.TelegramRepo
@@ -94,6 +129,67 @@ func NewVPNService(
 		telegramRepo: telegramRepo,
 		jobs:         jobs,
 		audit:        auditLogger,
+	}
+}
+
+func (s *VPNService) GetUserVPNDetails(userID uint) (UserVPNDetails, error) {
+	details := UserVPNDetails{Profiles: defaultUserVPNProfileViews()}
+	client, err := s.vpnRepo.GetVPNClientByUserID(userID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return details, nil
+	}
+	if err != nil {
+		return UserVPNDetails{}, err
+	}
+
+	details.Client = &UserVPNClientView{ID: client.ID, ClientCode: client.ClientCode, Email: client.Email}
+	profiles, err := s.vpnRepo.ListProfilesByClientID(client.ID)
+	if err != nil {
+		return UserVPNDetails{}, err
+	}
+
+	views := map[string]UserVPNProfileView{}
+	for _, view := range details.Profiles {
+		views[view.Profile] = view
+	}
+	for _, profile := range profiles {
+		createdAt := profile.CreatedAt
+		updatedAt := profile.UpdatedAt
+		view := UserVPNProfileView{
+			ID:            profile.ID,
+			Exists:        true,
+			Profile:       profile.Profile,
+			EndpointGroup: profile.EndpointGroup,
+			Protocol:      profile.Protocol,
+			Status:        profile.Status,
+			FinalLink:     profile.FinalLink,
+			LastError:     profile.LastError,
+			CreatedAt:     &createdAt,
+			UpdatedAt:     &updatedAt,
+			Nodes:         make([]UserVPNProfileNodeView, 0, len(profile.Nodes)),
+		}
+		for _, node := range profile.Nodes {
+			view.Nodes = append(view.Nodes, UserVPNProfileNodeView{
+				NodeID:    node.NodeID,
+				Status:    node.Status,
+				Protocol:  node.Protocol,
+				InboundID: node.InboundID,
+				LastError: node.LastError,
+				AppliedAt: node.AppliedAt,
+				UpdatedAt: node.UpdatedAt,
+			})
+		}
+		views[profile.Profile] = view
+	}
+
+	details.Profiles = []UserVPNProfileView{views[jobsvc.VPNProfileVLESS], views[jobsvc.VPNProfileTrojan]}
+	return details, nil
+}
+
+func defaultUserVPNProfileViews() []UserVPNProfileView {
+	return []UserVPNProfileView{
+		{Profile: jobsvc.VPNProfileVLESS, EndpointGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Nodes: []UserVPNProfileNodeView{}},
+		{Profile: jobsvc.VPNProfileTrojan, EndpointGroup: jobsvc.EndpointGroupRU, Protocol: jobsvc.VPNProfileTrojan, Nodes: []UserVPNProfileNodeView{}},
 	}
 }
 

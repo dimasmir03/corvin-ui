@@ -3,26 +3,30 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers/response"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
+	"vpnpanel/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 type UserController struct {
 	users *repository.UserRepo
+	vpn   *service.VPNService
 	audit *audit.Logger
 }
 
-func NewUserController(users *repository.UserRepo, auditLogger *audit.Logger) *UserController {
-	return &UserController{users: users, audit: auditLogger}
+func NewUserController(users *repository.UserRepo, vpnService *service.VPNService, auditLogger *audit.Logger) *UserController {
+	return &UserController{users: users, vpn: vpnService, audit: auditLogger}
 }
 
 func (s *UserController) Register(r *gin.RouterGroup) {
 	r.GET("/all", s.GetAllUsers)
+	r.GET("/:id/vpn", s.GetUserVPN)
 	r.POST("/create", s.CreateUser)
 	r.GET("/:id", s.GetUser)
 	r.POST("/:id/edit", s.UpdateUser)
@@ -41,6 +45,24 @@ func (s *UserController) GetAllUsers(c *gin.Context) {
 		Success: true,
 		Obj:     users,
 	})
+}
+
+func (s *UserController) GetUserVPN(c *gin.Context) {
+	if s.vpn == nil {
+		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "vpn service is not configured"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "invalid user id"})
+		return
+	}
+	details, err := s.vpn.GetUserVPNDetails(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, response.Response{Success: true, Obj: details})
 }
 
 func (s *UserController) CreateUser(c *gin.Context) {

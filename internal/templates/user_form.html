@@ -1,74 +1,211 @@
 {{define "content"}}
-<div id="app"></div>
-<h1>{{.Title}}</h1>
-
-<form @submit.prevent="submitForm">
-  <div class="form-group">
-    <label>Username</label>
-    <input type="text" v-model="user.Username" class="form-control" required>
+<div id="app">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="mb-0">{{.Title}}</h1>
+    <a href="/panel/users" class="btn btn-outline-secondary btn-sm">Back to users</a>
   </div>
 
-  <div class="form-group">
-    <label>Email</label>
-    <input type="email" v-model="user.Email" class="form-control">
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="card-title mb-0">User</h3>
+    </div>
+    <div class="card-body">
+      <form @submit.prevent="submitForm">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Username</label>
+            <input type="text" v-model="user.username" class="form-control" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Status</label>
+            <select v-model="user.status" class="form-control">
+              <option :value="true">Active</option>
+              <option :value="false">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" @click="submitForm" class="btn btn-primary mt-3" :disabled="!canSave">Save</button>
+      </form>
+    </div>
   </div>
 
-  <div class="form-group">
-    <label>Password</label>
-    <input type="password" v-model="user.Password" class="form-control" :required="!isEdit">
-    <small v-if="isEdit">Оставьте пустым, если не менять</small>
-  </div>
+  <div class="card" v-if="isEdit">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <h3 class="card-title mb-0">VPN Profiles</h3>
+      <span v-if="vpn.client" class="text-muted small">Client [[ vpn.client.client_code ]]</span>
+    </div>
+    <div class="card-body">
+      <div v-if="vpnLoading" class="text-muted">Loading VPN profiles...</div>
+      <div v-else-if="vpnError" class="alert alert-danger mb-0">[[ vpnError ]]</div>
+      <div v-else>
+        <div v-if="!vpn.client" class="alert alert-secondary">Canonical VPN client не создан.</div>
 
-  <div class="form-group">
-    <label>Status</label>
-    <select v-model="user.Status" class="form-control">
-      <option value="Active">Active</option>
-      <option value="Inactive">Inactive</option>
-    </select>
-  </div>
+        <div class="vpn-profile" v-for="profile in vpn.profiles" :key="profile.profile">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div>
+              <h4 class="h5 mb-1">[[ profileTitle(profile) ]]</h4>
+              <div class="text-muted small">[[ profile.profile ]] / [[ profile.endpoint_group ]] / [[ profile.protocol ]]</div>
+            </div>
+            <span class="badge" :class="statusClass(profile.exists ? profile.status : 'not_created')">
+              [[ profile.exists ? profile.status : 'Не создан' ]]
+            </span>
+          </div>
 
-  <div class="form-group">
-    <label>Servers</label>
-    <select v-model="user.AssignedServers" class="form-control" multiple>
-      <option v-for="server in allServers" :value="server.ID">
-        [[ server.Name ]] ([[ server.IP ]])
-      </option>
-    </select>
-  </div>
+          <div v-if="!profile.exists" class="text-muted mb-3">Профиль ещё не создан.</div>
+          <div v-else>
+            <div class="row g-3 mb-3">
+              <div class="col-md-3">
+                <div class="text-muted small">Created</div>
+                <div>[[ formatDate(profile.created_at) ]]</div>
+              </div>
+              <div class="col-md-3">
+                <div class="text-muted small">Updated</div>
+                <div>[[ formatDate(profile.updated_at) ]]</div>
+              </div>
+              <div class="col-md-6" v-if="profile.last_error">
+                <div class="text-muted small">Last error</div>
+                <div class="text-danger text-break">[[ profile.last_error ]]</div>
+              </div>
+            </div>
 
-  <button type="button" @click="submitForm" type="submit" class="btn btn-primary mt-2">Save</button>
-</form>
+            <div v-if="profile.status === 'active' || profile.status === 'partial'" class="mb-3">
+              <div v-if="profile.status === 'partial'" class="alert alert-warning py-2">
+                Создано не на всех nodes. Возможны проблемы при балансировке.
+              </div>
+              <label class="form-label">Final link</label>
+              <div class="input-group">
+                <input type="text" class="form-control font-monospace" :value="profile.final_link" readonly>
+                <button class="btn btn-outline-secondary" type="button" @click="copyLink(profile.final_link)">Скопировать</button>
+              </div>
+            </div>
+            <div v-else-if="profile.status === 'pending'" class="alert alert-secondary py-2">
+              Создание выполняется. Готовая ссылка пока не показывается.
+            </div>
+            <div v-else-if="profile.status === 'failed'" class="alert alert-danger py-2">
+              Профиль не создан. Готовая ссылка не показывается.
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Node</th>
+                    <th>Status</th>
+                    <th>Protocol</th>
+                    <th>Inbound</th>
+                    <th>Last error</th>
+                    <th>Applied</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="node in profile.nodes" :key="node.node_id">
+                    <td class="font-monospace">[[ node.node_id ]]</td>
+                    <td><span class="badge" :class="statusClass(node.status)">[[ node.status ]]</span></td>
+                    <td>[[ node.protocol ]]</td>
+                    <td>[[ node.inbound_id || '—' ]]</td>
+                    <td class="text-danger text-break">[[ node.last_error || '—' ]]</td>
+                    <td>[[ formatDate(node.applied_at) ]]</td>
+                    <td>[[ formatDate(node.updated_at) ]]</td>
+                  </tr>
+                  <tr v-if="profile.nodes.length === 0">
+                    <td colspan="7" class="text-muted text-center">Node results отсутствуют.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
+<style>
+  .vpn-profile + .vpn-profile {
+    padding-top: 1rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+  }
+</style>
+
 <script>
-  const app = new Vue({
+  const initialUser = {
+    id: {{with .User}}{{.ID}}{{else}}0{{end}},
+    username: {{with .User}}{{printf "%q" .Username}}{{else}}""{{end}},
+    status: {{with .User}}{{if .Status}}true{{else}}false{{end}}{{else}}true{{end}}
+  };
+
+  new Vue({
     el: "#app",
     delimiters: ["[[", "]]"],
     data() {
       return {
-        user: {
-          Username: "",
-          Email: "",
-          Password: "",
-          Status: "",
-        },
+        user: initialUser,
+        vpn: { client: null, profiles: [] },
+        vpnLoading: false,
+        vpnError: ""
       };
     },
-    methods: {
-      submitForm() {
-        axios.post("/api/users/new", formData)
-          .then(response => {
-            if (response.data.success) {
-              window.location.href = "/panel/users";
-            } else {
-              alert(response.data.message);
-            }
-          })
-          .catch(error => {
-            alert("Error saving user");
-            console.error(error);
-          });
+    computed: {
+      isEdit() {
+        return this.user.id > 0;
+      },
+      canSave() {
+        return false;
       }
+    },
+    methods: {
+      async fetchVPNDetails() {
+        if (!this.isEdit) return;
+        this.vpnLoading = true;
+        this.vpnError = "";
+        try {
+          const { data } = await axios.get(`/api/users/${this.user.id}/vpn`);
+          if (!data.success) throw new Error(data.msg || "Failed to load VPN profiles");
+          this.vpn = data.obj || { client: null, profiles: [] };
+        } catch (error) {
+          this.vpnError = error.message || "Failed to load VPN profiles";
+        } finally {
+          this.vpnLoading = false;
+        }
+      },
+      submitForm() {
+        alert("User editing is not enabled yet.");
+      },
+      profileTitle(profile) {
+        if (profile.profile === "vless") return "VLESS / Direct";
+        if (profile.profile === "trojan") return "Trojan / RU";
+        return profile.profile;
+      },
+      statusClass(status) {
+        switch (status) {
+          case "active":
+          case "success":
+            return "bg-success";
+          case "partial":
+            return "bg-warning text-dark";
+          case "failed":
+            return "bg-danger";
+          case "pending":
+            return "bg-secondary";
+          default:
+            return "bg-light text-dark";
+        }
+      },
+      formatDate(value) {
+        if (!value) return "—";
+        return new Date(value).toLocaleString();
+      },
+      async copyLink(link) {
+        if (!link) return;
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(link);
+        }
+      }
+    },
+    mounted() {
+      this.fetchVPNDetails();
     }
   });
 </script>

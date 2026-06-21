@@ -473,3 +473,71 @@ func loadTestProfileByID(t *testing.T, db *gorm.DB, profileID uint) models.VPNPr
 	}
 	return profile
 }
+
+func TestGetUserVPNDetailsWithoutClientShowsMissingProfiles(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	user := models.User{Username: "no-vpn", Status: true}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	svc := newTestVPNService(db, &captureJobPublisher{})
+
+	details, err := svc.GetUserVPNDetails(user.ID)
+	if err != nil {
+		t.Fatalf("GetUserVPNDetails: %v", err)
+	}
+	if details.Client != nil {
+		t.Fatalf("client = %#v, want nil", details.Client)
+	}
+	if len(details.Profiles) != 2 {
+		t.Fatalf("profiles = %d, want 2", len(details.Profiles))
+	}
+	for _, profile := range details.Profiles {
+		if profile.Exists {
+			t.Fatalf("profile %s exists, want missing", profile.Profile)
+		}
+	}
+}
+
+func TestGetUserVPNDetailsReturnsProfilesAndNodesWithoutCredentials(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNServiceCreateData(t, db)
+	publisher := &captureJobPublisher{}
+	svc := newTestVPNService(db, publisher)
+
+	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS}); err != nil {
+		t.Fatalf("create vless: %v", err)
+	}
+	profile := loadTestProfile(t, db, telegram.UserID, jobsvc.VPNProfileVLESS)
+	if _, err := svc.ApplyJobResult(context.Background(), broker.JobResultEvent{ProfileID: profile.ID, NodeID: "direct-1", Profile: jobsvc.VPNProfileVLESS, TargetGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Status: models.VPNProfileNodeStatusSuccess, ClientCode: profile.VPNClient.ClientCode}); err != nil {
+		t.Fatalf("apply result: %v", err)
+	}
+
+	details, err := svc.GetUserVPNDetails(telegram.UserID)
+	if err != nil {
+		t.Fatalf("GetUserVPNDetails: %v", err)
+	}
+	if details.Client == nil || details.Client.ClientCode == "" || details.Client.Email == "" {
+		t.Fatalf("client view is incomplete: %#v", details.Client)
+	}
+	encoded, err := json.Marshal(details)
+	if err != nil {
+		t.Fatalf("marshal details: %v", err)
+	}
+	payload := string(encoded)
+	if strings.Contains(payload, "vless_uuid") || strings.Contains(payload, "trojan_password") || strings.Contains(payload, profile.VPNClient.TrojanPassword) {
+		t.Fatalf("details leaked credentials: %s", payload)
+	}
+	var foundVLESS bool
+	for _, item := range details.Profiles {
+		if item.Profile == jobsvc.VPNProfileVLESS {
+			foundVLESS = true
+			if !item.Exists || item.Status != models.VPNProfileStatusPartial || item.FinalLink == "" || len(item.Nodes) != 2 {
+				t.Fatalf("unexpected vless profile details: %#v", item)
+			}
+		}
+	}
+	if !foundVLESS {
+		t.Fatalf("vless profile missing from details: %#v", details.Profiles)
+	}
+}
