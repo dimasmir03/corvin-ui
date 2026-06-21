@@ -163,6 +163,7 @@ type VPNProfile struct {
 	Status        string           `gorm:"not null;index" json:"status"`
 	FinalLink     string           `json:"final_link"`
 	LastError     string           `json:"last_error"`
+	NotifiedAt    *time.Time       `json:"notified_at,omitempty"`
 	CreatedAt     time.Time        `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt     time.Time        `gorm:"autoUpdateTime" json:"updated_at"`
 	Nodes         []VPNProfileNode `gorm:"foreignKey:VPNProfileID" json:"nodes,omitempty"`

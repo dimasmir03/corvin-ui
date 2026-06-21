@@ -159,3 +159,67 @@ func (r *VpnRepo) CreateProfileWithNodes(profile models.VPNProfile, nodes []mode
 func (r *VpnRepo) TouchProfilePublishError(profileID uint, errText string) error {
 	return r.DB.Model(&models.VPNProfile{}).Where("id = ?", profileID).Updates(map[string]any{"last_error": errText, "updated_at": time.Now()}).Error
 }
+
+func (r *VpnRepo) GetProfileByID(profileID uint) (models.VPNProfile, error) {
+	var profile models.VPNProfile
+	err := r.DB.Preload("VPNClient").Preload("Nodes").Where("id = ?", profileID).Take(&profile).Error
+	return profile, err
+}
+
+func (r *VpnRepo) GetEndpointGroup(code string) (models.EndpointGroup, error) {
+	var group models.EndpointGroup
+	err := r.DB.Where("code = ?", code).Take(&group).Error
+	return group, err
+}
+
+func (r *VpnRepo) ApplyProfileNodeResult(profile models.VPNProfile, nodeID string, protocol string, status string, inboundID *int, lastError string, appliedAt time.Time) (models.VPNProfileNode, bool, error) {
+	var node models.VPNProfileNode
+	err := r.DB.Where("vpn_profile_id = ? AND node_id = ?", profile.ID, nodeID).Take(&node).Error
+	created := false
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		node = models.VPNProfileNode{VPNProfileID: profile.ID, NodeID: nodeID}
+		created = true
+	} else if err != nil {
+		return models.VPNProfileNode{}, false, err
+	}
+
+	duplicate := !created && node.Status == status && node.Protocol == protocol && node.LastError == lastError && sameIntPtr(node.InboundID, inboundID)
+	node.Protocol = protocol
+	node.Status = status
+	node.InboundID = inboundID
+	node.LastError = lastError
+	node.AppliedAt = &appliedAt
+	if created {
+		if err := r.DB.Create(&node).Error; err != nil {
+			return models.VPNProfileNode{}, false, err
+		}
+		return node, false, nil
+	}
+	if err := r.DB.Save(&node).Error; err != nil {
+		return models.VPNProfileNode{}, false, err
+	}
+	return node, duplicate, nil
+}
+
+func sameIntPtr(left, right *int) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
+}
+
+func (r *VpnRepo) UpdateProfileResult(profileID uint, status string, finalLink string, lastError string, notifiedAt *time.Time) (models.VPNProfile, error) {
+	updates := map[string]any{
+		"status":     status,
+		"final_link": finalLink,
+		"last_error": lastError,
+		"updated_at": time.Now(),
+	}
+	if notifiedAt != nil {
+		updates["notified_at"] = notifiedAt
+	}
+	if err := r.DB.Model(&models.VPNProfile{}).Where("id = ?", profileID).Updates(updates).Error; err != nil {
+		return models.VPNProfile{}, err
+	}
+	return r.GetProfileByID(profileID)
+}

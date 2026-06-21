@@ -1,11 +1,13 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/jobsvc"
@@ -267,9 +269,163 @@ func buildProfileLink(group models.EndpointGroup, client models.VPNClient, profi
 	return (&url.URL{Scheme: "trojan", User: url.User(client.TrojanPassword), Host: fmt.Sprintf("%s:%d", host, port), RawQuery: query.Encode(), Fragment: client.ClientCode}).String()
 }
 
+func (s *VPNService) ApplyJobResult(ctx context.Context, event broker.JobResultEvent) (*VPNReadyNotification, error) {
+	_ = ctx
+	status, ok := normalizeProfileNodeResultStatus(event.Status)
+	if !ok {
+		logger.Error("vpn job_result unknown status", nil, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+		return nil, nil
+	}
+	if event.ProfileID == 0 {
+		logger.Warn("vpn job_result unknown profile", "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+		return nil, nil
+	}
+
+	logger.Info("job_result received", "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+
+	profile, err := s.vpnRepo.GetProfileByID(event.ProfileID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Warn("vpn job_result unknown profile", "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	nodeID := strings.TrimSpace(event.NodeID)
+	if nodeID == "" {
+		logger.Warn("vpn job_result missing node", "job_id", event.JobID, "profile_id", event.ProfileID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+		return nil, nil
+	}
+
+	protocol := strings.TrimSpace(event.Protocol)
+	if protocol == "" {
+		protocol = profile.Protocol
+	}
+	if protocol == "" {
+		protocol = profile.Profile
+	}
+	appliedAt := time.Now()
+	if event.CreatedAt != nil && !event.CreatedAt.IsZero() {
+		appliedAt = *event.CreatedAt
+	}
+	node, duplicate, err := s.vpnRepo.ApplyProfileNodeResult(profile, nodeID, protocol, status, event.InboundID, valueOrEmptyString(event.Error), appliedAt)
+	if err != nil {
+		return nil, err
+	}
+	if duplicate {
+		logger.Info("vpn job_result ignored duplicate", "job_id", event.JobID, "profile_id", profile.ID, "node_id", nodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", protocol, "status", status, "client_code", profile.VPNClient.ClientCode)
+	}
+	logger.Info("vpn profile node result applied", "job_id", event.JobID, "profile_id", profile.ID, "node_id", node.NodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", node.Protocol, "status", node.Status, "client_code", profile.VPNClient.ClientCode)
+
+	profile, err = s.vpnRepo.GetProfileByID(profile.ID)
+	if err != nil {
+		return nil, err
+	}
+	newStatus, profileError := recalculateVPNProfileStatus(profile.Nodes)
+	finalLink := profile.FinalLink
+	if isUsableVPNProfileStatus(newStatus) && strings.TrimSpace(finalLink) == "" {
+		group, err := s.vpnRepo.GetEndpointGroup(profile.EndpointGroup)
+		if err != nil {
+			return nil, err
+		}
+		finalLink = buildProfileLink(group, profile.VPNClient, profile.Profile)
+		logger.Info("vpn final link generated", "job_id", event.JobID, "profile_id", profile.ID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", newStatus, "client_code", profile.VPNClient.ClientCode)
+	}
+
+	var notifiedAt *time.Time
+	shouldNotifyUser := isUsableVPNProfileStatus(newStatus) && profile.NotifiedAt == nil && strings.TrimSpace(finalLink) != ""
+	if shouldNotifyUser {
+		now := time.Now()
+		notifiedAt = &now
+	}
+	profile, err = s.vpnRepo.UpdateProfileResult(profile.ID, newStatus, finalLink, profileError, notifiedAt)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("vpn profile status recalculated", "job_id", event.JobID, "profile_id", profile.ID, "node_id", nodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", profile.Status, "client_code", profile.VPNClient.ClientCode)
+
+	if profile.Status == models.VPNProfileStatusPartial {
+		logger.Warn("vpn admin notified partial", "job_id", event.JobID, "profile_id", profile.ID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", profile.Status, "client_code", profile.VPNClient.ClientCode, "failed_nodes", failedProfileNodes(profile.Nodes))
+	}
+	if profile.Status == models.VPNProfileStatusFailed {
+		logger.Warn("vpn profile failed", "job_id", event.JobID, "profile_id", profile.ID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", profile.Status, "client_code", profile.VPNClient.ClientCode, "failed_nodes", failedProfileNodes(profile.Nodes))
+	}
+
+	if shouldNotifyUser {
+		telegram, err := s.telegramRepo.GetByUserID(profile.VPNClient.UserID)
+		if err != nil {
+			return nil, err
+		}
+		logger.Info("vpn user notified", "job_id", event.JobID, "profile_id", profile.ID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", profile.Status, "client_code", profile.VPNClient.ClientCode, "tg_id", telegram.TgID)
+		return &VPNReadyNotification{TgID: telegram.TgID, Protocol: profile.Profile, Link: finalLink}, nil
+	}
+
+	return nil, nil
+}
+
+func normalizeProfileNodeResultStatus(status string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case models.VPNProfileNodeStatusSuccess:
+		return models.VPNProfileNodeStatusSuccess, true
+	case models.VPNProfileNodeStatusFailed:
+		return models.VPNProfileNodeStatusFailed, true
+	default:
+		return "", false
+	}
+}
+
+func recalculateVPNProfileStatus(nodes []models.VPNProfileNode) (string, string) {
+	if len(nodes) == 0 {
+		return models.VPNProfileStatusFailed, "no profile nodes"
+	}
+	successCount := 0
+	failedCount := 0
+	failedNodes := make([]string, 0)
+	for _, node := range nodes {
+		switch node.Status {
+		case models.VPNProfileNodeStatusSuccess:
+			successCount++
+		case models.VPNProfileNodeStatusFailed:
+			failedCount++
+			failedNodes = append(failedNodes, node.NodeID)
+		}
+	}
+	if successCount == len(nodes) {
+		return models.VPNProfileStatusActive, ""
+	}
+	if successCount > 0 {
+		if len(failedNodes) > 0 {
+			return models.VPNProfileStatusPartial, "failed nodes: " + strings.Join(failedNodes, ",")
+		}
+		return models.VPNProfileStatusPartial, "waiting for nodes"
+	}
+	if failedCount == len(nodes) {
+		return models.VPNProfileStatusFailed, "failed nodes: " + strings.Join(failedNodes, ",")
+	}
+	return models.VPNProfileStatusPending, ""
+}
+
+func isUsableVPNProfileStatus(status string) bool {
+	return status == models.VPNProfileStatusActive || status == models.VPNProfileStatusPartial
+}
+
+func failedProfileNodes(nodes []models.VPNProfileNode) []string {
+	failed := make([]string, 0)
+	for _, node := range nodes {
+		if node.Status == models.VPNProfileNodeStatusFailed {
+			failed = append(failed, node.NodeID)
+		}
+	}
+	return failed
+}
+
 func (s *VPNService) ApplyAgentCreateResult(job *models.Job, event broker.JobResultEvent) (*VPNReadyNotification, error) {
 	if job == nil || job.Action != jobsvc.ActionCreateClient {
 		return nil, nil
+	}
+	if event.ProfileID != 0 {
+		return s.ApplyJobResult(context.Background(), event)
 	}
 	if job.Status != jobsvc.JobStatusSuccess {
 		return nil, nil

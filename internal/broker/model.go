@@ -2,6 +2,8 @@ package broker
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -73,6 +75,7 @@ type TrojanCredentials struct {
 type JobResultEvent struct {
 	EventType      string           `json:"event_type,omitempty"`
 	JobID          uint             `json:"job_id"`
+	ProfileID      uint             `json:"profile_id,omitempty"`
 	BatchID        uint             `json:"batch_id"`
 	ServerID       *int             `json:"server_id,omitempty"`
 	NodeID         string           `json:"node_id,omitempty"`
@@ -89,6 +92,45 @@ type JobResultEvent struct {
 	Error          *string          `json:"error,omitempty"`
 	CreatedAt      *time.Time       `json:"created_at,omitempty"`
 	ResultJSON     *json.RawMessage `json:"result_json,omitempty"`
+}
+
+func (e *JobResultEvent) UnmarshalJSON(data []byte) error {
+	type alias JobResultEvent
+	var aux struct {
+		*alias
+		JobID     json.RawMessage `json:"job_id"`
+		ProfileID json.RawMessage `json:"profile_id"`
+	}
+	aux.alias = (*alias)(e)
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	e.JobID = flexibleUint(aux.JobID)
+	e.ProfileID = flexibleUint(aux.ProfileID)
+	return nil
+}
+
+func flexibleUint(raw json.RawMessage) uint {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0
+	}
+	var value uint64
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return uint(value)
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return 0
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseUint(text, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return uint(parsed)
 }
 
 type NodeSnapshotEvent struct {

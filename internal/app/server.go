@@ -124,6 +124,26 @@ func NewServer(cfg config.Config) (*Server, error) {
 				_, stale, err := nodeService.ApplySnapshot(context.Background(), event)
 				return stale, err
 			},
+			func(event broker.JobResultEvent) error {
+				if event.JobID != 0 {
+					if _, _, err := jobService.ApplyResult(event); err != nil {
+						logger.Error("job result apply failed", err, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID)
+						return err
+					}
+				}
+
+				notification, err := vpnService.ApplyJobResult(context.Background(), event)
+				if err != nil {
+					logger.Error("vpn job_result apply failed", err, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID)
+					return err
+				}
+				if notification != nil && tgNotifier != nil {
+					if err := tgNotifier.SendVPNReady(notification.TgID, notification.Link); err != nil {
+						logger.Error("telegram vpn ready notification failed", err, "tg_id", notification.TgID, "protocol", notification.Protocol)
+					}
+				}
+				return nil
+			},
 		)
 		if err != nil {
 			logger.Error("failed to start RabbitMQ agent events consumer", err, "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.EventsRouting)
