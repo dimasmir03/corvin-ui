@@ -98,6 +98,9 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, exchangeCommands, certf
 		return nil, fmt.Errorf("failed to create publisher for commands: %w", err)
 	}
 
+	logger.Info("rabbit command publisher ready", "exchange_jobs", exchangeJobs, "exchange_commands", exchangeCommands)
+	logger.Info("rabbit legacy publishers ready", "exchange_complaints", exchangeComplaints, "exchange_users", exchangeUsers)
+
 	return &Producer{
 		conn:                conn,
 		publisherComplaints: publisherComplaints,
@@ -123,6 +126,7 @@ func (p *Producer) PublishJob(msg JobTask) error {
 	routingKey := ""
 	if msg.EventType == "create_client" || msg.Action == "create_client" {
 		routingKey = "create." + msg.TargetGroup
+		logger.Info("create_client command published", "exchange", p.exchangeJobs, "routing_key", routingKey, "job_id", msg.JobID, "batch_id", msg.BatchID, "profile_id", msg.ProfileID, "profile", msg.Profile, "target_group", msg.TargetGroup, "protocol", msg.Protocol, "client_code", msg.ClientCode)
 	}
 	return p.publishWithRoutingKey(p.publisherJobs, p.exchangeJobs, routingKey, msg)
 }
@@ -135,6 +139,7 @@ func (p *Producer) PublishCollectSnapshotCommand(msg CollectSnapshotCommand) err
 	if msg.TargetNodeID == "" && msg.TargetGroup == "" {
 		routingKey = "collect.group.all"
 	}
+	logger.Info("collect_snapshot command published", "exchange", p.exchangeCommands, "routing_key", routingKey, "command_id", msg.CommandID, "target_node_id", msg.TargetNodeID, "target_group", msg.TargetGroup, "requested_by", msg.RequestedBy)
 	return p.publishWithRoutingKey(p.publisherCommands, p.exchangeCommands, routingKey, msg)
 }
 
@@ -157,6 +162,8 @@ func (p *Producer) StartResultConsumer(queue string, handler func(JobResultEvent
 	if err != nil {
 		return nil, fmt.Errorf("failed to create result consumer: %w", err)
 	}
+
+	logger.Info("rabbit result consumer started", "queue", queue)
 
 	go func() {
 		err := consumer.Run(func(d rabbitmq.Delivery) rabbitmq.Action {
@@ -192,6 +199,7 @@ func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, s
 		return nil, fmt.Errorf("events queue is required")
 	}
 	if routingKey == "" {
+		routingKey = "node.snapshot"
 	}
 
 	consumer, err := rabbitmq.NewConsumer(
@@ -209,6 +217,8 @@ func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, s
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent events consumer: %w", err)
 	}
+
+	logger.Info("rabbit events consumer started", "exchange", exchange, "queue", queue, "routing_key", routingKey)
 
 	go func() {
 		err := consumer.Run(func(d rabbitmq.Delivery) rabbitmq.Action {
