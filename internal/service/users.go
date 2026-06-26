@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"vpnpanel/internal/audit"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 
@@ -41,13 +42,17 @@ func NewUsersService(
 }
 
 func (s *UsersService) EnsureTelegramUser(input TelegramUserInput) (models.Telegram, error) {
+	logger.Info("telegram user ensure started", "component", "users_service", "operation", "ensure_telegram_user", "tg_id", input.TgID)
 	existing, err := s.telegramRepo.FindByTgID(input.TgID)
 	if err == nil {
+		logger.Info("telegram user found", "component", "users_service", "operation", "ensure_telegram_user", "tg_id", input.TgID, "user_id", existing.UserID, "reason", "existing_user")
 		return existing, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Error("telegram user lookup failed", err, "component", "users_service", "operation", "ensure_telegram_user", "tg_id", input.TgID, "reason", "db_error")
 		return models.Telegram{}, err
 	}
+	logger.Info("telegram user not found", "component", "users_service", "operation", "ensure_telegram_user", "tg_id", input.TgID, "reason", "create_required")
 
 	user := models.User{
 		Username: fmt.Sprintf("%s%s(%d)", input.Firstname, input.Lastname, input.TgID),
@@ -60,15 +65,19 @@ func (s *UsersService) EnsureTelegramUser(input TelegramUserInput) (models.Teleg
 		Lastname:  input.Lastname,
 	}
 
+	logger.Info("telegram user create started", "component", "users_service", "operation", "ensure_telegram_user", "tg_id", input.TgID)
 	created, err := s.telegramRepo.CreateTelegramUser(user, telegram)
 	if err != nil {
 		// If another request created the telegram row after our lookup, keep the
 		// service method idempotent and return that row instead of a duplicate error.
 		if existing, findErr := s.telegramRepo.FindByTgID(input.TgID); findErr == nil {
+			logger.Warn("telegram user create raced", "component", "users_service", "operation", "ensure_telegram_user", "tg_id", input.TgID, "user_id", existing.UserID, "reason", "created_by_parallel_request")
 			return existing, nil
 		}
+		logger.Error("telegram user create failed", err, "component", "users_service", "operation", "ensure_telegram_user", "tg_id", input.TgID)
 		return models.Telegram{}, err
 	}
+	logger.Info("telegram user created", "component", "users_service", "operation", "ensure_telegram_user", "tg_id", input.TgID, "user_id", created.UserID)
 
 	_ = s.audit.Log(audit.Event{
 		ActorType:  audit.ActorTelegramUser,

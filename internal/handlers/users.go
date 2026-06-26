@@ -7,6 +7,7 @@ import (
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/db"
 	"vpnpanel/internal/handlers/response"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 	"vpnpanel/internal/service"
@@ -48,20 +49,31 @@ func (s *UserController) GetAllUsers(c *gin.Context) {
 }
 
 func (s *UserController) GetUserVPN(c *gin.Context) {
+	requestID, _ := c.Get("request_id")
 	if s.vpn == nil {
+		logger.Error("user vpn details failed", nil, "component", "http_api", "handler", "user_vpn", "operation", "get_user_vpn", "request_id", requestID, "reason", "vpn_service_not_configured")
 		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: "vpn service is not configured"})
 		return
 	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
+		logger.Warn("user vpn details validation failed", "component", "http_api", "handler", "user_vpn", "operation", "get_user_vpn", "request_id", requestID, "reason", "invalid_user_id")
 		c.JSON(http.StatusBadRequest, response.Response{Success: false, Msg: "invalid user id"})
 		return
 	}
+	logger.Info("user vpn details service call started", "component", "http_api", "handler", "user_vpn", "operation", "get_user_vpn", "request_id", requestID, "user_id", id)
 	details, err := s.vpn.GetUserVPNDetails(uint(id))
 	if err != nil {
+		logger.Error("user vpn details service call failed", err, "component", "http_api", "handler", "user_vpn", "operation", "get_user_vpn", "request_id", requestID, "user_id", id)
 		c.JSON(http.StatusInternalServerError, response.Response{Success: false, Msg: err.Error()})
 		return
 	}
+	profilesCount := len(details.Profiles)
+	clientCode := ""
+	if details.Client != nil {
+		clientCode = details.Client.ClientCode
+	}
+	logger.Info("user vpn details service call succeeded", "component", "http_api", "handler", "user_vpn", "operation", "get_user_vpn", "request_id", requestID, "user_id", id, "client_code", clientCode, "profiles_count", profilesCount)
 	c.JSON(http.StatusOK, response.Response{Success: true, Obj: details})
 }
 

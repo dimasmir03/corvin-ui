@@ -79,6 +79,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 	supportService := service.NewSupportService(teleRepo, complaintRepo, storageRepo)
 	nodeService := service.NewNodeService(nodeRepo, broker.GlobalProducer)
 
+	logger.Info("telegram bot init started", "component", "startup", "operation", "telegram_bot_init", "telegram_enabled", cfg.Telegram.Enabled, "telegram_proxy_enabled", cfg.Telegram.ProxyURL != "")
 	tgBot, err := telegrambot.New(cfg.Telegram, telegrambot.Deps{
 		Users:   usersService,
 		VPN:     vpnService,
@@ -86,12 +87,16 @@ func NewServer(cfg config.Config) (*Server, error) {
 		Logger:  logger,
 	})
 	if err != nil {
+		logger.Error("telegram bot init failed", err, "component", "startup", "operation", "telegram_bot_init", "telegram_enabled", cfg.Telegram.Enabled, "telegram_proxy_enabled", cfg.Telegram.ProxyURL != "")
 		return nil, err
 	}
 	var tgNotifier *telegrambot.Notifier
 	if tgBot != nil {
 		tgNotifier = tgBot.Notifier()
 		tgBot.Start()
+		logger.Info("telegram bot lifecycle started", "component", "startup", "operation", "telegram_bot_start", "telegram_enabled", cfg.Telegram.Enabled)
+	} else {
+		logger.Info("telegram bot skipped", "component", "startup", "operation", "telegram_bot_init", "telegram_enabled", cfg.Telegram.Enabled, "reason", "disabled")
 	}
 
 	s := &Server{
@@ -116,6 +121,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 	}
 
 	if broker.GlobalProducer != nil {
+		logger.Info("rabbit consumers starting", "component", "startup", "operation", "rabbit_consumers_start", "events_queue", cfg.RabbitMQ.EventsQueue, "result_queue", cfg.RabbitMQ.ResultQueue)
 		agentEventsConsumer, err := broker.GlobalProducer.StartAgentEventConsumer(
 			cfg.RabbitMQ.EventsExchange,
 			cfg.RabbitMQ.EventsQueue,
@@ -146,9 +152,10 @@ func NewServer(cfg config.Config) (*Server, error) {
 			},
 		)
 		if err != nil {
-			logger.Error("failed to start RabbitMQ agent events consumer", err, "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.EventsRouting)
+			logger.Error("failed to start RabbitMQ agent events consumer", err, "component", "startup", "operation", "rabbit_consumers_start", "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.EventsRouting)
 		} else {
 			s.AgentEventsConsumer = agentEventsConsumer
+			logger.Info("rabbit agent events consumer started", "component", "startup", "operation", "rabbit_consumers_start", "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.EventsRouting)
 		}
 
 		consumer, err := broker.GlobalProducer.StartResultConsumer(cfg.RabbitMQ.ResultQueue, func(event broker.JobResultEvent) error {
@@ -177,10 +184,13 @@ func NewServer(cfg config.Config) (*Server, error) {
 			return nil
 		})
 		if err != nil {
-			logger.Printf("failed to start RabbitMQ result consumer: %v", err)
+			logger.Error("failed to start RabbitMQ result consumer", err, "component", "startup", "operation", "rabbit_consumers_start", "queue", cfg.RabbitMQ.ResultQueue)
 		} else {
 			s.ResultConsumer = consumer
+			logger.Info("rabbit result consumer started", "component", "startup", "operation", "rabbit_consumers_start", "queue", cfg.RabbitMQ.ResultQueue)
 		}
+	} else {
+		logger.Warn("rabbit consumers skipped", "component", "startup", "operation", "rabbit_consumers_start", "reason", "producer_not_configured")
 	}
 
 	s.Router = s.Routes()

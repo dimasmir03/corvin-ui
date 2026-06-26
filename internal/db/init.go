@@ -24,7 +24,9 @@ type DBOptions struct {
 }
 
 func Init(options DBOptions, w io.Writer) {
+	logger.Info("database connect started", "component", "startup", "operation", "db_connect", "db_host", options.Host, "db_port", options.Port, "db_name", options.DBName)
 	if options.Host == "" || options.Port == 0 || options.User == "" || options.Pass == "" || options.DBName == "" {
+		logger.Error("database config invalid", nil, "component", "startup", "operation", "db_connect", "db_host", options.Host, "db_port", options.Port, "db_name", options.DBName, "reason", "database_options_empty")
 		logger.Fatal("database options are empty")
 	}
 
@@ -53,12 +55,17 @@ func Init(options DBOptions, w io.Writer) {
 	})
 
 	if err != nil {
+		logger.Error("database connect failed", err, "component", "startup", "operation", "db_connect", "db_host", options.Host, "db_port", options.Port, "db_name", options.DBName)
 		logger.Fatal("failed to connect database:", err)
 	}
+	logger.Info("database connected", "component", "startup", "operation", "db_connect", "db_host", options.Host, "db_port", options.Port, "db_name", options.DBName)
 
+	logger.Info("database migrations started", "component", "startup", "operation", "migration")
 	if err := migrate(); err != nil {
+		logger.Error("database migrations failed", err, "component", "startup", "operation", "migration")
 		logger.Fatal("failed migration:", err)
 	}
+	logger.Info("database migrations completed", "component", "startup", "operation", "migration")
 }
 
 func migrate() error {

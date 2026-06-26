@@ -1,8 +1,10 @@
 package app
 
 import (
+	"fmt"
 	"io/fs"
 	"net/http"
+	"sync/atomic"
 	"time"
 	ui "vpnpanel/internal"
 	"vpnpanel/internal/handlers"
@@ -62,13 +64,31 @@ func (s *Server) Routes() *gin.Engine {
 	return r
 }
 
+var httpRequestSeq uint64
+
 func httpBusinessLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		started := time.Now()
-		logger.Info("http request received", "component", "http", "operation", "request", "method", c.Request.Method, "path", c.FullPath(), "raw_path", c.Request.URL.Path)
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" {
+			requestID = fmt.Sprintf("http-%d-%d", time.Now().UnixNano(), atomic.AddUint64(&httpRequestSeq, 1))
+		}
+		c.Set("request_id", requestID)
+		c.Writer.Header().Set("X-Request-ID", requestID)
+		logger.Info("http request received", "component", "http_api", "operation", "request", "request_id", requestID, "method", c.Request.Method, "path", c.FullPath(), "raw_path", c.Request.URL.Path)
 		c.Next()
-		logger.Info("http response sent", "component", "http", "operation", "response", "method", c.Request.Method, "path", c.FullPath(), "raw_path", c.Request.URL.Path, "status", c.Writer.Status(), "duration_ms", time.Since(started).Milliseconds())
+		logger.Info("http response sent", "component", "http_api", "operation", "response", "request_id", requestID, "method", c.Request.Method, "path", c.FullPath(), "raw_path", c.Request.URL.Path, "status_code", c.Writer.Status(), "duration_ms", time.Since(started).Milliseconds(), "reason", httpFinishReason(c.Writer.Status()))
 	}
+}
+
+func httpFinishReason(status int) string {
+	if status >= 500 {
+		return "server_error"
+	}
+	if status >= 400 {
+		return "client_error"
+	}
+	return "success"
 }
 
 func mountStatic(r *gin.Engine) error {

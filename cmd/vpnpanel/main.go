@@ -20,6 +20,8 @@ import (
 func main() {
 	mw := initLogger()
 
+	logger.Info("app starting", "component", "startup", "operation", "app_start")
+	logger.Info("config loading started", "component", "startup", "operation", "config_load")
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Fatalf("Failed to load config: %v", err)
@@ -55,15 +57,18 @@ func main() {
 
 	logger.Info("rabbitmq initialization completed", "component", "startup", "operation", "rabbitmq_init", "rabbit_host", rabbitHostForLog(cfg.RabbitMQ.URL), "producer_ready", broker.GlobalProducer != nil && broker.GlobalProducer.IsReady())
 
+	logger.Info("application server init started", "component", "startup", "operation", "server_init", "telegram_enabled", cfg.Telegram.Enabled)
 	// Server init
 	server, err := app.NewServer(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to initialize server: %v", err)
 	}
 	server.CronStart()
+	logger.Info("background workers started", "component", "startup", "operation", "background_workers")
 
 	defer server.Close()
 
+	logger.Info("http server starting", "component", "startup", "operation", "http_start", "http_addr", cfg.HTTP.Addr)
 	logger.Printf("Server Started on %s", cfg.HTTP.Addr)
 	if err := http.ListenAndServe(cfg.HTTP.Addr, server.Router); err != nil {
 		logger.Fatalf("HTTP server error: %v", err)

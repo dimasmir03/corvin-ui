@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"time"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/storage"
 
 	"github.com/minio/minio-go/v7"
@@ -23,11 +24,18 @@ func NewStorageRepo(min *storage.MinioClient) *StorageRepo {
 
 func (s *StorageRepo) Ping(ctx context.Context) error {
 	if s == nil || s.minio == nil || s.minio.Client == nil {
+		logger.Error("storage ping failed", nil, "component", "repository", "repository", "storage", "method", "Ping", "external_system", "minio", "reason", "storage_not_configured")
 		return errStorageNotConfigured
 	}
 
+	logger.Info("storage ping started", "component", "repository", "repository", "storage", "method", "Ping", "external_system", "minio", "bucket", s.minio.BucketName)
 	_, err := s.minio.Client.BucketExists(ctx, s.minio.BucketName)
-	return err
+	if err != nil {
+		logger.Error("storage ping failed", err, "component", "repository", "repository", "storage", "method", "Ping", "external_system", "minio", "bucket", s.minio.BucketName)
+		return err
+	}
+	logger.Info("storage ping succeeded", "component", "repository", "repository", "storage", "method", "Ping", "external_system", "minio", "bucket", s.minio.BucketName)
+	return nil
 }
 
 type storageError string
@@ -40,6 +48,7 @@ const errStorageNotConfigured storageError = "storage is not configured"
 
 func (s *StorageRepo) UploadFile(r io.Reader, objectName string, contentType string) (string, error) {
 	ctx := context.Background()
+	logger.Info("storage upload started", "component", "repository", "repository", "storage", "method", "UploadFile", "external_system", "minio", "bucket", s.minio.BucketName, "object_name", objectName, "content_type", contentType)
 
 	_, err := s.minio.Client.PutObject(
 		ctx,
@@ -52,15 +61,18 @@ func (s *StorageRepo) UploadFile(r io.Reader, objectName string, contentType str
 		},
 	)
 	if err != nil {
+		logger.Error("storage upload failed", err, "component", "repository", "repository", "storage", "method", "UploadFile", "external_system", "minio", "bucket", s.minio.BucketName, "object_name", objectName, "content_type", contentType)
 		return "", err
 	}
 
+	logger.Info("storage upload succeeded", "component", "repository", "repository", "storage", "method", "UploadFile", "external_system", "minio", "bucket", s.minio.BucketName, "object_name", objectName, "content_type", contentType)
 	// Возвращаем внутренний путь (который храним в БД)
 	return objectName, nil
 }
 
 func (s *StorageRepo) GetFile(objectName string) (io.ReadCloser, string, int64, error) {
 	ctx := context.Background()
+	logger.Info("storage download started", "component", "repository", "repository", "storage", "method", "GetFile", "external_system", "minio", "bucket", s.minio.BucketName, "object_name", objectName)
 
 	obj, err := s.minio.Client.GetObject(
 		ctx,
@@ -69,6 +81,7 @@ func (s *StorageRepo) GetFile(objectName string) (io.ReadCloser, string, int64, 
 		minio.GetObjectOptions{},
 	)
 	if err != nil {
+		logger.Error("storage download failed", err, "component", "repository", "repository", "storage", "method", "GetFile", "external_system", "minio", "bucket", s.minio.BucketName, "object_name", objectName)
 		return nil, "", 0, err
 	}
 
@@ -76,6 +89,7 @@ func (s *StorageRepo) GetFile(objectName string) (io.ReadCloser, string, int64, 
 	info, err := obj.Stat()
 	if err != nil {
 		obj.Close() // обязательно закрываем
+		logger.Error("storage download stat failed", err, "component", "repository", "repository", "storage", "method", "GetFile", "external_system", "minio", "bucket", s.minio.BucketName, "object_name", objectName)
 		return nil, "", 0, err
 	}
 
@@ -85,6 +99,7 @@ func (s *StorageRepo) GetFile(objectName string) (io.ReadCloser, string, int64, 
 		contentType = "application/octet-stream"
 	}
 
+	logger.Info("storage download succeeded", "component", "repository", "repository", "storage", "method", "GetFile", "external_system", "minio", "bucket", s.minio.BucketName, "object_name", objectName, "content_type", contentType, "size", info.Size)
 	return obj, contentType, info.Size, nil
 }
 

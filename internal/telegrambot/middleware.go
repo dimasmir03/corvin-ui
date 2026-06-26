@@ -2,6 +2,7 @@ package telegrambot
 
 import (
 	"fmt"
+	"strings"
 	"vpnpanel/internal/service"
 
 	telebot "gopkg.in/telebot.v4"
@@ -42,14 +43,15 @@ func (b *Bot) ensureTelegramUserMiddleware(next telebot.HandlerFunc) telebot.Han
 			return next(c)
 		}
 
-		_, err := b.deps.Users.EnsureTelegramUser(service.TelegramUserInput{
+		b.logger.Info("telegram user lookup started", "component", "telegrambot", "operation", "ensure_user", "tg_id", sender.ID)
+		telegramUser, err := b.deps.Users.EnsureTelegramUser(service.TelegramUserInput{
 			TgID:      sender.ID,
 			Username:  sender.Username,
 			Firstname: sender.FirstName,
 			Lastname:  sender.LastName,
 		})
 		if err != nil {
-			b.logger.Error("telegram user check failed", err, "tg_id", sender.ID)
+			b.logger.Error("telegram user check failed", err, "component", "telegrambot", "operation", "ensure_user", "tg_id", sender.ID, "reason", "ensure_user_failed")
 			if c.Callback() != nil {
 				if respondErr := b.respond(c); respondErr != nil {
 					return respondErr
@@ -58,7 +60,7 @@ func (b *Bot) ensureTelegramUserMiddleware(next telebot.HandlerFunc) telebot.Han
 			return b.send(c, msgRegistrationFailed)
 		}
 
-		b.logger.Debug("telegram user checked", "tg_id", sender.ID)
+		b.logger.Info("telegram user found", "component", "telegrambot", "operation", "ensure_user", "tg_id", sender.ID, "user_id", telegramUser.UserID, "reason", "user_ensured")
 		return next(c)
 	}
 }
@@ -70,7 +72,7 @@ func (b *Bot) withLogging(name string, next telebot.HandlerFunc) telebot.Handler
 			senderID = sender.ID
 		}
 
-		args := []any{"handler", name, "tg_id", senderID}
+		args := []any{"component", "telegrambot", "handler", name, "tg_id", senderID}
 		if callback := c.Callback(); callback != nil {
 			args = append(args,
 				"callback_unique", callback.Unique,
@@ -94,6 +96,7 @@ func (b *Bot) withLogging(name string, next telebot.HandlerFunc) telebot.Handler
 			}
 		}
 
+		b.logger.Info("telegram command received", append(args, "command", telegramCommandName(c, name))...)
 		b.logger.Info("telegram handler started", args...)
 		err := next(c)
 		if err != nil {
@@ -101,48 +104,66 @@ func (b *Bot) withLogging(name string, next telebot.HandlerFunc) telebot.Handler
 			return err
 		}
 
-		b.logger.Info("telegram handler finished", "handler", name, "tg_id", senderID)
+		b.logger.Info("telegram handler finished", append(args, "reason", "success")...)
 		return nil
 	}
 }
 
 func (b *Bot) send(c telebot.Context, what any, opts ...any) error {
-	err := c.Send(what, opts...)
 	args := b.contextLogArgs(c)
-	args = append(args, "content_type", fmt.Sprintf("%T", what))
+	args = append(args, "external_system", "telegram_api", "content_type", fmt.Sprintf("%T", what))
+	b.logger.Info("telegram send started", args...)
+	err := c.Send(what, opts...)
 	if err != nil {
 		b.logger.Error("telegram send failed", err, args...)
 		return err
 	}
-	b.logger.Debug("telegram send succeeded", args...)
+	b.logger.Info("telegram send succeeded", args...)
 	return nil
 }
 
 func (b *Bot) edit(c telebot.Context, what any, opts ...any) error {
-	err := c.Edit(what, opts...)
 	args := b.contextLogArgs(c)
-	args = append(args, "content_type", fmt.Sprintf("%T", what))
+	args = append(args, "external_system", "telegram_api", "content_type", fmt.Sprintf("%T", what))
+	b.logger.Info("telegram edit started", args...)
+	err := c.Edit(what, opts...)
 	if err != nil {
 		b.logger.Error("telegram edit failed", err, args...)
 		return err
 	}
-	b.logger.Debug("telegram edit succeeded", args...)
+	b.logger.Info("telegram edit succeeded", args...)
 	return nil
 }
 
 func (b *Bot) respond(c telebot.Context, resp ...*telebot.CallbackResponse) error {
-	err := c.Respond(resp...)
 	args := b.contextLogArgs(c)
+	args = append(args, "external_system", "telegram_api")
+	b.logger.Info("telegram callback respond started", args...)
+	err := c.Respond(resp...)
 	if err != nil {
 		b.logger.Error("telegram callback respond failed", err, args...)
 		return err
 	}
-	b.logger.Debug("telegram callback respond succeeded", args...)
+	b.logger.Info("telegram callback respond succeeded", args...)
 	return nil
 }
 
+func telegramCommandName(c telebot.Context, fallback string) string {
+	if message := c.Message(); message != nil {
+		text := strings.TrimSpace(message.Text)
+		if strings.HasPrefix(text, "/") {
+			return strings.Fields(text)[0]
+		}
+	}
+	if c.Callback() != nil {
+		return "callback"
+	}
+	return fallback
+}
+
 func (b *Bot) contextLogArgs(c telebot.Context) []any {
-	args := make([]any, 0, 10)
+	args := make([]any, 0, 12)
+	args = append(args, "component", "telegrambot")
 	if sender := c.Sender(); sender != nil {
 		args = append(args, "tg_id", sender.ID)
 	}
