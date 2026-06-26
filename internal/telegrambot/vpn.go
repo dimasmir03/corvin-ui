@@ -19,8 +19,10 @@ func (b *Bot) handleVPN(c telebot.Context) error {
 		return b.send(c, msgVPNFetchFailed)
 	}
 
+	b.logger.Info("telegram vpn requested", "component", "telegrambot", "handler", "vpn", "tg_id", sender.ID)
 	vpn, err := b.deps.VPN.GetVPNByTelegramID(sender.ID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		b.logger.Info("telegram vpn response sent", "component", "telegrambot", "handler", "vpn", "tg_id", sender.ID, "reason", "vpn_client_not_found")
 		return b.send(c, msgVPNMissing, vpnCreateMenu(false, false))
 	}
 	if err != nil {
@@ -28,9 +30,11 @@ func (b *Bot) handleVPN(c telebot.Context) error {
 		return b.send(c, msgVPNFetchFailed)
 	}
 	if strings.TrimSpace(vpn.VlessLink) == "" && strings.TrimSpace(vpn.TrojanLink) == "" {
+		b.logger.Info("telegram vpn response sent", "component", "telegrambot", "handler", "vpn", "tg_id", sender.ID, "vpn_id", vpn.ID, "reason", "no_usable_profiles")
 		return b.send(c, msgVPNMissing, vpnCreateMenu(hasVPNLink(vpn.VlessLink), hasVPNLink(vpn.TrojanLink)))
 	}
 
+	b.logger.Info("telegram vpn response sent", "component", "telegrambot", "handler", "vpn", "tg_id", sender.ID, "vpn_id", vpn.ID, "reason", "usable_profiles_found", "has_vless", hasVPNLink(vpn.VlessLink), "has_trojan", hasVPNLink(vpn.TrojanLink))
 	return b.send(c, fmt.Sprintf(msgVPNReady, buildVPNStatus(vpn.VlessLink, vpn.TrojanLink)), vpnMenu(hasVPNLink(vpn.VlessLink), hasVPNLink(vpn.TrojanLink)))
 }
 
@@ -120,25 +124,28 @@ func (b *Bot) sendLink(c telebot.Context, protocol string) error {
 	}
 
 	if protocol != "vless" && protocol != "trojan" {
-		b.logger.Info("telegram link requested", "tg_id", sender.ID, "protocol", protocol)
+		b.logger.Info("telegram link requested", "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol)
+		b.logger.Info("telegram link response sent", "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol, "reason", "unsupported_protocol")
 		return b.send(c, msgLinkUnsupportedProtocol)
 	}
 
-	b.logger.Info("telegram link requested", "tg_id", sender.ID, "protocol", protocol)
+	b.logger.Info("telegram link requested", "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol)
+	b.logger.Info("telegram link service call started", "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol)
 	link, err := b.deps.VPN.GetVPNLinkByProtocol(sender.ID, protocol)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		b.logger.Info("telegram link not found", "tg_id", sender.ID, "protocol", protocol)
+		b.logger.Info("telegram link response sent", "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol, "reason", "vpn_client_not_found")
 		return b.send(c, msgLinkMissing)
 	}
 	if errors.Is(err, service.ErrUnsupportedProtocol) {
+		b.logger.Info("telegram link response sent", "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol, "reason", "unsupported_protocol")
 		return b.send(c, msgLinkUnsupportedProtocol)
 	}
 	if err != nil {
-		b.logger.Error("telegram link send failed", err, "tg_id", sender.ID, "protocol", protocol)
+		b.logger.Error("telegram link send failed", err, "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol, "reason", "internal_error")
 		return b.send(c, msgLinkFetchFailed)
 	}
 	if strings.TrimSpace(link) == "" {
-		b.logger.Info("telegram link not found", "tg_id", sender.ID, "protocol", protocol)
+		b.logger.Info("telegram link response sent", "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol, "reason", "no_usable_profiles")
 		return b.send(c, msgLinkMissing)
 	}
 
@@ -146,6 +153,7 @@ func (b *Bot) sendLink(c telebot.Context, protocol string) error {
 		b.logger.Error("telegram link send failed", err, "tg_id", sender.ID, "protocol", protocol)
 		return err
 	}
+	b.logger.Info("telegram link response sent", "component", "telegrambot", "handler", "link", "tg_id", sender.ID, "protocol", protocol, "reason", "usable_profiles_found")
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 )
@@ -55,10 +56,13 @@ func NewSupportService(telegramRepo *repository.TelegramRepo, complaintRepo *rep
 }
 
 func (s *SupportService) CreateComplaint(input CreateComplaintInput) (models.Complaint, error) {
+	logger.Info("support complaint create requested", "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "text_len", len(strings.TrimSpace(input.Text)), "has_photo", input.Photo != nil || input.PhotoFile != "" || input.PhotoFileID != "")
 	telegram, err := s.telegramRepo.GetTelegramByTgID(input.TgID)
 	if err != nil {
+		logger.Error("support complaint user lookup failed", err, "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID)
 		return models.Complaint{}, err
 	}
+	logger.Info("support complaint user found", "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "user_id", telegram.UserID)
 
 	text := strings.TrimSpace(input.Text)
 	if text == "" {
@@ -83,11 +87,14 @@ func (s *SupportService) CreateComplaint(input CreateComplaintInput) (models.Com
 	}
 
 	if err := s.complaintRepo.Create(complaint); err != nil {
+		logger.Error("support complaint create failed", err, "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "user_id", telegram.UserID)
 		return models.Complaint{}, err
 	}
+	logger.Info("support complaint created", "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "user_id", telegram.UserID, "complaint_id", complaint.ID, "has_photo", complaint.Photo)
 
 	if input.Photo != nil {
 		if s.storageRepo == nil {
+			logger.Error("support complaint attachment upload failed", nil, "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "complaint_id", complaint.ID, "reason", "storage_not_configured")
 			return models.Complaint{}, errors.New("storage is not configured")
 		}
 
@@ -97,12 +104,16 @@ func (s *SupportService) CreateComplaint(input CreateComplaintInput) (models.Com
 			contentType = "image/jpeg"
 		}
 
+		logger.Info("support complaint attachment upload started", "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "complaint_id", complaint.ID, "content_type", contentType)
 		if _, err := s.storageRepo.UploadFile(bytes.NewReader(input.Photo.Data), objectKey, contentType); err != nil {
+			logger.Error("support complaint attachment upload failed", err, "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "complaint_id", complaint.ID, "content_type", contentType)
 			return models.Complaint{}, err
 		}
+		logger.Info("support complaint attachment uploaded", "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "complaint_id", complaint.ID, "content_type", contentType)
 
 		updated, err := s.complaintRepo.SetPhoto(complaint.ID, objectKey, objectKey, input.Photo.TelegramFileID)
 		if err != nil {
+			logger.Error("support complaint photo update failed", err, "component", "support_service", "operation", "create_complaint", "tg_id", input.TgID, "complaint_id", complaint.ID)
 			return models.Complaint{}, err
 		}
 		return updated, nil
@@ -112,30 +123,37 @@ func (s *SupportService) CreateComplaint(input CreateComplaintInput) (models.Com
 }
 
 func (s *SupportService) ReplyToComplaint(input ReplyToComplaintInput) (*SupportReplyResult, error) {
+	logger.Info("support reply requested", "component", "support_service", "operation", "reply_to_complaint", "admin_tg_id", input.AdminTgID, "complaint_id", input.ComplaintID, "text_len", len(strings.TrimSpace(input.Text)))
 	replyText := strings.TrimSpace(input.Text)
 	if replyText == "" {
+		logger.Warn("support reply rejected", "component", "support_service", "operation", "reply_to_complaint", "admin_tg_id", input.AdminTgID, "complaint_id", input.ComplaintID, "reason", "reply_text_empty")
 		return nil, errors.New("reply text is empty")
 	}
 
 	complaint, err := s.complaintRepo.GetByID(input.ComplaintID)
 	if err != nil {
+		logger.Error("support reply complaint lookup failed", err, "component", "support_service", "operation", "reply_to_complaint", "admin_tg_id", input.AdminTgID, "complaint_id", input.ComplaintID)
 		return nil, err
 	}
 
 	complaint, err = s.complaintRepo.SetReply(complaint.ID, replyText, input.AdminTgID)
 	if err != nil {
+		logger.Error("support reply save failed", err, "component", "support_service", "operation", "reply_to_complaint", "admin_tg_id", input.AdminTgID, "complaint_id", input.ComplaintID)
 		return nil, err
 	}
+	logger.Info("support reply saved", "component", "support_service", "operation", "reply_to_complaint", "admin_tg_id", input.AdminTgID, "complaint_id", complaint.ID, "text_len", len(replyText))
 
 	userTgID := complaint.TgID
 	if complaint.UserID != 0 {
 		telegram, err := s.telegramRepo.GetByUserID(complaint.UserID)
 		if err != nil {
+			logger.Error("support reply telegram user lookup failed", err, "component", "support_service", "operation", "reply_to_complaint", "admin_tg_id", input.AdminTgID, "complaint_id", complaint.ID, "user_id", complaint.UserID)
 			return nil, err
 		}
 		userTgID = telegram.TgID
 	}
 
+	logger.Info("support reply result ready", "component", "support_service", "operation", "reply_to_complaint", "admin_tg_id", input.AdminTgID, "complaint_id", complaint.ID, "user_tg_id", userTgID, "text_len", len(replyText))
 	return &SupportReplyResult{
 		ComplaintID: complaint.ID,
 		UserTgID:    userTgID,

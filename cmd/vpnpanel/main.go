@@ -24,6 +24,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Failed to load config: %v", err)
 	}
+	logger.Info("startup config loaded", "component", "startup", "operation", "config_load", "http_addr", cfg.HTTP.Addr, "db_host", cfg.DB.Host, "db_port", cfg.DB.Port, "db_name", cfg.DB.Name, "rabbit_host", rabbitHostForLog(cfg.RabbitMQ.URL), "telegram_enabled", cfg.Telegram.Enabled, "telegram_proxy_enabled", cfg.Telegram.ProxyURL != "")
 
 	dbOptions := db.DBOptions{
 		Host:    cfg.DB.Host,
@@ -35,6 +36,7 @@ func main() {
 	}
 
 	db.Init(dbOptions, mw)
+	logger.Info("database initialized", "component", "startup", "operation", "db_init", "db_host", cfg.DB.Host, "db_port", cfg.DB.Port, "db_name", cfg.DB.Name)
 
 	settingsRepo := repository.NewSettingsRepo(db.DB)
 
@@ -50,6 +52,8 @@ func main() {
 
 	// RabbitMQ init
 	initRabbitMQ(cfg, settingsRepo)
+
+	logger.Info("rabbitmq initialization completed", "component", "startup", "operation", "rabbitmq_init", "rabbit_host", rabbitHostForLog(cfg.RabbitMQ.URL), "producer_ready", broker.GlobalProducer != nil && broker.GlobalProducer.IsReady())
 
 	// Server init
 	server, err := app.NewServer(cfg)
@@ -151,6 +155,14 @@ func envSettingsFallback(envKey, defaultValue, settingsValue string) string {
 		return settingsValue
 	}
 	return defaultValue
+}
+
+func rabbitHostForLog(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
 }
 
 func logAMQPConfig(source, rawURL string) {

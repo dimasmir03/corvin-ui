@@ -126,7 +126,7 @@ func (p *Producer) PublishJob(msg JobTask) error {
 	routingKey := ""
 	if msg.EventType == "create_client" || msg.Action == "create_client" {
 		routingKey = "create." + msg.TargetGroup
-		logger.Info("create_client command published", "exchange", p.exchangeJobs, "routing_key", routingKey, "job_id", msg.JobID, "batch_id", msg.BatchID, "profile_id", msg.ProfileID, "profile", msg.Profile, "target_group", msg.TargetGroup, "protocol", msg.Protocol, "client_code", msg.ClientCode)
+		logger.Info("create_client command routing resolved", "component", "rabbitmq", "operation", "publish", "exchange", p.exchangeJobs, "routing_key", routingKey, "job_id", msg.JobID, "batch_id", msg.BatchID, "profile_id", msg.ProfileID, "profile", msg.Profile, "target_group", msg.TargetGroup, "protocol", msg.Protocol, "client_code", msg.ClientCode)
 	}
 	return p.publishWithRoutingKey(p.publisherJobs, p.exchangeJobs, routingKey, msg)
 }
@@ -139,7 +139,7 @@ func (p *Producer) PublishCollectSnapshotCommand(msg CollectSnapshotCommand) err
 	if msg.TargetNodeID == "" && msg.TargetGroup == "" {
 		routingKey = "collect.group.all"
 	}
-	logger.Info("collect_snapshot command published", "exchange", p.exchangeCommands, "routing_key", routingKey, "command_id", msg.CommandID, "target_node_id", msg.TargetNodeID, "target_group", msg.TargetGroup, "requested_by", msg.RequestedBy)
+	logger.Info("collect_snapshot command routing resolved", "component", "rabbitmq", "operation", "publish", "exchange", p.exchangeCommands, "routing_key", routingKey, "command_id", msg.CommandID, "target_node_id", msg.TargetNodeID, "target_group", msg.TargetGroup, "requested_by", msg.RequestedBy)
 	return p.publishWithRoutingKey(p.publisherCommands, p.exchangeCommands, routingKey, msg)
 }
 
@@ -167,21 +167,27 @@ func (p *Producer) StartResultConsumer(queue string, handler func(JobResultEvent
 
 	go func() {
 		err := consumer.Run(func(d rabbitmq.Delivery) rabbitmq.Action {
+			logger.Info("rabbit message received", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "payload_size", len(d.Body))
 			var event JobResultEvent
 			if err := json.Unmarshal(d.Body, &event); err != nil {
-				logger.Printf("invalid job result event: %v", err)
+				logger.Error("rabbit message invalid", err, "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "payload_size", len(d.Body))
+				logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "reason", "invalid_payload")
 				return rabbitmq.Ack
 			}
+			logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID)
 
 			if err := handler(event); err != nil {
-				logger.Printf("failed to apply job result event job_id=%d batch_id=%d: %v", event.JobID, event.BatchID, err)
+				logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID)
+				logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "reason", "legacy_ack_after_handler_error")
 				return rabbitmq.Ack
 			}
 
+			logger.Info("rabbit message handler succeeded", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID)
+			logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "reason", "handler_success")
 			return rabbitmq.Ack
 		})
 		if err != nil {
-			logger.Printf("job result consumer stopped: %v", err)
+			logger.Error("job result consumer stopped", err, "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result")
 		}
 	}()
 
@@ -222,57 +228,71 @@ func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, s
 
 	go func() {
 		err := consumer.Run(func(d rabbitmq.Delivery) rabbitmq.Action {
+			logger.Info("rabbit message received", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "payload_size", len(d.Body))
 			var envelope struct {
 				EventType string `json:"event_type"`
 			}
 			if err := json.Unmarshal(d.Body, &envelope); err != nil {
-				logger.Error("panel agent event invalid", err)
+				logger.Error("rabbit message invalid", err, "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "payload_size", len(d.Body))
+				logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "reason", "invalid_envelope")
 				return rabbitmq.Ack
 			}
+			logger.Info("rabbit message routed", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "payload_size", len(d.Body))
 
 			switch envelope.EventType {
 			case "node_snapshot":
 				var event NodeSnapshotEvent
 				if err := json.Unmarshal(d.Body, &event); err != nil {
-					logger.Error("panel node snapshot invalid", err, "event_type", envelope.EventType)
+					logger.Error("rabbit message invalid", err, "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "payload_size", len(d.Body))
+					logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "reason", "invalid_payload")
 					return rabbitmq.Ack
 				}
 
-				logger.Info("panel node snapshot received", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+				logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
 				stale, err := snapshotHandler(event)
 				if err != nil {
-					logger.Error("panel node snapshot apply failed", err, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+					logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+					logger.Info("rabbit message nack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "reason", "handler_failed")
 					return rabbitmq.NackRequeue
 				}
 				if stale {
-					logger.Info("panel node snapshot ignored as stale", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+					logger.Info("panel node snapshot ignored", "component", "rabbitmq", "operation", "consume", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt, "reason", "stale_snapshot")
+					logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "reason", "stale_snapshot")
 					return rabbitmq.Ack
 				}
 
-				logger.Info("panel node snapshot applied", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+				logger.Info("rabbit message handler succeeded", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+				logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "reason", "handler_success")
 				return rabbitmq.Ack
 			case "job_result":
 				if jobResultHandler == nil {
-					logger.Info("panel job_result ignored", "reason", "handler is nil")
+					logger.Info("panel job_result ignored", "component", "rabbitmq", "operation", "consume", "event_type", envelope.EventType, "reason", "handler_is_nil")
+					logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "reason", "handler_is_nil")
 					return rabbitmq.Ack
 				}
 				var event JobResultEvent
 				if err := json.Unmarshal(d.Body, &event); err != nil {
-					logger.Error("panel job_result invalid", err, "event_type", envelope.EventType)
+					logger.Error("rabbit message invalid", err, "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "payload_size", len(d.Body))
+					logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "reason", "invalid_payload")
 					return rabbitmq.Ack
 				}
+				logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
 				if err := jobResultHandler(event); err != nil {
-					logger.Error("panel job_result apply failed", err, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+					logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+					logger.Info("rabbit message nack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "reason", "handler_failed")
 					return rabbitmq.NackRequeue
 				}
+				logger.Info("rabbit message handler succeeded", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+				logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "reason", "handler_success")
 				return rabbitmq.Ack
 			default:
-				logger.Info("panel agent event ignored", "event_type", envelope.EventType)
+				logger.Info("panel agent event ignored", "component", "rabbitmq", "operation", "consume", "event_type", envelope.EventType, "reason", "unsupported_event_type")
+				logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "reason", "unsupported_event_type")
 				return rabbitmq.Ack
 			}
 		})
 		if err != nil {
-			logger.Error("agent events consumer stopped", err)
+			logger.Error("agent events consumer stopped", err, "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey)
 		}
 	}()
 
@@ -293,12 +313,39 @@ func (p *Producer) publishWithRoutingKey(pub *rabbitmq.Publisher, exchange, rout
 		return fmt.Errorf("failed to serialize task: %w", err)
 	}
 
-	return pub.Publish(
+	fields := publishLogFields(exchange, routingKey, len(data), msg)
+	logger.Info("rabbit publish started", fields...)
+	err = pub.Publish(
 		data,
 		[]string{routingKey},
 		rabbitmq.WithPublishOptionsContentType("application/json"),
 		rabbitmq.WithPublishOptionsExchange(exchange),
 	)
+	if err != nil {
+		logger.Error("rabbit publish failed", err, fields...)
+		return err
+	}
+	logger.Info("rabbit publish succeeded", fields...)
+	return nil
+}
+
+func publishLogFields(exchange string, routingKey string, payloadSize int, msg any) []any {
+	fields := []any{"component", "rabbitmq", "operation", "publish", "exchange", exchange, "routing_key", routingKey, "payload_size", payloadSize}
+	switch m := msg.(type) {
+	case JobTask:
+		eventType := m.EventType
+		if eventType == "" {
+			eventType = m.Action
+		}
+		fields = append(fields, "event_type", eventType, "job_id", m.JobID, "batch_id", m.BatchID, "profile_id", m.ProfileID, "profile", m.Profile, "target_group", m.TargetGroup, "protocol", m.Protocol, "client_code", m.ClientCode)
+	case CollectSnapshotCommand:
+		fields = append(fields, "event_type", m.EventType, "command_id", m.CommandID, "target_node_id", m.TargetNodeID, "target_group", m.TargetGroup, "requested_by", m.RequestedBy)
+	case CreateUserTask:
+		fields = append(fields, "event_type", "create_user_legacy", "tg_id", m.UserID, "username", m.Username)
+	default:
+		fields = append(fields, "event_type", fmt.Sprintf("%T", msg))
+	}
+	return fields
 }
 
 func (p *Producer) Close() {

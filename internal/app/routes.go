@@ -3,6 +3,7 @@ package app
 import (
 	"io/fs"
 	"net/http"
+	"time"
 	ui "vpnpanel/internal"
 	"vpnpanel/internal/handlers"
 	"vpnpanel/internal/logger"
@@ -18,6 +19,7 @@ func (s *Server) Routes() *gin.Engine {
 	r := gin.New()
 
 	r.Use(gin.LoggerWithWriter(logger.Writer()))
+	r.Use(httpBusinessLogger())
 	r.Use(nice.Recovery(recoveryHandler))
 	r.Use(cors.Default())
 
@@ -58,6 +60,15 @@ func (s *Server) Routes() *gin.Engine {
 	s.NodesController.Register(api.Group("/nodes"))
 
 	return r
+}
+
+func httpBusinessLogger() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		started := time.Now()
+		logger.Info("http request received", "component", "http", "operation", "request", "method", c.Request.Method, "path", c.FullPath(), "raw_path", c.Request.URL.Path)
+		c.Next()
+		logger.Info("http response sent", "component", "http", "operation", "response", "method", c.Request.Method, "path", c.FullPath(), "raw_path", c.Request.URL.Path, "status", c.Writer.Status(), "duration_ms", time.Since(started).Milliseconds())
+	}
 }
 
 func mountStatic(r *gin.Engine) error {

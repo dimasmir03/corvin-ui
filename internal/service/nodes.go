@@ -78,19 +78,24 @@ func (s *NodeService) RequestSnapshot(ctx context.Context, nodeID string, reques
 
 func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapshotEvent) (models.NodeState, bool, error) {
 	_ = ctx
+	logger.Info("node snapshot apply received", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
 	if strings.TrimSpace(event.EventType) != NodeSnapshotEventType {
+		logger.Warn("node snapshot apply rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "reason", "unsupported_event_type")
 		return models.NodeState{}, false, fmt.Errorf("unsupported event_type %q", event.EventType)
 	}
 	nodeID := strings.TrimSpace(event.NodeID)
 	if nodeID == "" {
+		logger.Warn("node snapshot apply rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "reason", "node_id_required")
 		return models.NodeState{}, false, fmt.Errorf("node_id is required")
 	}
 	endpointGroup := strings.TrimSpace(event.EndpointGroup)
 	if endpointGroup == "" {
+		logger.Warn("node snapshot apply rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "reason", "endpoint_group_required")
 		return models.NodeState{}, false, fmt.Errorf("endpoint_group is required")
 	}
 	protocol := strings.TrimSpace(event.Protocol)
 	if protocol == "" {
+		logger.Warn("node snapshot apply rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "reason", "protocol_required")
 		return models.NodeState{}, false, fmt.Errorf("protocol is required")
 	}
 
@@ -99,6 +104,7 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		snapshotAt = event.SentAt.UTC()
 	}
 
+	logger.Info("node snapshot db apply started", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "snapshot_at", snapshotAt)
 	node, stale, err := s.nodeRepo.ApplySnapshot(repository.NodeSnapshotUpdate{
 		NodeID:         nodeID,
 		EndpointGroup:  endpointGroup,
@@ -116,9 +122,15 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		LastSnapshotAt: snapshotAt,
 	})
 	if err != nil {
+		logger.Error("node snapshot db apply failed", err, "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol)
 		return models.NodeState{}, false, err
 	}
 	node.Status = s.CalculateStatus(node.LastSeenAt)
+	if stale {
+		logger.Info("node snapshot ignored", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "status", node.Status, "reason", "stale_snapshot")
+		return node, stale, nil
+	}
+	logger.Info("node snapshot applied", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "status", node.Status, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable)
 	return node, stale, nil
 }
 
