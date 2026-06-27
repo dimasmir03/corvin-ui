@@ -107,11 +107,10 @@ func vpnCreateMenu(hasVless bool, hasTrojan bool) *telebot.ReplyMarkup {
 }
 
 func linkMenu() *telebot.ReplyMarkup {
-	linkMarkup.Inline(
-		linkMarkup.Row(btnLinkVLESS),
-		linkMarkup.Row(btnLinkTrojan),
-	)
-
+	rows := make([]telebot.Row, 0, 3)
+	rows = append(rows, linkMarkup.Row(btnLinkVLESS))
+	rows = append(rows, linkMarkup.Row(btnLinkTrojan))
+	linkMarkup.Inline(rows...)
 	return linkMarkup
 }
 

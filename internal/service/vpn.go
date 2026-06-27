@@ -111,6 +111,36 @@ type UserVPNProfileNodeView struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 }
 
+type LinkProfileView struct {
+	Profile       string
+	EndpointGroup string
+	Protocol      string
+	Status        string
+	Exists        bool
+	Usable        bool
+	FinalLink     string
+	Reason        string
+}
+
+type LinkOverviewResult struct {
+	TgID       int64
+	UserID     uint
+	ClientID   uint
+	ClientCode string
+	Profiles   map[string]LinkProfileView
+	Reason     string
+}
+
+type ProtocolLinkResult struct {
+	TgID     int64
+	Protocol string
+	Status   string
+	Exists   bool
+	Usable   bool
+	Link     string
+	Reason   string
+}
+
 type VPNService struct {
 	vpnRepo      *repository.VpnRepo
 	telegramRepo *repository.TelegramRepo
@@ -651,6 +681,164 @@ func valueOrEmptyString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func (s *VPNService) GetLinkOverview(tgID int64) (LinkOverviewResult, error) {
+	logger.Info("vpn link overview lookup started", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID)
+	overview := LinkOverviewResult{TgID: tgID, Profiles: defaultLinkProfiles()}
+
+	logger.Info("telegram user lookup started", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID)
+	telegram, err := s.telegramRepo.FindByTgID(tgID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			overview.Reason = "telegram_user_not_found"
+			logger.Warn("telegram user not found", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "reason", overview.Reason)
+			return overview, nil
+		}
+		logger.Error("telegram user lookup failed", err, "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "reason", "db_error")
+		return overview, err
+	}
+	overview.UserID = telegram.UserID
+	logger.Info("telegram user found", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID)
+
+	logger.Info("vpn client lookup started", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID)
+	client, err := s.vpnRepo.GetVPNClientByUserID(telegram.UserID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			overview.Reason = "vpn_not_configured"
+			logger.Warn("vpn client not found", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "reason", overview.Reason)
+			return overview, nil
+		}
+		logger.Error("vpn client lookup failed", err, "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "reason", "db_error")
+		return overview, err
+	}
+	overview.ClientID = client.ID
+	overview.ClientCode = client.ClientCode
+	logger.Info("vpn client found", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "client_code", client.ClientCode)
+
+	logger.Info("vpn profiles lookup started", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "client_code", client.ClientCode)
+	profiles, err := s.vpnRepo.ListProfilesByClientID(client.ID)
+	if err != nil {
+		logger.Error("vpn profiles lookup failed", err, "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "client_code", client.ClientCode, "reason", "db_error")
+		return overview, err
+	}
+	if len(profiles) == 0 {
+		overview.Reason = "vpn_profiles_not_found"
+		logger.Warn("vpn profiles not found", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "client_code", client.ClientCode, "reason", overview.Reason)
+		return overview, nil
+	}
+	logger.Info("vpn profiles found", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "client_code", client.ClientCode, "profiles_count", len(profiles))
+
+	for _, profile := range profiles {
+		name := strings.ToLower(strings.TrimSpace(profile.Profile))
+		if name != jobsvc.VPNProfileVLESS && name != jobsvc.VPNProfileTrojan {
+			continue
+		}
+		view, err := s.linkProfileView(client, profile)
+		if err != nil {
+			return overview, err
+		}
+		overview.Profiles[name] = view
+		logger.Info("vpn profile evaluated", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "client_code", client.ClientCode, "profile", name, "profile_id", profile.ID, "status", view.Status, "reason", view.Reason)
+	}
+
+	overview.Reason = linkOverviewReason(overview)
+	logger.Info("vpn link overview response selected", "component", "vpn_service", "operation", "link_overview", "tg_id", tgID, "user_id", telegram.UserID, "client_code", client.ClientCode, "reason", overview.Reason, "vless_status", overview.Profiles[jobsvc.VPNProfileVLESS].Status, "trojan_status", overview.Profiles[jobsvc.VPNProfileTrojan].Status)
+	return overview, nil
+}
+
+func (s *VPNService) GetProtocolLink(tgID int64, protocol string) (ProtocolLinkResult, error) {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	logger.Info("vpn protocol link lookup started", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "protocol", protocol)
+	if protocol != jobsvc.VPNProfileVLESS && protocol != jobsvc.VPNProfileTrojan {
+		logger.Warn("vpn protocol link rejected", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "protocol", protocol, "reason", "unsupported_protocol")
+		return ProtocolLinkResult{TgID: tgID, Protocol: protocol, Reason: "unsupported_protocol"}, ErrUnsupportedProtocol
+	}
+
+	overview, err := s.GetLinkOverview(tgID)
+	if err != nil {
+		logger.Error("vpn protocol link overview failed", err, "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "protocol", protocol, "reason", "internal_error")
+		return ProtocolLinkResult{}, err
+	}
+	profile := overview.Profiles[protocol]
+	result := ProtocolLinkResult{TgID: tgID, Protocol: protocol, Status: profile.Status, Exists: profile.Exists, Usable: profile.Usable, Link: profile.FinalLink}
+	switch {
+	case profile.Usable && strings.TrimSpace(profile.FinalLink) != "":
+		result.Reason = "protocol_link_found"
+		logger.Info("vpn protocol link found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "status", profile.Status, "reason", result.Reason)
+	case !profile.Exists:
+		result.Reason = "protocol_link_not_found"
+		logger.Warn("vpn protocol link not found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "reason", result.Reason)
+	case profile.Status == models.VPNProfileStatusPending:
+		result.Reason = "protocol_pending"
+		logger.Warn("vpn protocol link not found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "status", profile.Status, "reason", result.Reason)
+	case profile.Status == models.VPNProfileStatusFailed:
+		result.Reason = "protocol_failed"
+		logger.Warn("vpn protocol link not found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "status", profile.Status, "reason", result.Reason)
+	default:
+		result.Reason = "protocol_link_not_found"
+		logger.Warn("vpn protocol link not found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "status", profile.Status, "reason", result.Reason)
+	}
+	return result, nil
+}
+
+func defaultLinkProfiles() map[string]LinkProfileView {
+	return map[string]LinkProfileView{
+		jobsvc.VPNProfileVLESS:  {Profile: jobsvc.VPNProfileVLESS, EndpointGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Status: "missing", Reason: "protocol_link_not_found"},
+		jobsvc.VPNProfileTrojan: {Profile: jobsvc.VPNProfileTrojan, EndpointGroup: jobsvc.EndpointGroupRU, Protocol: jobsvc.VPNProfileTrojan, Status: "missing", Reason: "protocol_link_not_found"},
+	}
+}
+
+func (s *VPNService) linkProfileView(client models.VPNClient, profile models.VPNProfile) (LinkProfileView, error) {
+	view := LinkProfileView{Profile: profile.Profile, EndpointGroup: profile.EndpointGroup, Protocol: profile.Protocol, Status: profile.Status, Exists: true, FinalLink: profile.FinalLink}
+	view.Usable = isUsableVPNProfileStatus(profile.Status)
+	if view.Usable && strings.TrimSpace(view.FinalLink) == "" {
+		logger.Info("vpn profile final link rebuild started", "component", "vpn_service", "operation", "link_overview", "client_code", client.ClientCode, "profile", profile.Profile, "profile_id", profile.ID, "status", profile.Status)
+		group, err := s.vpnRepo.GetEndpointGroup(profile.EndpointGroup)
+		if err != nil {
+			logger.Error("vpn profile final link rebuild failed", err, "component", "vpn_service", "operation", "link_overview", "client_code", client.ClientCode, "profile", profile.Profile, "profile_id", profile.ID, "status", profile.Status)
+			return view, err
+		}
+		view.FinalLink = buildProfileLink(group, client, profile.Profile)
+		if strings.TrimSpace(view.FinalLink) != "" {
+			updated, err := s.vpnRepo.UpdateProfileFinalLink(profile.ID, view.FinalLink)
+			if err != nil {
+				logger.Error("vpn profile final link save failed", err, "component", "vpn_service", "operation", "link_overview", "client_code", client.ClientCode, "profile", profile.Profile, "profile_id", profile.ID, "status", profile.Status)
+				return view, err
+			}
+			view.FinalLink = updated.FinalLink
+			logger.Info("vpn profile final link rebuilt", "component", "vpn_service", "operation", "link_overview", "client_code", client.ClientCode, "profile", profile.Profile, "profile_id", profile.ID, "status", profile.Status)
+		}
+	}
+	switch {
+	case view.Usable && strings.TrimSpace(view.FinalLink) != "":
+		view.Reason = "protocol_link_found"
+	case profile.Status == models.VPNProfileStatusPending:
+		view.Reason = "protocol_pending"
+	case profile.Status == models.VPNProfileStatusFailed:
+		view.Reason = "protocol_failed"
+	default:
+		view.Reason = "protocol_link_not_found"
+	}
+	return view, nil
+}
+
+func linkOverviewReason(overview LinkOverviewResult) string {
+	vless := overview.Profiles[jobsvc.VPNProfileVLESS]
+	trojan := overview.Profiles[jobsvc.VPNProfileTrojan]
+	if vless.Usable && strings.TrimSpace(vless.FinalLink) != "" && trojan.Usable && strings.TrimSpace(trojan.FinalLink) != "" {
+		return "both_links_available"
+	}
+	if (vless.Usable && strings.TrimSpace(vless.FinalLink) != "") || (trojan.Usable && strings.TrimSpace(trojan.FinalLink) != "") {
+		return "single_link_available"
+	}
+	if vless.Exists && trojan.Exists && vless.Status == models.VPNProfileStatusPending && trojan.Status == models.VPNProfileStatusPending {
+		return "profiles_pending"
+	}
+	if (vless.Exists && vless.Status == models.VPNProfileStatusFailed) || (trojan.Exists && trojan.Status == models.VPNProfileStatusFailed) {
+		return "profiles_failed"
+	}
+	return "no_usable_profiles"
 }
 
 func (s *VPNService) CreateVPN(input CreateVPNInput) (models.Vpn, error) {

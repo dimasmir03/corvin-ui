@@ -36,10 +36,20 @@ VPN в режиме тестирования, тем самым он на дан
 	msgVPNUnsupportedProtocol = "❌ Ошибка создания VPN"
 	msgVPNCreateFailed        = "Ошибка создания VPN.\n Попробуйте позже."
 
-	msgLinkChooseProtocol      = "  VPN не настроен\n\nНажмите /create для создания\nили выберите протокол:"
+	msgLinkChooseProtocol      = "Ваши VPN-конфиги готовы.\nВыберите нужный протокол:"
+	msgLinkSingleAvailable     = "Доступен %s.\n%s пока не готов."
+	msgLinkVPNNotConfigured    = "VPN не настроен.\nНажмите /create_vpn для создания."
+	msgLinkProfilesPending     = "VPN создаётся. Попробуйте позже.\n\nVLESS: создаётся\nTrojan: создаётся"
+	msgLinkProfilesFailed      = "Не удалось подготовить один или несколько VPN-профилей.\nАдминистратор проверит ошибку."
 	msgLinkUnsupportedProtocol = "❌ Ошибка получения ссылки"
 	msgLinkMissing             = "⏳ Ссылка создаётся. Попробуйте через минуту."
 	msgLinkFetchFailed         = "что-то пошло не так! попробуйте еще раз"
+	msgVLESSNotCreated         = "VLESS не создан. Нажмите /create_vpn vless для создания."
+	msgTrojanNotCreated        = "Trojan не создан. Нажмите /create_vpn trojan для создания."
+	msgVLESSPending            = "VLESS создаётся. Попробуйте позже."
+	msgTrojanPending           = "Trojan создаётся. Попробуйте позже."
+	msgVLESSFailed             = "Не удалось подготовить VLESS. Администратор проверит ошибку."
+	msgTrojanFailed            = "Не удалось подготовить Trojan. Администратор проверит ошибку."
 )
 
 type InstructionStep struct {

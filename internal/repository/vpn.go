@@ -222,6 +222,13 @@ func sameIntPtr(left, right *int) bool {
 	return *left == *right
 }
 
+func (r *VpnRepo) UpdateProfileFinalLink(profileID uint, finalLink string) (models.VPNProfile, error) {
+	if err := r.DB.Model(&models.VPNProfile{}).Where("id = ?", profileID).Updates(map[string]any{"final_link": finalLink, "updated_at": time.Now()}).Error; err != nil {
+		return models.VPNProfile{}, err
+	}
+	return r.GetProfileByID(profileID)
+}
+
 func (r *VpnRepo) UpdateProfileResult(profileID uint, status string, finalLink string, lastError string, notifiedAt *time.Time) (models.VPNProfile, error) {
 	updates := map[string]any{
 		"status":     status,
