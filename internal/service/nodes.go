@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"vpnpanel/internal/repository"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 const (
@@ -43,16 +45,24 @@ func NewNodeService(nodeRepo *repository.NodeRepo, publisher SnapshotCommandPubl
 func (s *NodeService) RequestSnapshot(ctx context.Context, nodeID string, requestedBy string) (RequestSnapshotResult, error) {
 	_ = ctx
 	nodeID = strings.TrimSpace(nodeID)
+	logger.Info("manual refresh requested", "component", "node_service", "operation", "request_snapshot", "node_id", nodeID, "requested_by", requestedBy)
 	if nodeID == "" {
+		logger.Warn("manual refresh failed", "component", "node_service", "operation", "request_snapshot", "node_id", nodeID, "reason", "node_id_required")
 		return RequestSnapshotResult{}, fmt.Errorf("node_id is required")
 	}
 	if requestedBy == "" {
 		requestedBy = "admin"
 	}
 	if _, err := s.nodeRepo.GetByNodeID(nodeID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Warn("manual refresh failed", "component", "node_service", "operation", "request_snapshot", "node_id", nodeID, "requested_by", requestedBy, "reason", "unknown_node")
+		} else {
+			logger.Error("manual refresh failed", err, "component", "node_service", "operation", "request_snapshot", "node_id", nodeID, "requested_by", requestedBy, "reason", "lookup_failed")
+		}
 		return RequestSnapshotResult{}, err
 	}
 	if s.publisher == nil {
+		logger.Warn("manual refresh failed", "component", "node_service", "operation", "request_snapshot", "node_id", nodeID, "requested_by", requestedBy, "reason", "publisher_not_initialized")
 		return RequestSnapshotResult{}, fmt.Errorf("snapshot command publisher is not initialized")
 	}
 
@@ -65,37 +75,37 @@ func (s *NodeService) RequestSnapshot(ctx context.Context, nodeID string, reques
 		CreatedAt:    s.now().UTC(),
 	}
 
-	loggerFields := []any{"command_id", commandID, "node_id", nodeID, "requested_by", requestedBy}
-	logger.Info("node snapshot refresh requested", loggerFields...)
+	loggerFields := []any{"component", "node_service", "operation", "request_snapshot", "command_id", commandID, "node_id", nodeID, "requested_by", requestedBy}
+	logger.Info("manual refresh command publish started", loggerFields...)
 	if err := s.publisher.PublishCollectSnapshotCommand(cmd); err != nil {
-		logger.Error("node snapshot refresh publish failed", err, loggerFields...)
+		logger.Error("manual refresh failed", err, append(loggerFields, "reason", "publish_failed")...)
 		return RequestSnapshotResult{}, err
 	}
-	logger.Info("node snapshot refresh command published", loggerFields...)
+	logger.Info("manual refresh command published", append(loggerFields, "reason", "command_published")...)
 
 	return RequestSnapshotResult{CommandID: commandID, NodeID: nodeID, Status: "queued"}, nil
 }
 
 func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapshotEvent) (models.NodeState, bool, error) {
 	_ = ctx
-	logger.Info("node snapshot apply received", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+	logger.Info("node snapshot received", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
 	if strings.TrimSpace(event.EventType) != NodeSnapshotEventType {
-		logger.Warn("node snapshot apply rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "reason", "unsupported_event_type")
+		logger.Warn("node snapshot rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "reason", "unsupported_event_type")
 		return models.NodeState{}, false, fmt.Errorf("unsupported event_type %q", event.EventType)
 	}
 	nodeID := strings.TrimSpace(event.NodeID)
 	if nodeID == "" {
-		logger.Warn("node snapshot apply rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "reason", "node_id_required")
+		logger.Warn("node snapshot rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "reason", "node_id_required")
 		return models.NodeState{}, false, fmt.Errorf("node_id is required")
 	}
 	endpointGroup := strings.TrimSpace(event.EndpointGroup)
 	if endpointGroup == "" {
-		logger.Warn("node snapshot apply rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "reason", "endpoint_group_required")
+		logger.Warn("node snapshot rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "reason", "endpoint_group_required")
 		return models.NodeState{}, false, fmt.Errorf("endpoint_group is required")
 	}
 	protocol := strings.TrimSpace(event.Protocol)
 	if protocol == "" {
-		logger.Warn("node snapshot apply rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "reason", "protocol_required")
+		logger.Warn("node snapshot rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "reason", "protocol_required")
 		return models.NodeState{}, false, fmt.Errorf("protocol is required")
 	}
 
@@ -104,7 +114,22 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		snapshotAt = event.SentAt.UTC()
 	}
 
-	logger.Info("node snapshot db apply started", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "snapshot_at", snapshotAt)
+	created := false
+	logger.Info("node snapshot lookup started", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID)
+	if existing, err := s.nodeRepo.GetByNodeID(nodeID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			created = true
+			logger.Info("node state not found", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "reason", "discovered_node_missing")
+			logger.Info("discovered node create started", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol)
+		} else {
+			logger.Error("node snapshot lookup failed", err, "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "reason", "db_error")
+			return models.NodeState{}, false, err
+		}
+	} else {
+		logger.Info("node state found", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "source", existing.Source, "status", existing.Status)
+		logger.Info("node state update started", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol)
+	}
+
 	node, stale, err := s.nodeRepo.ApplySnapshot(repository.NodeSnapshotUpdate{
 		NodeID:         nodeID,
 		EndpointGroup:  endpointGroup,
@@ -122,27 +147,43 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		LastSnapshotAt: snapshotAt,
 	})
 	if err != nil {
-		logger.Error("node snapshot db apply failed", err, "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol)
+		logger.Error("node snapshot processing failed", err, "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "reason", "state_update_failed")
 		return models.NodeState{}, false, err
 	}
-	node.Status = s.CalculateStatus(node.LastSeenAt)
+	node.Status = s.calculateNodeStatus(node)
 	if stale {
-		logger.Info("node snapshot ignored", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "status", node.Status, "reason", "stale_snapshot")
+		logger.Info("node snapshot processing finished", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "status", node.Status, "reason", "stale_snapshot")
 		return node, stale, nil
 	}
-	logger.Info("node snapshot applied", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "status", node.Status, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable)
+	if created {
+		logger.Info("discovered node created", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "source", node.Source)
+		logger.Info("node snapshot processing finished", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "reason", "discovered_created")
+		return node, stale, nil
+	}
+	logger.Info("node state updated", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "xui_available", event.XUIAvailable, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "source", node.Source)
+	logger.Info("node snapshot processing finished", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "reason", "state_updated")
 	return node, stale, nil
 }
 
 func (s *NodeService) ListNodes(ctx context.Context) ([]models.NodeState, error) {
 	_ = ctx
+	logger.Info("servers page requested", "component", "node_service", "operation", "list_nodes")
 	nodes, err := s.nodeRepo.List()
 	if err != nil {
+		logger.Error("servers page data load failed", err, "component", "node_service", "operation", "list_nodes", "reason", "db_error")
 		return nil, err
 	}
+	discoveredCount := 0
 	for i := range nodes {
-		nodes[i].Status = s.CalculateStatus(nodes[i].LastSeenAt)
+		nodes[i].Status = s.calculateNodeStatus(nodes[i])
+		if strings.TrimSpace(nodes[i].Source) == "" {
+			nodes[i].Source = models.NodeSourceKnown
+		}
+		if nodes[i].Source == models.NodeSourceDiscovered {
+			discoveredCount++
+		}
 	}
+	logger.Info("servers page data loaded", "component", "node_service", "operation", "list_nodes", "nodes_count", len(nodes), "discovered_count", discoveredCount)
 	return nodes, nil
 }
 
@@ -152,8 +193,18 @@ func (s *NodeService) GetNode(ctx context.Context, nodeID string) (models.NodeSt
 	if err != nil {
 		return models.NodeState{}, err
 	}
-	node.Status = s.CalculateStatus(node.LastSeenAt)
+	node.Status = s.calculateNodeStatus(node)
+	if strings.TrimSpace(node.Source) == "" {
+		node.Source = models.NodeSourceKnown
+	}
 	return node, nil
+}
+
+func (s *NodeService) calculateNodeStatus(node models.NodeState) string {
+	if node.LastSnapshotAt == nil {
+		return models.ServerStatusOffline
+	}
+	return s.CalculateStatus(*node.LastSnapshotAt)
 }
 
 func (s *NodeService) CalculateStatus(lastSeen time.Time) string {

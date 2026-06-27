@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"html/template"
 	"net/http"
 	ui "vpnpanel/internal"
@@ -89,6 +88,7 @@ func (s PanelController) DashboardHandler(c *gin.Context) {
 
 // ServersPage renders the servers management page.
 func (s PanelController) ServersPage(c *gin.Context) {
+	logger.Info("servers page requested", "component", "http_panel", "handler", "servers_page", "reason", "agent_snapshot_monitoring")
 	tmpl, err := template.ParseFS(ui.StaticFS, "templates/layout.html", "templates/servers.html")
 	if err != nil {
 		logger.Println("Template parse error:", err)
@@ -115,28 +115,13 @@ func (s PanelController) NodesRedirect(c *gin.Context) {
 // The rendered page includes a form with fields for the server's name, IP, port, secret web path, and country.
 // The page also includes a submit button to send the form data to the server for processing.
 func (s PanelController) NewServerPage(c *gin.Context) {
-	tmpl, _ := template.ParseFS(ui.StaticFS, "templates/layout.html", "templates/server_form.html")
-	tmpl.ExecuteTemplate(c.Writer, "layout", map[string]any{
-		"Title":  "Add Server",
-		"Action": "/api/servers/new",
-	})
+	logger.Info("server form disabled", "component", "http_panel", "handler", "servers_new", "reason", "agent_snapshot_monitoring")
+	c.AbortWithStatusJSON(http.StatusGone, gin.H{"error": "Server creation from UI is temporarily disabled; nodes are discovered from agent snapshots"})
 }
 
-// EditServerPage renders the server edit page template, populating the form with the server data stored in the database.
-// The ID of the server to be edited is passed as a URL parameter.
 func (s PanelController) EditServerPage(c *gin.Context) {
-	id := c.Param("id")
-	var server models.Server
-	if err := db.DB.First(&server, id).Error; err != nil {
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Server not found"})
-		return
-	}
-
-	renderTemplate(c, []string{"template/layout.html", "templates/server_form.html"}, map[string]any{
-		"Title":  "Edit Server",
-		"Action": fmt.Sprintf("/api/servers/edit/%s", id),
-		"Server": server,
-	})
+	logger.Info("server form disabled", "component", "http_panel", "handler", "servers_edit", "reason", "agent_snapshot_monitoring")
+	c.AbortWithStatusJSON(http.StatusGone, gin.H{"error": "Server editing from UI is temporarily disabled; nodes are discovered from agent snapshots"})
 }
 
 // UsersPage renders the user list page template, displaying all users stored in the database.

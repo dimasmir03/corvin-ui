@@ -2,7 +2,6 @@
 <div id="app">
    <div class="d-flex align-items-center gap-2 mb-3">
       <h1 class="mb-0">{{.Title}}</h1>
-      <a href="/panel/servers/new" class="btn btn-success">Add Server</a>
       <button type="button" class="btn btn-outline-secondary" @click="loadAll">Reload</button>
       <div class="btn-group" role="group" aria-label="Node filters">
          <button v-for="role in filters" :key="role" type="button" class="btn btn-sm" :class="roleFilter === role ? 'btn-primary' : 'btn-outline-primary'" @click="setFilter(role)">
@@ -37,11 +36,15 @@
             <thead>
                <tr>
                   <th>Node</th>
+                  <th>Group</th>
+                  <th>Protocol</th>
+                  <th>Source</th>
                   <th>Agent</th>
                   <th>3x-ui</th>
                   <th>Clients</th>
                   <th>Online</th>
                   <th>Traffic</th>
+                  <th>Inbound</th>
                   <th>Last Seen</th>
                   <th>Last Snapshot</th>
                   <th>Error</th>
@@ -54,6 +57,9 @@
                      <div>[[ node.node_id ]]</div>
                      <small class="text-muted">[[ node.agent_version || "-" ]]</small>
                   </td>
+                  <td>[[ node.endpoint_group || "-" ]]</td>
+                  <td>[[ node.protocol || "-" ]]</td>
+                  <td><span class="badge text-bg-info">[[ node.source || "known" ]]</span></td>
                   <td><span class="badge" :class="nodeStatusClass(node.status)">[[ node.status || "unknown" ]]</span></td>
                   <td>
                      <span class="badge" :class="xuiClass(node)">[[ xuiStatus(node) ]]</span>
@@ -63,6 +69,10 @@
                   <td>
                      <div>↑ [[ formatBytes(node.traffic_up) ]]</div>
                      <div>↓ [[ formatBytes(node.traffic_down) ]]</div>
+                  </td>
+                  <td>
+                     <div>[[ node.inbound_id || "-" ]]</div>
+                     <small class="text-muted">[[ node.inbound_remark || "" ]]</small>
                   </td>
                   <td>[[ formatDate(node.last_seen) ]]</td>
                   <td>[[ formatDate(node.last_snapshot_at) ]]</td>
@@ -78,45 +88,6 @@
       </section>
    </div>
    <div v-else class="text-center text-muted py-4">No node snapshots found</div>
-
-   <h2 class="h5 mt-4">Configured Servers</h2>
-   <table class="table table-striped table-sm align-middle">
-      <thead>
-         <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Role</th>
-            <th>Status</th>
-            <th>Type</th>
-            <th>Agent</th>
-            <th>Actions</th>
-         </tr>
-      </thead>
-      <tbody>
-         <template v-if="servers.length>0">
-            <tr v-for="(server,index) in servers" :key="server.id">
-               <td>[[ index+1 ]]</td>
-               <td>
-                  <div>[[ server.name ]]</div>
-                  <small class="text-muted">[[ server.ip ]]:[[ server.port ]]</small>
-               </td>
-               <td>[[ server.node_role || "other" ]]</td>
-               <td>[[ server.status || "unknown" ]]</td>
-               <td>[[ server.type || "-" ]]</td>
-               <td>[[ server.agent_version || "-" ]]</td>
-               <td>
-                  <a :href="`/panel/servers/edit/${server.id}`" class="btn btn-sm btn-primary">Edit</a>
-                  <form :action="`/api/servers/delete/${server.id}`" method="post" style="display: inline">
-                     <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                  </form>
-               </td>
-            </tr>
-         </template>
-         <tr v-else>
-            <td colspan="7" class="text-center">No servers configured</td>
-         </tr>
-      </tbody>
-   </table>
 </div>
 
 <script>
@@ -125,7 +96,6 @@
       el: "#app",
       data() {
          return {
-            servers: [],
             nodes: [],
             refreshing: {},
             notice: "",
@@ -168,10 +138,8 @@
             this.loadAll();
          },
          loadAll() {
-            const query = this.roleFilter && this.roleFilter !== "all" ? `?role=${this.roleFilter}` : "";
-            Promise.all([axios.get(`/api/servers${query}`), axios.get("/api/nodes")])
-               .then(([serversResponse, nodesResponse]) => {
-                  this.servers = serversResponse.data.obj || [];
+            axios.get("/api/nodes")
+               .then((nodesResponse) => {
                   this.nodes = nodesResponse.data.obj || [];
                   this.error = "";
                })

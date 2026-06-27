@@ -66,6 +66,7 @@ func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, b
 				Protocol:       update.Protocol,
 				AgentVersion:   update.AgentVersion,
 				Status:         models.ServerStatusOnline,
+				Source:         models.NodeSourceDiscovered,
 				LastSeenAt:     update.LastSeenAt,
 				LastSnapshotAt: &update.LastSnapshotAt,
 				XUIAvailable:   &xuiAvailable,
@@ -85,14 +86,19 @@ func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, b
 		}
 
 		xuiAvailable := update.XUIAvailable
+		source := node.Source
+		if source == "" {
+			source = models.NodeSourceDiscovered
+		}
 		updates := map[string]any{
 			"endpoint_group":   update.EndpointGroup,
 			"protocol":         update.Protocol,
 			"agent_version":    update.AgentVersion,
 			"status":           models.ServerStatusOnline,
+			"source":           source,
 			"last_seen_at":     update.LastSeenAt,
 			"last_snapshot_at": update.LastSnapshotAt,
-			"xui_available":    &xuiAvailable,
+			"x_ui_available":   &xuiAvailable,
 			"inbound_id":       update.InboundID,
 			"inbound_remark":   update.InboundRemark,
 			"clients_count":    update.ClientsCount,

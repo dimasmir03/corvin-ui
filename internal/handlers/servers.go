@@ -145,6 +145,10 @@ func newServerResponses(servers []models.Server) []ServerResponse {
 	return out
 }
 
+func serverManagementDisabled(c *gin.Context) {
+	c.JSON(http.StatusGone, Response{Success: false, Msg: "Server management from UI is temporarily disabled; nodes are discovered from agent snapshots"})
+}
+
 func (s ServersController) Register(r *gin.RouterGroup) {
 	r.GET("", s.AllServers)
 	r.GET("/", s.AllServers)
@@ -174,42 +178,8 @@ func (s ServersController) AllServers(c *gin.Context) {
 }
 
 func (s ServersController) CreateServer(c *gin.Context) {
-	var req ServerRequest
-
-	if err := c.ShouldBind(&req); err != nil {
-		logger.Printf("Failed to bind data: %v\n", err)
-		c.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to bind server data"})
-		return
-	}
-
-	server := req.toModel()
-
-	if err := s.Repo.Create(&server); err != nil {
-		logger.Printf("CreateServer db error: %v\n", err)
-		c.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to create server"})
-		return
-	}
-
-	_ = s.audit.Log(audit.Event{
-		ActorType:  audit.ActorAdmin,
-		Action:     "server.created",
-		EntityType: "server",
-		EntityID:   audit.StringID(server.Id),
-		Status:     audit.StatusSuccess,
-		Message:    "server created",
-		NewValue: map[string]any{
-			"name": server.Name,
-			"ip":   server.IP,
-			"port": server.Port,
-		},
-		IP:        c.ClientIP(),
-		UserAgent: c.Request.UserAgent(),
-	})
-
-	c.JSON(http.StatusOK, gin.H{
-		"success":  true,
-		"redirect": "/panel/servers",
-	})
+	logger.Info("server management disabled", "component", "http_api", "handler", "servers_createserver", "operation", "server_management", "reason", "agent_snapshot_monitoring")
+	serverManagementDisabled(c)
 }
 
 func (s ServersController) GetServer(c *gin.Context) {
@@ -229,174 +199,23 @@ func (s ServersController) GetServer(c *gin.Context) {
 }
 
 func (s ServersController) UpdateServer(ctx *gin.Context) {
-	var req ServerRequest
-
-	if err := ctx.ShouldBind(&req); err != nil {
-		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to bind server data"})
-		return
-	}
-
-	server := req.toModel()
-	if server.Id == 0 {
-		id, err := strconv.Atoi(ctx.Param("id"))
-		if err != nil {
-			ctx.JSON(http.StatusOK, Response{Success: false, Msg: "Invalid ID"})
-			return
-		}
-		server.Id = id
-	}
-
-	existing, err := s.Repo.GetByID(server.Id)
-	if err != nil {
-		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "Server not found"})
-		return
-	}
-	if server.SecretWebPath == "" {
-		server.SecretWebPath = existing.SecretWebPath
-	}
-	if server.ApiKey == "" {
-		server.ApiKey = existing.ApiKey
-	}
-	if req.Enabled == nil {
-		server.Enabled = existing.Enabled
-	}
-	if req.Status == "" {
-		server.Status = existing.Status
-	}
-	if req.ManagementMode == "" {
-		server.ManagementMode = existing.ManagementMode
-	}
-	if req.NodeRole == "" {
-		server.NodeRole = existing.NodeRole
-	}
-	server.LastSeenAt = existing.LastSeenAt
-	server.LastProbeAt = existing.LastProbeAt
-	server.LastStatsAt = existing.LastStatsAt
-	server.LastOnlineCount = existing.LastOnlineCount
-	server.LastUploadBytes = existing.LastUploadBytes
-	server.LastDownloadBytes = existing.LastDownloadBytes
-	server.LastTotalBytes = existing.LastTotalBytes
-	server.LastPanelStatus = existing.LastPanelStatus
-	server.LastXrayStatus = existing.LastXrayStatus
-	server.LastError = existing.LastError
-	server.PanelVersion = existing.PanelVersion
-	server.XrayVersion = existing.XrayVersion
-	server.AgentVersion = existing.AgentVersion
-
-	oldStatus := existing.Status
-	oldEnabled := existing.Enabled
-	if err := s.Repo.Update(&server); err != nil {
-		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to update server"})
-		return
-	}
-
-	if oldEnabled != server.Enabled {
-		action := "server.enabled"
-		message := "server enabled"
-		if !server.Enabled {
-			action = "server.disabled"
-			message = "server disabled"
-		}
-		_ = s.audit.Log(audit.Event{
-			ActorType:  audit.ActorAdmin,
-			Action:     action,
-			EntityType: "server",
-			EntityID:   audit.StringID(server.Id),
-			Status:     audit.StatusSuccess,
-			Message:    message,
-			OldValue:   map[string]any{"enabled": oldEnabled},
-			NewValue:   map[string]any{"enabled": server.Enabled},
-			IP:         ctx.ClientIP(),
-			UserAgent:  ctx.Request.UserAgent(),
-		})
-	}
-
-	if oldStatus != server.Status && server.Status == models.ServerStatusDisabled {
-		_ = s.audit.Log(audit.Event{
-			ActorType:  audit.ActorAdmin,
-			Action:     "server.disabled",
-			EntityType: "server",
-			EntityID:   audit.StringID(server.Id),
-			Status:     audit.StatusSuccess,
-			Message:    "server status disabled",
-			OldValue:   map[string]any{"status": oldStatus},
-			NewValue:   map[string]any{"status": server.Status},
-			IP:         ctx.ClientIP(),
-			UserAgent:  ctx.Request.UserAgent(),
-		})
-	}
-
-	ctx.JSON(http.StatusOK, Response{Success: true})
+	logger.Info("server management disabled", "component", "http_api", "handler", "servers_updateserver", "operation", "server_management", "reason", "agent_snapshot_monitoring")
+	serverManagementDisabled(ctx)
 }
 
 func (s ServersController) DeleteServer(ctx *gin.Context) {
-	id, err := strconv.Atoi(ctx.Param("id"))
-	if err != nil {
-		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "Invalid ID"})
-		return
-	}
-
-	if err = s.Repo.Delete(id); err != nil {
-		ctx.JSON(http.StatusOK, Response{Success: false, Msg: "Failed to delete server"})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Server deleted successfully",
-	})
+	logger.Info("server management disabled", "component", "http_api", "handler", "servers_deleteserver", "operation", "server_management", "reason", "agent_snapshot_monitoring")
+	serverManagementDisabled(ctx)
 }
 
-// #endregion
-
-// #region Misc
-
 func (s ServersController) ProbeServer(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusOK, Response{Success: false, Msg: "Invalid ID"})
-		return
-	}
-	if s.jobs == nil {
-		c.JSON(http.StatusOK, Response{Success: false, Msg: "Jobs service is not configured"})
-		return
-	}
-
-	batch, job, err := s.jobs.ProbeServer(id)
-	if err != nil {
-		c.JSON(http.StatusOK, Response{Success: false, Msg: err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{
-		"batch_id": batch.ID,
-		"job_id":   job.ID,
-		"status":   batch.Status,
-	}})
+	logger.Info("server management disabled", "component", "http_api", "handler", "servers_probeserver", "operation", "server_management", "reason", "agent_snapshot_monitoring")
+	serverManagementDisabled(c)
 }
 
 func (s ServersController) CollectNodeStats(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusOK, Response{Success: false, Msg: "Invalid ID"})
-		return
-	}
-	if s.jobs == nil {
-		c.JSON(http.StatusOK, Response{Success: false, Msg: "Jobs service is not configured"})
-		return
-	}
-
-	batch, job, err := s.jobs.CollectNodeStats(uint(id))
-	if err != nil {
-		c.JSON(http.StatusOK, Response{Success: false, Msg: err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{
-		"batch_id": batch.ID,
-		"job_id":   job.ID,
-		"status":   batch.Status,
-	}})
+	logger.Info("server management disabled", "component", "http_api", "handler", "servers_collectnodestats", "operation", "server_management", "reason", "agent_snapshot_monitoring")
+	serverManagementDisabled(c)
 }
 
 func (s ServersController) LatestNodeStats(c *gin.Context) {

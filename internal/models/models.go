@@ -29,6 +29,9 @@ const (
 
 	ServerManagementModeAgent = "agent"
 
+	NodeSourceKnown      = "known"
+	NodeSourceDiscovered = "discovered"
+
 	NodeRoleRU      = "ru"
 	NodeRoleForeign = "foreign"
 	NodeRoleDirect  = "direct"
@@ -97,6 +100,7 @@ type NodeState struct {
 	Protocol       string     `gorm:"not null;index" json:"protocol"`
 	AgentVersion   string     `json:"agent_version"`
 	Status         string     `gorm:"not null;index" json:"status"`
+	Source         string     `gorm:"not null;default:discovered;index" json:"source"`
 	LastSeenAt     time.Time  `gorm:"not null;index" json:"last_seen"`
 	LastSnapshotAt *time.Time `gorm:"index" json:"last_snapshot_at,omitempty"`
 	XUIAvailable   *bool      `json:"xui_available,omitempty"`
