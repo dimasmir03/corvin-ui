@@ -107,9 +107,20 @@ func vpnCreateMenu(hasVless bool, hasTrojan bool) *telebot.ReplyMarkup {
 }
 
 func linkMenu() *telebot.ReplyMarkup {
+	return linkOverviewMenu(true, true, false)
+}
+
+func linkOverviewMenu(hasVless bool, hasTrojan bool, hasPending bool) *telebot.ReplyMarkup {
 	rows := make([]telebot.Row, 0, 3)
-	rows = append(rows, linkMarkup.Row(btnLinkVLESS))
-	rows = append(rows, linkMarkup.Row(btnLinkTrojan))
+	if hasVless {
+		rows = append(rows, linkMarkup.Row(btnLinkVLESS))
+	}
+	if hasTrojan {
+		rows = append(rows, linkMarkup.Row(btnLinkTrojan))
+	}
+	if hasPending {
+		rows = append(rows, linkMarkup.Row(btnMainMenu))
+	}
 	linkMarkup.Inline(rows...)
 	return linkMarkup
 }
