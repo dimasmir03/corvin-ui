@@ -7,7 +7,6 @@ import (
 	"vpnpanel/internal/service"
 
 	telebot "gopkg.in/telebot.v4"
-	"gorm.io/gorm"
 )
 
 func (b *Bot) handleVPN(c telebot.Context) error {
@@ -19,23 +18,24 @@ func (b *Bot) handleVPN(c telebot.Context) error {
 		return b.send(c, msgVPNFetchFailed)
 	}
 
-	b.logger.Info("telegram vpn requested", "component", "telegrambot", "handler", "vpn", "tg_id", sender.ID)
-	vpn, err := b.deps.VPN.GetVPNByTelegramID(sender.ID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		b.logger.Info("telegram vpn response sent", "component", "telegrambot", "handler", "vpn", "tg_id", sender.ID, "reason", "vpn_client_not_found")
-		return b.send(c, msgVPNMissing, vpnCreateMenu(false, false))
-	}
+	b.logger.Info("telegram vpn requested", "handler", "vpn", "tg_id", sender.ID)
+	overview, err := b.deps.VPN.GetLinkOverview(sender.ID)
 	if err != nil {
-		b.logger.Error("telegram vpn handler failed", err, "tg_id", sender.ID)
+		b.logger.Error("telegram vpn handler failed", err, "tg_id", sender.ID, "reason", "internal_error")
 		return b.send(c, msgVPNFetchFailed)
 	}
-	if strings.TrimSpace(vpn.VlessLink) == "" && strings.TrimSpace(vpn.TrojanLink) == "" {
-		b.logger.Info("telegram vpn response sent", "component", "telegrambot", "handler", "vpn", "tg_id", sender.ID, "vpn_id", vpn.ID, "reason", "no_usable_profiles")
-		return b.send(c, msgVPNMissing, vpnCreateMenu(hasVPNLink(vpn.VlessLink), hasVPNLink(vpn.TrojanLink)))
+
+	vless := overview.Profiles["vless"]
+	trojan := overview.Profiles["trojan"]
+	hasVless := linkProfileAvailable(vless)
+	hasTrojan := linkProfileAvailable(trojan)
+	if !hasVless && !hasTrojan {
+		b.logger.Info("telegram vpn response sent", "handler", "vpn", "tg_id", sender.ID, "reason", overview.Reason, "has_vless", false, "has_trojan", false)
+		return b.send(c, msgVPNMissing, vpnCreateMenu(hasVless, hasTrojan))
 	}
 
-	b.logger.Info("telegram vpn response sent", "component", "telegrambot", "handler", "vpn", "tg_id", sender.ID, "vpn_id", vpn.ID, "reason", "usable_profiles_found", "has_vless", hasVPNLink(vpn.VlessLink), "has_trojan", hasVPNLink(vpn.TrojanLink))
-	return b.send(c, fmt.Sprintf(msgVPNReady, buildVPNStatus(vpn.VlessLink, vpn.TrojanLink)), vpnMenu(hasVPNLink(vpn.VlessLink), hasVPNLink(vpn.TrojanLink)))
+	b.logger.Info("telegram vpn response sent", "handler", "vpn", "tg_id", sender.ID, "reason", overview.Reason, "has_vless", hasVless, "has_trojan", hasTrojan, "vless_status", vless.Status, "trojan_status", trojan.Status)
+	return b.send(c, fmt.Sprintf(msgVPNReady, buildVPNStatusFromProfiles(vless, trojan)), vpnMenu(hasVless, hasTrojan))
 }
 
 func (b *Bot) handleVPNVLESS(c telebot.Context) error {
@@ -94,14 +94,14 @@ func (b *Bot) sendLinkOverview(c telebot.Context) error {
 
 	sender := c.Sender()
 	if sender == nil {
-		b.logger.Error("telegram link overview failed", nil, "component", "telegrambot", "handler", "link_overview", "reason", "sender is nil")
+		b.logger.Error("telegram link overview failed", nil, "handler", "link_overview", "reason", "sender is nil")
 		return b.send(c, msgLinkFetchFailed)
 	}
 
-	b.logger.Info("telegram link overview requested", "component", "telegrambot", "handler", "link_overview", "tg_id", sender.ID)
+	b.logger.Info("telegram link overview requested", "handler", "link_overview", "tg_id", sender.ID)
 	overview, err := b.deps.VPN.GetLinkOverview(sender.ID)
 	if err != nil {
-		b.logger.Error("telegram link overview failed", err, "component", "telegrambot", "handler", "link_overview", "tg_id", sender.ID, "reason", "internal_error")
+		b.logger.Error("telegram link overview failed", err, "handler", "link_overview", "tg_id", sender.ID, "reason", "internal_error")
 		return b.send(c, msgLinkFetchFailed)
 	}
 
@@ -110,7 +110,7 @@ func (b *Bot) sendLinkOverview(c telebot.Context) error {
 	hasVless := linkProfileAvailable(vless)
 	hasTrojan := linkProfileAvailable(trojan)
 	message, markup := b.linkOverviewResponse(overview, hasVless, hasTrojan)
-	b.logger.Info("telegram link overview sent", "component", "telegrambot", "handler", "link_overview", "tg_id", sender.ID, "reason", overview.Reason, "has_vless", hasVless, "has_trojan", hasTrojan, "vless_status", vless.Status, "trojan_status", trojan.Status)
+	b.logger.Info("telegram link overview sent", "handler", "link_overview", "tg_id", sender.ID, "reason", overview.Reason, "has_vless", hasVless, "has_trojan", hasTrojan, "vless_status", vless.Status, "trojan_status", trojan.Status)
 	if markup != nil {
 		return b.send(c, message, markup)
 	}
@@ -122,38 +122,38 @@ func (b *Bot) sendLink(c telebot.Context, protocol string) error {
 
 	sender := c.Sender()
 	if sender == nil {
-		b.logger.Error("telegram protocol link failed", nil, "component", "telegrambot", "handler", "protocol_link", "reason", "sender is nil", "protocol", protocol)
+		b.logger.Error("telegram protocol link failed", nil, "handler", "protocol_link", "reason", "sender is nil", "protocol", protocol)
 		return b.send(c, msgLinkFetchFailed)
 	}
 
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
-	b.logger.Info("telegram protocol link requested", "component", "telegrambot", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol)
+	b.logger.Info("telegram protocol link requested", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol)
 	if protocol != "vless" && protocol != "trojan" {
-		b.logger.Info("telegram protocol link sent", "component", "telegrambot", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "reason", "unsupported_protocol")
+		b.logger.Info("telegram protocol link sent", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "reason", "unsupported_protocol")
 		return b.send(c, msgLinkUnsupportedProtocol)
 	}
 
-	b.logger.Info("telegram protocol link service call started", "component", "telegrambot", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol)
+	b.logger.Info("telegram protocol link service call started", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol)
 	result, err := b.deps.VPN.GetProtocolLink(sender.ID, protocol)
 	if errors.Is(err, service.ErrUnsupportedProtocol) {
-		b.logger.Info("telegram protocol link sent", "component", "telegrambot", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "reason", "unsupported_protocol")
+		b.logger.Info("telegram protocol link sent", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "reason", "unsupported_protocol")
 		return b.send(c, msgLinkUnsupportedProtocol)
 	}
 	if err != nil {
-		b.logger.Error("telegram protocol link failed", err, "component", "telegrambot", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "reason", "internal_error")
+		b.logger.Error("telegram protocol link failed", err, "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "reason", "internal_error")
 		return b.send(c, msgLinkFetchFailed)
 	}
 	if result.Reason != "protocol_link_found" || strings.TrimSpace(result.Link) == "" {
 		message := protocolMissingMessage(protocol, result.Reason)
-		b.logger.Info("telegram protocol link sent", "component", "telegrambot", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "status", result.Status, "reason", result.Reason)
+		b.logger.Info("telegram protocol link sent", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "status", result.Status, "reason", result.Reason)
 		return b.send(c, message)
 	}
 
 	if err := b.send(c, formatLinkMessage(protocol, result.Link), telebot.ModeMarkdown); err != nil {
-		b.logger.Error("telegram protocol link send failed", err, "component", "telegrambot", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol)
+		b.logger.Error("telegram protocol link send failed", err, "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol)
 		return err
 	}
-	b.logger.Info("telegram protocol link sent", "component", "telegrambot", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "status", result.Status, "reason", result.Reason)
+	b.logger.Info("telegram protocol link sent", "handler", "protocol_link", "tg_id", sender.ID, "protocol", protocol, "status", result.Status, "reason", result.Reason)
 	return nil
 }
 
@@ -239,6 +239,21 @@ func buildVPNStatus(vlessLink string, trojanLink string) string {
 		status = append(status, "❌ Основной")
 	}
 	if hasVPNLink(trojanLink) {
+		status = append(status, "✅ Обход")
+	} else {
+		status = append(status, "❌ Обход")
+	}
+	return fmt.Sprintf("%s | %s", status[0], status[1])
+}
+
+func buildVPNStatusFromProfiles(vless service.LinkProfileView, trojan service.LinkProfileView) string {
+	status := []string{}
+	if linkProfileAvailable(vless) {
+		status = append(status, "✅ Основной")
+	} else {
+		status = append(status, "❌ Основной")
+	}
+	if linkProfileAvailable(trojan) {
 		status = append(status, "✅ Обход")
 	} else {
 		status = append(status, "❌ Обход")

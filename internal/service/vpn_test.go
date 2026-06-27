@@ -474,6 +474,184 @@ func loadTestProfileByID(t *testing.T, db *gorm.DB, profileID uint) models.VPNPr
 	return profile
 }
 
+func seedVPNLinkTestUser(t *testing.T, db *gorm.DB) models.Telegram {
+	t.Helper()
+	user := models.User{Username: "link-user", Status: true}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	telegram := models.Telegram{TgID: 99887766, Username: "link", Firstname: "Link", Lastname: "User", UserID: user.ID}
+	if err := db.Create(&telegram).Error; err != nil {
+		t.Fatalf("create telegram: %v", err)
+	}
+	return telegram
+}
+
+func seedCanonicalLinkProfiles(t *testing.T, db *gorm.DB, telegram models.Telegram, vlessLink string, trojanLink string) models.VPNClient {
+	t.Helper()
+	client := models.VPNClient{UserID: telegram.UserID, TelegramID: telegram.TgID, ClientCode: "cvn_test", Email: "cvn_test", VlessUUID: "vless-secret", TrojanPassword: "trojan-secret"}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatalf("create canonical client: %v", err)
+	}
+	profiles := []models.VPNProfile{
+		{VPNClientID: client.ID, Profile: jobsvc.VPNProfileVLESS, EndpointGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Status: models.VPNProfileStatusActive, FinalLink: vlessLink},
+		{VPNClientID: client.ID, Profile: jobsvc.VPNProfileTrojan, EndpointGroup: jobsvc.EndpointGroupRU, Protocol: jobsvc.VPNProfileTrojan, Status: models.VPNProfileStatusActive, FinalLink: trojanLink},
+	}
+	for _, profile := range profiles {
+		if err := db.Create(&profile).Error; err != nil {
+			t.Fatalf("create canonical profile %s: %v", profile.Profile, err)
+		}
+	}
+	return client
+}
+
+func TestGetLinkOverviewUsesCanonicalProfilesWhenUsable(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNLinkTestUser(t, db)
+	seedCanonicalLinkProfiles(t, db, telegram, "canonical-vless", "canonical-trojan")
+	if err := db.Create(&models.Vpn{UserID: telegram.UserID, VlessLink: "legacy-vless", TrojanLink: "legacy-trojan"}).Error; err != nil {
+		t.Fatalf("create legacy vpn: %v", err)
+	}
+	svc := newTestVPNService(db, &captureJobPublisher{})
+
+	overview, err := svc.GetLinkOverview(telegram.TgID)
+	if err != nil {
+		t.Fatalf("GetLinkOverview: %v", err)
+	}
+	if overview.Reason != "both_links_available" {
+		t.Fatalf("reason = %q", overview.Reason)
+	}
+	if got := overview.Profiles[jobsvc.VPNProfileVLESS]; got.FinalLink != "canonical-vless" || got.Source != "canonical" {
+		t.Fatalf("vless profile = %#v", got)
+	}
+	if got := overview.Profiles[jobsvc.VPNProfileTrojan]; got.FinalLink != "canonical-trojan" || got.Source != "canonical" {
+		t.Fatalf("trojan profile = %#v", got)
+	}
+}
+
+func TestGetLinkOverviewFallsBackToLegacyWhenCanonicalMissing(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNLinkTestUser(t, db)
+	if err := db.Create(&models.Vpn{UserID: telegram.UserID, VlessLink: "legacy-vless", TrojanLink: "legacy-trojan"}).Error; err != nil {
+		t.Fatalf("create legacy vpn: %v", err)
+	}
+	svc := newTestVPNService(db, &captureJobPublisher{})
+
+	overview, err := svc.GetLinkOverview(telegram.TgID)
+	if err != nil {
+		t.Fatalf("GetLinkOverview: %v", err)
+	}
+	if overview.Reason != "both_links_available" {
+		t.Fatalf("reason = %q", overview.Reason)
+	}
+	if got := overview.Profiles[jobsvc.VPNProfileVLESS]; got.FinalLink != "legacy-vless" || got.Source != "legacy" {
+		t.Fatalf("vless profile = %#v", got)
+	}
+	if got := overview.Profiles[jobsvc.VPNProfileTrojan]; got.FinalLink != "legacy-trojan" || got.Source != "legacy" {
+		t.Fatalf("trojan profile = %#v", got)
+	}
+
+	vless, err := svc.GetProtocolLink(telegram.TgID, jobsvc.VPNProfileVLESS)
+	if err != nil {
+		t.Fatalf("GetProtocolLink vless: %v", err)
+	}
+	if vless.Link != "legacy-vless" || vless.Reason != "protocol_link_found" {
+		t.Fatalf("vless result = %#v", vless)
+	}
+	trojan, err := svc.GetProtocolLink(telegram.TgID, jobsvc.VPNProfileTrojan)
+	if err != nil {
+		t.Fatalf("GetProtocolLink trojan: %v", err)
+	}
+	if trojan.Link != "legacy-trojan" || trojan.Reason != "protocol_link_found" {
+		t.Fatalf("trojan result = %#v", trojan)
+	}
+}
+
+func TestGetLinkOverviewFallsBackToLegacyWhenCanonicalFinalLinkEmpty(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNLinkTestUser(t, db)
+	seedCanonicalLinkProfiles(t, db, telegram, "", "")
+	if err := db.Create(&models.Vpn{UserID: telegram.UserID, VlessLink: "legacy-vless", TrojanLink: "legacy-trojan"}).Error; err != nil {
+		t.Fatalf("create legacy vpn: %v", err)
+	}
+	svc := newTestVPNService(db, &captureJobPublisher{})
+
+	overview, err := svc.GetLinkOverview(telegram.TgID)
+	if err != nil {
+		t.Fatalf("GetLinkOverview: %v", err)
+	}
+	if overview.Reason != "both_links_available" {
+		t.Fatalf("reason = %q", overview.Reason)
+	}
+	if got := overview.Profiles[jobsvc.VPNProfileVLESS]; got.FinalLink != "legacy-vless" || got.Source != "legacy" {
+		t.Fatalf("vless profile = %#v", got)
+	}
+	if got := overview.Profiles[jobsvc.VPNProfileTrojan]; got.FinalLink != "legacy-trojan" || got.Source != "legacy" {
+		t.Fatalf("trojan profile = %#v", got)
+	}
+}
+
+func TestGetLinkOverviewWithoutCanonicalAndLegacyReturnsNotConfigured(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNLinkTestUser(t, db)
+	svc := newTestVPNService(db, &captureJobPublisher{})
+
+	overview, err := svc.GetLinkOverview(telegram.TgID)
+	if err != nil {
+		t.Fatalf("GetLinkOverview: %v", err)
+	}
+	if overview.Reason != "vpn_not_configured" {
+		t.Fatalf("reason = %q", overview.Reason)
+	}
+	if linkProfileAvailableForTest(overview.Profiles[jobsvc.VPNProfileVLESS]) || linkProfileAvailableForTest(overview.Profiles[jobsvc.VPNProfileTrojan]) {
+		t.Fatalf("profiles should not be usable: %#v", overview.Profiles)
+	}
+}
+
+func TestGetLinkOverviewLegacyOnlyVLESS(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNLinkTestUser(t, db)
+	if err := db.Create(&models.Vpn{UserID: telegram.UserID, VlessLink: "legacy-vless"}).Error; err != nil {
+		t.Fatalf("create legacy vpn: %v", err)
+	}
+	svc := newTestVPNService(db, &captureJobPublisher{})
+
+	overview, err := svc.GetLinkOverview(telegram.TgID)
+	if err != nil {
+		t.Fatalf("GetLinkOverview: %v", err)
+	}
+	if overview.Reason != "single_link_available" {
+		t.Fatalf("reason = %q", overview.Reason)
+	}
+	if !linkProfileAvailableForTest(overview.Profiles[jobsvc.VPNProfileVLESS]) || linkProfileAvailableForTest(overview.Profiles[jobsvc.VPNProfileTrojan]) {
+		t.Fatalf("unexpected profiles: %#v", overview.Profiles)
+	}
+}
+
+func TestGetLinkOverviewLegacyOnlyTrojan(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNLinkTestUser(t, db)
+	if err := db.Create(&models.Vpn{UserID: telegram.UserID, TrojanLink: "legacy-trojan"}).Error; err != nil {
+		t.Fatalf("create legacy vpn: %v", err)
+	}
+	svc := newTestVPNService(db, &captureJobPublisher{})
+
+	overview, err := svc.GetLinkOverview(telegram.TgID)
+	if err != nil {
+		t.Fatalf("GetLinkOverview: %v", err)
+	}
+	if overview.Reason != "single_link_available" {
+		t.Fatalf("reason = %q", overview.Reason)
+	}
+	if linkProfileAvailableForTest(overview.Profiles[jobsvc.VPNProfileVLESS]) || !linkProfileAvailableForTest(overview.Profiles[jobsvc.VPNProfileTrojan]) {
+		t.Fatalf("unexpected profiles: %#v", overview.Profiles)
+	}
+}
+
+func linkProfileAvailableForTest(profile LinkProfileView) bool {
+	return profile.Usable && strings.TrimSpace(profile.FinalLink) != ""
+}
+
 func TestGetUserVPNDetailsWithoutClientShowsMissingProfiles(t *testing.T) {
 	db := newVPNServiceTestDB(t)
 	user := models.User{Username: "no-vpn", Status: true}

@@ -43,7 +43,7 @@ func (b *Bot) ensureTelegramUserMiddleware(next telebot.HandlerFunc) telebot.Han
 			return next(c)
 		}
 
-		b.logger.Info("telegram user lookup started", "component", "telegrambot", "operation", "ensure_user", "tg_id", sender.ID)
+		b.logger.Info("telegram user lookup started", "operation", "ensure_user", "tg_id", sender.ID)
 		telegramUser, err := b.deps.Users.EnsureTelegramUser(service.TelegramUserInput{
 			TgID:      sender.ID,
 			Username:  sender.Username,
@@ -51,7 +51,7 @@ func (b *Bot) ensureTelegramUserMiddleware(next telebot.HandlerFunc) telebot.Han
 			Lastname:  sender.LastName,
 		})
 		if err != nil {
-			b.logger.Error("telegram user check failed", err, "component", "telegrambot", "operation", "ensure_user", "tg_id", sender.ID, "reason", "ensure_user_failed")
+			b.logger.Error("telegram user check failed", err, "operation", "ensure_user", "tg_id", sender.ID, "reason", "ensure_user_failed")
 			if c.Callback() != nil {
 				if respondErr := b.respond(c); respondErr != nil {
 					return respondErr
@@ -60,7 +60,7 @@ func (b *Bot) ensureTelegramUserMiddleware(next telebot.HandlerFunc) telebot.Han
 			return b.send(c, msgRegistrationFailed)
 		}
 
-		b.logger.Info("telegram user found", "component", "telegrambot", "operation", "ensure_user", "tg_id", sender.ID, "user_id", telegramUser.UserID, "reason", "user_ensured")
+		b.logger.Info("telegram user found", "operation", "ensure_user", "tg_id", sender.ID, "user_id", telegramUser.UserID, "reason", "user_ensured")
 		return next(c)
 	}
 }
@@ -72,7 +72,7 @@ func (b *Bot) withLogging(name string, next telebot.HandlerFunc) telebot.Handler
 			senderID = sender.ID
 		}
 
-		args := []any{"component", "telegrambot", "handler", name, "tg_id", senderID}
+		args := []any{"handler", name, "tg_id", senderID}
 		if callback := c.Callback(); callback != nil {
 			args = append(args,
 				"callback_unique", callback.Unique,
@@ -163,7 +163,7 @@ func telegramCommandName(c telebot.Context, fallback string) string {
 
 func (b *Bot) contextLogArgs(c telebot.Context) []any {
 	args := make([]any, 0, 12)
-	args = append(args, "component", "telegrambot")
+	args = append(args)
 	if sender := c.Sender(); sender != nil {
 		args = append(args, "tg_id", sender.ID)
 	}
