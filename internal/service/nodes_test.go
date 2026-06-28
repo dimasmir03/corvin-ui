@@ -81,6 +81,86 @@ func TestApplySnapshotUpdatesExistingDiscoveredNode(t *testing.T) {
 	}
 }
 
+func TestApplySnapshotXUIUnavailableWithEmptyProtocolCreatesUnknownProtocolNode(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 10, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), &captureSnapshotPublisher{}, now)
+
+	node, stale, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{
+		EventType:     NodeSnapshotEventType,
+		NodeID:        "02",
+		EndpointGroup: "foreign",
+		Protocol:      "",
+		XUIAvailable:  false,
+		ClientsCount:  0,
+		OnlineCount:   0,
+		LastError:     "3x-ui unavailable",
+		SentAt:        now,
+	})
+	if err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+	if stale {
+		t.Fatalf("stale = true, want false")
+	}
+	if node.EndpointGroup != "foreign" || node.Protocol != models.ServerStatusUnknown {
+		t.Fatalf("endpoint/protocol = %q/%q", node.EndpointGroup, node.Protocol)
+	}
+	if node.XUIAvailable == nil || *node.XUIAvailable {
+		t.Fatalf("xui_available = %#v, want false", node.XUIAvailable)
+	}
+	if node.Status != models.ServerStatusOnline {
+		t.Fatalf("status = %q, want online", node.Status)
+	}
+}
+
+func TestApplySnapshotXUIUnavailableSavesLastErrorAndListsNode(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 10, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), &captureSnapshotPublisher{}, now)
+
+	if _, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{
+		EventType:     NodeSnapshotEventType,
+		NodeID:        "02",
+		EndpointGroup: "foreign",
+		Protocol:      "",
+		XUIAvailable:  false,
+		LastError:     "connection refused",
+		SentAt:        now,
+	}); err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+
+	nodes, err := svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("nodes = %d, want 1", len(nodes))
+	}
+	node := nodes[0]
+	if node.NodeID != "02" || node.EndpointGroup != "foreign" || node.Protocol != models.ServerStatusUnknown || node.LastError != "connection refused" {
+		t.Fatalf("unexpected node from list: %#v", node)
+	}
+	if node.XUIAvailable == nil || *node.XUIAvailable {
+		t.Fatalf("xui_available = %#v, want false", node.XUIAvailable)
+	}
+}
+
+func TestApplySnapshotEmptyEndpointGroupFallsBackToUnknown(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 10, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), &captureSnapshotPublisher{}, now)
+
+	node, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, NodeID: "03", EndpointGroup: "", Protocol: "", XUIAvailable: false, SentAt: now})
+	if err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+	if node.EndpointGroup != models.ServerStatusUnknown || node.Protocol != models.ServerStatusUnknown {
+		t.Fatalf("endpoint/protocol = %q/%q, want unknown/unknown", node.EndpointGroup, node.Protocol)
+	}
+}
+
 func TestRequestSnapshotPublishesCollectSnapshot(t *testing.T) {
 	db := newVPNServiceTestDB(t)
 	now := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)

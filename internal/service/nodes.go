@@ -100,13 +100,17 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 	}
 	endpointGroup := strings.TrimSpace(event.EndpointGroup)
 	if endpointGroup == "" {
-		logger.Warn("node snapshot rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "reason", "endpoint_group_required")
-		return models.NodeState{}, false, fmt.Errorf("endpoint_group is required")
+		endpointGroup = models.ServerStatusUnknown
+		logger.Warn("node snapshot endpoint group missing", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "reason", "endpoint_group_missing", "fallback_endpoint_group", endpointGroup)
 	}
 	protocol := strings.TrimSpace(event.Protocol)
 	if protocol == "" {
-		logger.Warn("node snapshot rejected", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "reason", "protocol_required")
-		return models.NodeState{}, false, fmt.Errorf("protocol is required")
+		protocol = models.ServerStatusUnknown
+		reason := "protocol_missing"
+		if !event.XUIAvailable {
+			reason = "protocol_missing_xui_unavailable"
+		}
+		logger.Warn("node snapshot protocol missing", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "xui_available", event.XUIAvailable, "reason", reason, "fallback_protocol", protocol)
 	}
 
 	snapshotAt := s.now().UTC()
@@ -155,6 +159,11 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		logger.Info("node snapshot processing finished", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "status", node.Status, "reason", "stale_snapshot")
 		return node, stale, nil
 	}
+	xuiAvailable := false
+	if node.XUIAvailable != nil {
+		xuiAvailable = *node.XUIAvailable
+	}
+	logger.Info("node state upserted", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "xui_available", xuiAvailable, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "source", node.Source, "reason", "snapshot_applied")
 	if created {
 		logger.Info("discovered node created", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "source", node.Source)
 		logger.Info("node snapshot processing finished", "component", "node_service", "operation", "apply_snapshot", "node_id", nodeID, "endpoint_group", endpointGroup, "protocol", protocol, "reason", "discovered_created")

@@ -67,6 +67,31 @@ func TestResultQueueNodeSnapshotIsRoutedToSnapshotHandler(t *testing.T) {
 	}
 }
 
+func TestResultQueueNodeSnapshotWithEmptyProtocolIsRoutedToSnapshotHandler(t *testing.T) {
+	jobCalls := 0
+	snapshotCalls := 0
+	body := []byte(`{"event_type":"node_snapshot","node_id":"02","endpoint_group":"foreign","protocol":"","xui_available":false,"last_error":"3x-ui unavailable","sent_at":"2026-06-28T10:00:00Z"}`)
+	action := handleResultQueueMessage("corvin.job.results", body, func(event JobResultEvent) error {
+		jobCalls++
+		return nil
+	}, func(event NodeSnapshotEvent) (bool, error) {
+		snapshotCalls++
+		if event.NodeID != "02" || event.EndpointGroup != "foreign" || event.Protocol != "" || event.XUIAvailable {
+			t.Fatalf("unexpected snapshot: %#v", event)
+		}
+		return false, nil
+	})
+	if action != rabbitmq.Ack {
+		t.Fatalf("action = %v, want Ack", action)
+	}
+	if jobCalls != 0 {
+		t.Fatalf("job handler calls = %d, want 0", jobCalls)
+	}
+	if snapshotCalls != 1 {
+		t.Fatalf("snapshot handler calls = %d, want 1", snapshotCalls)
+	}
+}
+
 func TestAgentEventQueueNodeSnapshotIsApplied(t *testing.T) {
 	snapshotCalls := 0
 	body := []byte(`{"event_type":"node_snapshot","server_id":"01","endpoint_group":"ru","protocol":"trojan","xui_available":true,"sent_at":"2026-06-28T10:00:00Z"}`)
