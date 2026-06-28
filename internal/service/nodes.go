@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -41,7 +42,6 @@ type NodeView struct {
 	ExpectedProtocol string     `json:"expected_protocol"`
 	ReportedProtocol string     `json:"reported_protocol"`
 	Protocol         string     `json:"protocol"`
-	ServerRole       string     `json:"server_role"`
 	Source           string     `json:"source"`
 	Enabled          bool       `json:"enabled"`
 	ArchivedAt       *time.Time `json:"archived_at,omitempty"`
@@ -131,7 +131,6 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 	endpointGroup := fallbackString(event.EndpointGroup, models.ServerStatusUnknown)
 	reportedProtocol := fallbackString(event.Protocol, models.ServerStatusUnknown)
 	expectedProtocol := reportedProtocol
-	serverRole := fallbackString(endpointGroup, "other")
 	displayName := serverID
 	if event.Protocol == "" {
 		reason := "protocol_missing"
@@ -144,6 +143,10 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 	sentAt := receivedAt
 	if !event.SentAt.IsZero() {
 		sentAt = event.SentAt.UTC()
+	}
+	rawJSON, err := json.Marshal(event)
+	if err != nil {
+		logger.Warn("node snapshot raw json skipped", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID, "reason", "raw_json_marshal_failed")
 	}
 
 	logger.Info("node snapshot lookup started", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID)
@@ -162,7 +165,6 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		EndpointGroup:    endpointGroup,
 		ExpectedProtocol: expectedProtocol,
 		ReportedProtocol: reportedProtocol,
-		ServerRole:       serverRole,
 		AgentVersion:     strings.TrimSpace(event.AgentVersion),
 		AgentAlive:       true,
 		XUIAvailable:     event.XUIAvailable,
@@ -175,6 +177,7 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		LastError:        event.LastError,
 		ReceivedAt:       receivedAt,
 		SentAt:           sentAt,
+		RawJSON:          rawJSON,
 	})
 	if err != nil {
 		logger.Error("node snapshot processing failed", err, "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "server_id", serverID, "endpoint_group", endpointGroup, "reported_protocol", reportedProtocol, "reason", "state_update_failed")
@@ -190,8 +193,8 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		xuiAvailable = *node.XUIAvailable
 	}
 	logger.Info("server registry upserted", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID, "source", models.NodeSourceDiscovered, "reason", "snapshot_received")
-	logger.Info("node stats latest upserted", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID, "xui_available", xuiAvailable)
-	logger.Info("node stats snapshot inserted", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID)
+	logger.Info("node state latest upserted", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID, "xui_available", xuiAvailable)
+	logger.Info("node state snapshot inserted", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID)
 	logger.Info("node snapshot processing finished", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID, "endpoint_group", endpointGroup, "reported_protocol", reportedProtocol, "reason", map[bool]string{true: "discovered_created", false: "state_updated"}[created])
 	return node, stale, nil
 }
@@ -204,7 +207,7 @@ func (s *NodeService) ListNodes(ctx context.Context) ([]NodeView, error) {
 		logger.Error("servers page data load failed", err, "component", "node_service", "operation", "list_nodes", "reason", "db_error")
 		return nil, err
 	}
-	views := make([]NodeView, 0, len(records))	
+	views := make([]NodeView, 0, len(records))
 	discoveredCount := 0
 	for _, record := range records {
 		view := s.nodeView(record)
@@ -281,7 +284,6 @@ func (s *NodeService) nodeView(record repository.NodeRecord) NodeView {
 		ExpectedProtocol: fallbackString(registry.ExpectedProtocol, models.ServerStatusUnknown),
 		ReportedProtocol: models.ServerStatusUnknown,
 		Protocol:         models.ServerStatusUnknown,
-		ServerRole:       fallbackString(registry.ServerRole, "other"),
 		Source:           fallbackString(registry.Source, models.NodeSourceDiscovered),
 		Enabled:          registry.Enabled,
 		ArchivedAt:       registry.ArchivedAt,
@@ -289,20 +291,23 @@ func (s *NodeService) nodeView(record repository.NodeRecord) NodeView {
 		AgentStatus:      models.ServerStatusOffline,
 		Status:           models.ServerStatusOffline,
 		XUIStatus:        models.ServerStatusUnknown,
-		FirstSeenAt:      registry.FirstSeenAt,
-		LastSeenAt:       registry.LastSeenAt,
 	}
-	if record.Stats == nil {
+	if registry.FirstSeenAt != nil {
+		view.FirstSeenAt = *registry.FirstSeenAt
+	}
+	if registry.LastSeenAt != nil {
+		view.LastSeenAt = *registry.LastSeenAt
+	}
+	if record.State == nil {
 		view.AgentStatus = "never_seen"
 		view.Status = "never_seen"
 		return view
 	}
-	stats := record.Stats
+	stats := record.State
 	view.EndpointGroup = fallbackString(stats.EndpointGroup, view.EndpointGroup)
 	view.ExpectedProtocol = fallbackString(stats.ExpectedProtocol, view.ExpectedProtocol)
 	view.ReportedProtocol = fallbackString(stats.ReportedProtocol, models.ServerStatusUnknown)
 	view.Protocol = view.ReportedProtocol
-	view.ServerRole = fallbackString(stats.ServerRole, view.ServerRole)
 	view.DisplayName = fallbackString(stats.DisplayName, view.DisplayName)
 	view.AgentVersion = stats.AgentVersion
 	view.AgentAlive = stats.AgentAlive

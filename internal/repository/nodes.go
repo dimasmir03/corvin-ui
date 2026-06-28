@@ -21,7 +21,6 @@ type NodeSnapshotUpdate struct {
 	EndpointGroup    string
 	ExpectedProtocol string
 	ReportedProtocol string
-	ServerRole       string
 	AgentVersion     string
 	AgentAlive       bool
 	XUIAvailable     bool
@@ -34,11 +33,12 @@ type NodeSnapshotUpdate struct {
 	LastError        string
 	ReceivedAt       time.Time
 	SentAt           time.Time
+	RawJSON          []byte
 }
 
 type NodeRecord struct {
 	Registry models.ServerRegistry
-	Stats    *models.NodeStats
+	State    *models.NodeState
 }
 
 func NewNodeRepo(db *gorm.DB) *NodeRepo {
@@ -57,8 +57,8 @@ func (r *NodeRepo) ListRecords(includeArchived bool) ([]NodeRecord, error) {
 
 	records := make([]NodeRecord, 0, len(registries))
 	for _, registry := range registries {
-		var stats models.NodeStats
-		err := r.DB.Where("server_id = ?", registry.ServerID).Take(&stats).Error
+		var state models.NodeState
+		err := r.DB.Where("server_id = ?", registry.ServerID).Take(&state).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			records = append(records, NodeRecord{Registry: registry})
 			continue
@@ -66,7 +66,7 @@ func (r *NodeRepo) ListRecords(includeArchived bool) ([]NodeRecord, error) {
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, NodeRecord{Registry: registry, Stats: &stats})
+		records = append(records, NodeRecord{Registry: registry, State: &state})
 	}
 	return records, nil
 }
@@ -88,14 +88,14 @@ func (r *NodeRepo) GetRecordByServerID(serverID string) (NodeRecord, error) {
 	if err := r.DB.Where("server_id = ?", serverID).Take(&registry).Error; err != nil {
 		return NodeRecord{}, err
 	}
-	var stats models.NodeStats
-	if err := r.DB.Where("server_id = ?", serverID).Take(&stats).Error; err != nil {
+	var state models.NodeState
+	if err := r.DB.Where("server_id = ?", serverID).Take(&state).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return NodeRecord{Registry: registry}, nil
 		}
 		return NodeRecord{}, err
 	}
-	return NodeRecord{Registry: registry, Stats: &stats}, nil
+	return NodeRecord{Registry: registry, State: &state}, nil
 }
 
 func (r *NodeRepo) GetByServerID(serverID string) (models.NodeState, error) {
@@ -111,29 +111,30 @@ func (r *NodeRepo) GetByNodeID(nodeID string) (models.NodeState, error) {
 }
 
 func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, bool, error) {
-	var stats models.NodeStats
+	var state models.NodeState
 	var registry models.ServerRegistry
 	err := r.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("server_id = ?", update.ServerID).Take(&registry).Error; err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
+			firstSeenAt := update.ReceivedAt
+			lastSeenAt := update.ReceivedAt
 			registry = models.ServerRegistry{
 				ServerID:         update.ServerID,
 				DisplayName:      update.DisplayName,
 				EndpointGroup:    update.EndpointGroup,
 				ExpectedProtocol: update.ExpectedProtocol,
-				ServerRole:       update.ServerRole,
 				Source:           models.NodeSourceDiscovered,
 				Enabled:          true,
-				FirstSeenAt:      update.ReceivedAt,
-				LastSeenAt:       update.ReceivedAt,
+				FirstSeenAt:      &firstSeenAt,
+				LastSeenAt:       &lastSeenAt,
 			}
 			if err := tx.Create(&registry).Error; err != nil {
 				return err
 			}
 		} else {
-			updates := map[string]any{"last_seen_at": update.ReceivedAt}
+			updates := map[string]any{"last_seen_at": &update.ReceivedAt}
 			if registry.DisplayName == "" || registry.Source != "registered" {
 				updates["display_name"] = update.DisplayName
 			}
@@ -142,9 +143,6 @@ func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, b
 			}
 			if registry.ExpectedProtocol == "" || registry.ExpectedProtocol == models.ServerStatusUnknown || registry.Source != "registered" {
 				updates["expected_protocol"] = update.ExpectedProtocol
-			}
-			if registry.ServerRole == "" || registry.ServerRole == "other" || registry.Source != "registered" {
-				updates["server_role"] = update.ServerRole
 			}
 			if registry.Source == "" {
 				updates["source"] = models.NodeSourceDiscovered
@@ -161,20 +159,25 @@ func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, b
 			}
 		}
 
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("server_id = ?", update.ServerID).Take(&stats).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("server_id = ?", update.ServerID).Take(&state).Error; err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
 			xuiAvailable := update.XUIAvailable
-			stats = models.NodeStats{
+			state = models.NodeState{
 				ServerID:         update.ServerID,
+				NodeID:           update.ServerID,
+				DisplayName:      update.DisplayName,
 				EndpointGroup:    update.EndpointGroup,
 				ExpectedProtocol: update.ExpectedProtocol,
 				ReportedProtocol: update.ReportedProtocol,
-				ServerRole:       update.ServerRole,
-				DisplayName:      update.DisplayName,
+				Protocol:         update.ReportedProtocol,
 				AgentVersion:     update.AgentVersion,
 				AgentAlive:       update.AgentAlive,
+				Status:           models.ServerStatusOnline,
+				Source:           registry.Source,
+				LastSeenAt:       update.ReceivedAt,
+				LastSnapshotAt:   &update.SentAt,
 				XUIAvailable:     &xuiAvailable,
 				InboundID:        update.InboundID,
 				InboundRemark:    update.InboundRemark,
@@ -183,52 +186,62 @@ func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, b
 				TrafficUp:        update.TrafficUp,
 				TrafficDown:      update.TrafficDown,
 				LastError:        update.LastError,
-				LastSnapshotAt:   &update.SentAt,
+				Enabled:          registry.Enabled && registry.ArchivedAt == nil,
+				SentAt:           &update.SentAt,
 			}
-			if err := tx.Create(&stats).Error; err != nil {
+			if err := tx.Create(&state).Error; err != nil {
 				return err
 			}
 		} else {
-			if stats.LastSnapshotAt != nil && update.SentAt.Before(stats.LastSnapshotAt.UTC()) {
+			if state.LastSnapshotAt != nil && update.SentAt.Before(state.LastSnapshotAt.UTC()) {
 				return ErrStaleNodeSnapshot
 			}
 			xuiAvailable := update.XUIAvailable
 			updates := map[string]any{
-				"endpoint_group":     update.EndpointGroup,
-				"expected_protocol":  update.ExpectedProtocol,
-				"reported_protocol":  update.ReportedProtocol,
-				"server_role":        update.ServerRole,
-				"display_name":       update.DisplayName,
-				"agent_version":      update.AgentVersion,
-				"agent_alive":        update.AgentAlive,
-				"x_ui_available":     &xuiAvailable,
-				"inbound_id":         update.InboundID,
-				"inbound_remark":     update.InboundRemark,
-				"clients_count":      update.ClientsCount,
-				"online_count":       update.OnlineCount,
-				"traffic_up":         update.TrafficUp,
-				"traffic_down":       update.TrafficDown,
-				"last_error":         update.LastError,
-				"last_snapshot_at":   update.SentAt,
+				"server_id":         update.ServerID,
+				"node_id":           update.ServerID,
+				"display_name":      update.DisplayName,
+				"endpoint_group":    update.EndpointGroup,
+				"expected_protocol": update.ExpectedProtocol,
+				"reported_protocol": update.ReportedProtocol,
+				"protocol":          update.ReportedProtocol,
+				"agent_version":     update.AgentVersion,
+				"agent_alive":       update.AgentAlive,
+				"status":            models.ServerStatusOnline,
+				"source":            registry.Source,
+				"last_seen_at":      update.ReceivedAt,
+				"last_snapshot_at":  update.SentAt,
+				"x_ui_available":    &xuiAvailable,
+				"inbound_id":        update.InboundID,
+				"inbound_remark":    update.InboundRemark,
+				"clients_count":     update.ClientsCount,
+				"online_count":      update.OnlineCount,
+				"traffic_up":        update.TrafficUp,
+				"traffic_down":      update.TrafficDown,
+				"last_error":        update.LastError,
+				"enabled":           registry.Enabled && registry.ArchivedAt == nil,
+				"sent_at":           update.SentAt,
 			}
-			if err := tx.Model(&models.NodeStats{}).Where("id = ?", stats.ID).Updates(updates).Error; err != nil {
+			if err := tx.Model(&models.NodeState{}).Where("id = ?", state.ID).Updates(updates).Error; err != nil {
 				return err
 			}
-			if err := tx.Where("server_id = ?", update.ServerID).Take(&stats).Error; err != nil {
+			if err := tx.Where("server_id = ?", update.ServerID).Take(&state).Error; err != nil {
 				return err
 			}
 		}
 
 		xuiAvailable := update.XUIAvailable
-		snapshot := models.NodeStatsHistory{
+		snapshot := models.NodeStateSnapshot{
 			ServerID:         update.ServerID,
+			DisplayName:      update.DisplayName,
 			EndpointGroup:    update.EndpointGroup,
 			ExpectedProtocol: update.ExpectedProtocol,
 			ReportedProtocol: update.ReportedProtocol,
-			ServerRole:       update.ServerRole,
 			AgentVersion:     update.AgentVersion,
 			AgentAlive:       update.AgentAlive,
 			XUIAvailable:     &xuiAvailable,
+			InboundID:        update.InboundID,
+			InboundRemark:    update.InboundRemark,
 			ClientsCount:     update.ClientsCount,
 			OnlineCount:      update.OnlineCount,
 			TrafficUp:        update.TrafficUp,
@@ -236,20 +249,21 @@ func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, b
 			LastError:        update.LastError,
 			SentAt:           update.SentAt,
 			ReceivedAt:       update.ReceivedAt,
+			RawJSON:          update.RawJSON,
 		}
 		return tx.Create(&snapshot).Error
 	})
 	if errors.Is(err, ErrStaleNodeSnapshot) {
-		return nodeStateFromRecord(NodeRecord{Registry: registry, Stats: &stats}), true, nil
+		return nodeStateFromRecord(NodeRecord{Registry: registry, State: &state}), true, nil
 	}
 	if err != nil {
 		return models.NodeState{}, false, err
 	}
-	return nodeStateFromRecord(NodeRecord{Registry: registry, Stats: &stats}), false, nil
+	return nodeStateFromRecord(NodeRecord{Registry: registry, State: &state}), false, nil
 }
 
 func (r *NodeRepo) ArchiveServer(serverID, reason string, archivedAt time.Time) error {
-	return r.DB.Model(&models.ServerRegistry{}).Where("server_id = ? AND source <> ?", serverID, "registered-hard-lock").Updates(map[string]any{
+	return r.DB.Model(&models.ServerRegistry{}).Where("server_id = ?", serverID).Updates(map[string]any{
 		"archived_at":     &archivedAt,
 		"archived_reason": reason,
 	}).Error
@@ -274,28 +288,24 @@ func (r *NodeRepo) ArchiveStaleDiscovered(cutoff time.Time, reason string, archi
 func nodeStateFromRecord(record NodeRecord) models.NodeState {
 	registry := record.Registry
 	node := models.NodeState{
-		ServerID:      registry.ServerID,
-		NodeID:        registry.ServerID,
-		EndpointGroup: registry.EndpointGroup,
-		Protocol:      registry.ExpectedProtocol,
-		Source:        registry.Source,
-		Enabled:       registry.Enabled && registry.ArchivedAt == nil,
-		LastSeenAt:    registry.LastSeenAt,
+		ServerID:         registry.ServerID,
+		NodeID:           registry.ServerID,
+		DisplayName:      registry.DisplayName,
+		EndpointGroup:    registry.EndpointGroup,
+		ExpectedProtocol: registry.ExpectedProtocol,
+		ReportedProtocol: models.ServerStatusUnknown,
+		Protocol:         models.ServerStatusUnknown,
+		Source:           registry.Source,
+		Enabled:          registry.Enabled && registry.ArchivedAt == nil,
 	}
-	if record.Stats != nil {
-		stats := *record.Stats
-		node.EndpointGroup = stats.EndpointGroup
-		node.Protocol = stats.ReportedProtocol
-		node.AgentVersion = stats.AgentVersion
-		node.LastSnapshotAt = stats.LastSnapshotAt
-		node.XUIAvailable = stats.XUIAvailable
-		node.InboundID = stats.InboundID
-		node.InboundRemark = stats.InboundRemark
-		node.ClientsCount = stats.ClientsCount
-		node.OnlineCount = stats.OnlineCount
-		node.TrafficUp = stats.TrafficUp
-		node.TrafficDown = stats.TrafficDown
-		node.LastError = stats.LastError
+	if registry.LastSeenAt != nil {
+		node.LastSeenAt = *registry.LastSeenAt
+	}
+	if record.State != nil {
+		state := *record.State
+		state.ServerID = registry.ServerID
+		state.NodeID = registry.ServerID
+		return state
 	}
 	return node
 }

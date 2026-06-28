@@ -76,8 +76,7 @@ func migrate() error {
 		&models.NodeStatsSnapshot{},
 		&models.NodeState{},
 		&models.ServerRegistry{},
-		&models.NodeStats{},
-		&models.NodeStatsHistory{},
+		&models.NodeStateSnapshot{},
 		&models.EndpointGroup{},
 		&models.VPNClient{},
 		&models.VPNProfile{},
@@ -95,5 +94,20 @@ func migrate() error {
 	if err := DB.Exec("UPDATE node_states SET server_id = node_id WHERE (server_id IS NULL OR server_id = '') AND node_id <> ''").Error; err != nil {
 		return err
 	}
-	return DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_node_states_server_id_unique ON node_states (server_id) WHERE server_id IS NOT NULL AND server_id <> ''").Error
+	if err := DB.Exec("UPDATE vpn_profile_nodes SET server_id = node_id WHERE (server_id IS NULL OR server_id = '') AND node_id <> ''").Error; err != nil {
+		return err
+	}
+	if err := DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_node_states_server_id_unique ON node_states (server_id) WHERE server_id IS NOT NULL AND server_id <> ''").Error; err != nil {
+		return err
+	}
+	if err := DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_profile_nodes_profile_server_unique ON vpn_profile_nodes (vpn_profile_id, server_id) WHERE server_id IS NOT NULL AND server_id <> ''").Error; err != nil {
+		return err
+	}
+	return DB.Exec(`
+		INSERT INTO server_registry (server_id, display_name, endpoint_group, expected_protocol, source, enabled, first_seen_at, last_seen_at, created_at, updated_at)
+		SELECT DISTINCT server_id, server_id, COALESCE(NULLIF(endpoint_group, ''), 'unknown'), COALESCE(NULLIF(expected_protocol, ''), NULLIF(protocol, ''), 'unknown'), 'migrated', enabled, COALESCE(last_seen_at, NOW()), COALESCE(last_seen_at, NOW()), NOW(), NOW()
+		FROM node_states
+		WHERE server_id IS NOT NULL AND server_id <> ''
+		ON CONFLICT (server_id) DO NOTHING
+	`).Error
 }

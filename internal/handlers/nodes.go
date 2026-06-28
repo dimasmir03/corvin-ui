@@ -22,6 +22,9 @@ func (h *NodesController) Register(r *gin.RouterGroup) {
 	r.GET("/", h.ListNodes)
 	r.GET("/:server_id", h.GetNode)
 	r.POST("/:server_id/refresh", h.RefreshNode)
+	r.POST("/:server_id/archive", h.ArchiveNode)
+	r.POST("/:server_id/restore", h.RestoreNode)
+	r.POST("/archive-stale-discovered", h.ArchiveStaleDiscovered)
 }
 
 func (h *NodesController) ListNodes(c *gin.Context) {
@@ -75,4 +78,45 @@ func (h *NodesController) RefreshNode(c *gin.Context) {
 	}
 	logger.Info("http service call succeeded", "component", "http_api", "handler", "node_refresh", "operation", "refresh_node", "request_id", requestID, "server_id", serverID, "command_id", result.CommandID, "reason", "queued")
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *NodesController) ArchiveNode(c *gin.Context) {
+	requestID, _ := c.Get("request_id")
+	serverID := strings.TrimSpace(c.Param("server_id"))
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: "server_id is required"})
+		return
+	}
+	if err := h.nodes.ArchiveServer(c.Request.Context(), serverID, "manual"); err != nil {
+		logger.Error("http service call failed", err, "component", "http_api", "handler", "node_archive", "operation", "archive_node", "request_id", requestID, "server_id", serverID)
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"server_id": serverID, "node_id": serverID, "status": "archived"}})
+}
+
+func (h *NodesController) RestoreNode(c *gin.Context) {
+	requestID, _ := c.Get("request_id")
+	serverID := strings.TrimSpace(c.Param("server_id"))
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: "server_id is required"})
+		return
+	}
+	if err := h.nodes.RestoreServer(c.Request.Context(), serverID); err != nil {
+		logger.Error("http service call failed", err, "component", "http_api", "handler", "node_restore", "operation", "restore_node", "request_id", requestID, "server_id", serverID)
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"server_id": serverID, "node_id": serverID, "status": "restored"}})
+}
+
+func (h *NodesController) ArchiveStaleDiscovered(c *gin.Context) {
+	requestID, _ := c.Get("request_id")
+	count, err := h.nodes.ArchiveStaleDiscovered(c.Request.Context(), 7)
+	if err != nil {
+		logger.Error("http service call failed", err, "component", "http_api", "handler", "node_archive_stale", "operation", "archive_stale_discovered", "request_id", requestID)
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"archived_count": count}})
 }

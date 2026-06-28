@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 	"vpnpanel/internal/broker"
+	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
 )
@@ -260,5 +261,69 @@ func TestApplySnapshotSameServerIDUpdatesOneRecord(t *testing.T) {
 	}
 	if len(nodes) != 1 || nodes[0].ClientsCount != 2 {
 		t.Fatalf("unexpected nodes: %#v", nodes)
+	}
+}
+
+func TestApplySnapshotWritesRegistryLatestAndHistory(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, now)
+
+	if _, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, ServerID: "foreign-01", EndpointGroup: "foreign", Protocol: "vless", XUIAvailable: false, LastError: "xui unavailable", SentAt: now}); err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+
+	var registry models.ServerRegistry
+	if err := db.Where("server_id = ?", "foreign-01").Take(&registry).Error; err != nil {
+		t.Fatalf("server_registry row missing: %v", err)
+	}
+	if registry.Source != models.NodeSourceDiscovered || registry.EndpointGroup != "foreign" || registry.ExpectedProtocol != jobsvc.VPNProfileVLESS {
+		t.Fatalf("unexpected registry: %#v", registry)
+	}
+
+	var state models.NodeState
+	if err := db.Where("server_id = ?", "foreign-01").Take(&state).Error; err != nil {
+		t.Fatalf("node_states row missing: %v", err)
+	}
+	if state.ReportedProtocol != jobsvc.VPNProfileVLESS || state.LastError != "xui unavailable" || state.XUIAvailable == nil || *state.XUIAvailable {
+		t.Fatalf("unexpected latest state: %#v", state)
+	}
+
+	var historyCount int64
+	if err := db.Model(&models.NodeStateSnapshot{}).Where("server_id = ?", "foreign-01").Count(&historyCount).Error; err != nil {
+		t.Fatalf("count node_state_snapshots: %v", err)
+	}
+	if historyCount != 1 {
+		t.Fatalf("history rows = %d, want 1", historyCount)
+	}
+}
+
+func TestArchiveAndRestoreServerAffectsListNodes(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, now)
+
+	if _, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, ServerID: "foreign-01", EndpointGroup: "foreign", Protocol: "vless", XUIAvailable: true, SentAt: now}); err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+	if err := svc.ArchiveServer(context.Background(), "foreign-01", "test archive"); err != nil {
+		t.Fatalf("ArchiveServer: %v", err)
+	}
+	nodes, err := svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes after archive: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("nodes after archive = %d, want 0", len(nodes))
+	}
+	if err := svc.RestoreServer(context.Background(), "foreign-01"); err != nil {
+		t.Fatalf("RestoreServer: %v", err)
+	}
+	nodes, err = svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes after restore: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].ServerID != "foreign-01" {
+		t.Fatalf("unexpected nodes after restore: %#v", nodes)
 	}
 }

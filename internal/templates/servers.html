@@ -1,13 +1,29 @@
 {{define "content"}}
 <div id="app">
-   <div class="d-flex align-items-center gap-2 mb-3">
+   <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
       <h1 class="mb-0">{{.Title}}</h1>
       <button type="button" class="btn btn-outline-secondary" @click="loadAll">Reload</button>
-      <div class="btn-group" role="group" aria-label="Node filters">
-         <button v-for="role in filters" :key="role" type="button" class="btn btn-sm" :class="roleFilter === role ? 'btn-primary' : 'btn-outline-primary'" @click="setFilter(role)">
-            [[ role ]]
-         </button>
-      </div>
+   </div>
+
+   <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+      <select class="form-select form-select-sm w-auto" v-model="groupFilter">
+         <option v-for="item in groupFilters" :key="item" :value="item">Group: [[ item ]]</option>
+      </select>
+      <select class="form-select form-select-sm w-auto" v-model="expectedProtocolFilter">
+         <option v-for="item in protocolFilters" :key="item" :value="item">Expected: [[ item ]]</option>
+      </select>
+      <select class="form-select form-select-sm w-auto" v-model="reportedProtocolFilter">
+         <option v-for="item in protocolFilters" :key="item" :value="item">Reported: [[ item ]]</option>
+      </select>
+      <select class="form-select form-select-sm w-auto" v-model="agentStatusFilter">
+         <option v-for="item in agentStatusFilters" :key="item" :value="item">Agent: [[ item ]]</option>
+      </select>
+      <select class="form-select form-select-sm w-auto" v-model="xuiStatusFilter">
+         <option v-for="item in xuiStatusFilters" :key="item" :value="item">3x-ui: [[ item ]]</option>
+      </select>
+      <select class="form-select form-select-sm w-auto" v-model="sourceFilter">
+         <option v-for="item in sourceFilters" :key="item" :value="item">Source: [[ item ]]</option>
+      </select>
    </div>
 
    <div v-if="notice" class="alert alert-info py-2">[[ notice ]]</div>
@@ -26,7 +42,7 @@
             <div>
                <h2 class="h5 mb-1">[[ group.title ]]</h2>
                <div class="text-muted small">
-                  Protocol: [[ group.protocol || "-" ]] · Servers: [[ group.nodes.length ]] · Online: [[ group.onlineCount ]]
+                  Servers: [[ group.nodes.length ]] · Online users: [[ group.onlineCount ]] · Agent online: [[ group.agentOnlineCount ]]
                </div>
             </div>
             <span class="badge" :class="groupStatusClass(group.status)">[[ group.status ]]</span>
@@ -36,8 +52,9 @@
             <thead>
                <tr>
                   <th>Server ID</th>
-                  <th>Group</th>
-                  <th>Protocol</th>
+                  <th>Name</th>
+                  <th>Expected</th>
+                  <th>Reported</th>
                   <th>Source</th>
                   <th>Agent</th>
                   <th>3x-ui</th>
@@ -57,13 +74,12 @@
                      <div>[[ serverID(node) ]]</div>
                      <small class="text-muted">[[ node.agent_version || "-" ]]</small>
                   </td>
-                  <td>[[ node.endpoint_group || "-" ]]</td>
-                  <td>[[ node.protocol || "-" ]]</td>
-                  <td><span class="badge text-bg-info">[[ node.source || "known" ]]</span></td>
-                  <td><span class="badge" :class="nodeStatusClass(node.status)">[[ node.status || "unknown" ]]</span></td>
-                  <td>
-                     <span class="badge" :class="xuiClass(node)">[[ xuiStatus(node) ]]</span>
-                  </td>
+                  <td>[[ node.display_name || "-" ]]</td>
+                  <td>[[ node.expected_protocol || node.protocol || "unknown" ]]</td>
+                  <td>[[ node.reported_protocol || node.protocol || "unknown" ]]</td>
+                  <td><span class="badge text-bg-info">[[ node.source || "unknown" ]]</span></td>
+                  <td><span class="badge" :class="agentStatusClass(agentStatus(node))">[[ agentStatus(node) ]]</span></td>
+                  <td><span class="badge" :class="xuiClass(xuiStatus(node))">[[ xuiStatus(node) ]]</span></td>
                   <td>[[ node.clients_count || 0 ]]</td>
                   <td>[[ node.online_count || 0 ]]</td>
                   <td>
@@ -100,30 +116,48 @@
             refreshing: {},
             notice: "",
             error: "",
-            roleFilter: "all",
-            filters: ["all", "ru", "foreign", "direct", "other"],
+            groupFilter: "all",
+            expectedProtocolFilter: "all",
+            reportedProtocolFilter: "all",
+            agentStatusFilter: "all",
+            xuiStatusFilter: "all",
+            sourceFilter: "all",
+            groupFilters: ["all", "direct", "ru", "foreign", "unknown", "other"],
+            protocolFilters: ["all", "vless", "trojan", "unknown"],
+            agentStatusFilters: ["all", "online", "stale", "offline", "never_seen"],
+            xuiStatusFilters: ["all", "ok", "error", "unknown"],
+            sourceFilters: ["all", "discovered", "registered", "migrated"],
          };
       },
       computed: {
          filteredNodes() {
-            if (!this.roleFilter || this.roleFilter === "all") return this.nodes;
-            return this.nodes.filter((node) => (node.endpoint_group || "other") === this.roleFilter);
+            return this.nodes.filter((node) => {
+               const group = node.endpoint_group || "unknown";
+               const expected = node.expected_protocol || node.protocol || "unknown";
+               const reported = node.reported_protocol || node.protocol || "unknown";
+               return this.matches(this.groupFilter, group)
+                  && this.matches(this.expectedProtocolFilter, expected)
+                  && this.matches(this.reportedProtocolFilter, reported)
+                  && this.matches(this.agentStatusFilter, this.agentStatus(node))
+                  && this.matches(this.xuiStatusFilter, this.xuiStatus(node))
+                  && this.matches(this.sourceFilter, node.source || "unknown");
+            });
          },
          groups() {
             const byKey = new Map();
             this.filteredNodes.forEach((node) => {
-               const groupName = node.endpoint_group || "other";
-               const protocol = node.protocol || "unknown";
-               const key = `${groupName}:${protocol}`;
+               const groupName = node.endpoint_group || "unknown";
+               const key = groupName;
                if (!byKey.has(key)) {
-                  byKey.set(key, { key, groupName, protocol, nodes: [] });
+                  byKey.set(key, { key, groupName, nodes: [] });
                }
                byKey.get(key).nodes.push(node);
             });
             return Array.from(byKey.values()).map((group) => {
                group.nodes.sort((a, b) => String(this.serverID(a)).localeCompare(String(this.serverID(b))));
-               group.title = `${this.displayGroup(group.groupName)} / ${String(group.protocol).toUpperCase()}`;
+               group.title = this.displayGroup(group.groupName);
                group.onlineCount = group.nodes.reduce((sum, node) => sum + Number(node.online_count || 0), 0);
+               group.agentOnlineCount = group.nodes.filter((node) => this.agentStatus(node) === "online").length;
                group.status = this.groupStatus(group.nodes);
                return group;
             }).sort((a, b) => a.key.localeCompare(b.key));
@@ -133,9 +167,8 @@
          },
       },
       methods: {
-         setFilter(role) {
-            this.roleFilter = role;
-            this.loadAll();
+         matches(filter, value) {
+            return !filter || filter === "all" || filter === value;
          },
          loadAll() {
             axios.get("/api/nodes")
@@ -165,36 +198,41 @@
             }
          },
          groupStatus(nodes) {
-            const working = nodes.filter((node) => node.status === "online" && node.xui_available === true).length;
-            if (working === nodes.length && nodes.length > 0) return "active";
-            if (working > 0) return "partial";
+            const online = nodes.filter((node) => this.agentStatus(node) === "online").length;
+            if (online === nodes.length && nodes.length > 0) return "online";
+            if (online > 0) return "partial";
             return "offline";
          },
          groupStatusClass(status) {
-            if (status === "active") return "text-bg-success";
+            if (status === "online") return "text-bg-success";
             if (status === "partial") return "text-bg-warning";
             return "text-bg-danger";
          },
-         nodeStatusClass(status) {
+         agentStatus(node) {
+            return node.agent_status || node.status || "unknown";
+         },
+         agentStatusClass(status) {
             if (status === "online") return "text-bg-success";
             if (status === "stale") return "text-bg-warning";
             if (status === "offline") return "text-bg-danger";
             return "text-bg-secondary";
          },
          xuiStatus(node) {
+            if (node.xui_status) return node.xui_status;
             if (node.xui_available === true) return "ok";
             if (node.xui_available === false) return "error";
             return "unknown";
          },
-         xuiClass(node) {
-            if (node.xui_available === true) return "text-bg-success";
-            if (node.xui_available === false) return "text-bg-danger";
+         xuiClass(status) {
+            if (status === "ok") return "text-bg-success";
+            if (status === "error") return "text-bg-danger";
             return "text-bg-secondary";
          },
          displayGroup(group) {
             if (group === "ru") return "RU";
             if (group === "direct") return "Direct";
             if (group === "foreign") return "Foreign";
+            if (group === "unknown") return "Unknown";
             return group || "Other";
          },
          formatBytes(value) {

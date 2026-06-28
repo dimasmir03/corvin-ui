@@ -79,7 +79,7 @@ func (r *VpnRepo) GetVPNClientByUserID(userID uint) (models.VPNClient, error) {
 func (r *VpnRepo) ListProfilesByClientID(clientID uint) ([]models.VPNProfile, error) {
 	var profiles []models.VPNProfile
 	err := r.DB.Preload("Nodes", func(db *gorm.DB) *gorm.DB {
-		return db.Order("node_id ASC")
+		return db.Order("server_id ASC, node_id ASC")
 	}).Where("vpn_client_id = ?", clientID).Order("profile ASC").Find(&profiles).Error
 	return profiles, err
 }
@@ -138,10 +138,19 @@ func (r *VpnRepo) GetOrCreateEndpointGroup(code string) (models.EndpointGroup, e
 
 func (r *VpnRepo) EnabledNodesByGroup(group string) ([]models.NodeState, error) {
 	var nodes []models.NodeState
-	if err := r.DB.Where("endpoint_group = ? AND enabled = ?", group, true).Order("server_id ASC, node_id ASC").Find(&nodes).Error; err != nil {
+	if err := r.DB.Where("endpoint_group = ? AND expected_protocol = ? AND enabled = ?", group, protocolForEndpointGroup(group), true).Where("server_id <> ''").Order("server_id ASC, node_id ASC").Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 	return nodes, nil
+}
+
+func protocolForEndpointGroup(group string) string {
+	switch group {
+	case "ru":
+		return "trojan"
+	default:
+		return "vless"
+	}
 }
 
 func (r *VpnRepo) GetProfile(clientID uint, profile string) (models.VPNProfile, error) {
@@ -160,7 +169,7 @@ func (r *VpnRepo) CreateProfileWithNodes(profile models.VPNProfile, nodes []mode
 			if nodeID == "" {
 				nodeID = node.NodeID
 			}
-			profileNode := models.VPNProfileNode{VPNProfileID: profile.ID, NodeID: nodeID, Protocol: profile.Protocol, Status: models.VPNProfileNodeStatusPending}
+			profileNode := models.VPNProfileNode{VPNProfileID: profile.ID, ServerID: nodeID, NodeID: nodeID, Protocol: profile.Protocol, Status: models.VPNProfileNodeStatusPending}
 			if err := tx.Create(&profileNode).Error; err != nil {
 				return err
 			}
@@ -192,16 +201,22 @@ func (r *VpnRepo) GetEndpointGroup(code string) (models.EndpointGroup, error) {
 
 func (r *VpnRepo) ApplyProfileNodeResult(profile models.VPNProfile, nodeID string, protocol string, status string, inboundID *int, lastError string, appliedAt time.Time) (models.VPNProfileNode, bool, error) {
 	var node models.VPNProfileNode
-	err := r.DB.Where("vpn_profile_id = ? AND node_id = ?", profile.ID, nodeID).Take(&node).Error
+	err := r.DB.Where("vpn_profile_id = ? AND (server_id = ? OR node_id = ?)", profile.ID, nodeID, nodeID).Take(&node).Error
 	created := false
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		node = models.VPNProfileNode{VPNProfileID: profile.ID, NodeID: nodeID}
+		node = models.VPNProfileNode{VPNProfileID: profile.ID, ServerID: nodeID, NodeID: nodeID}
 		created = true
 	} else if err != nil {
 		return models.VPNProfileNode{}, false, err
 	}
 
 	duplicate := !created && node.Status == status && node.Protocol == protocol && node.LastError == lastError && sameIntPtr(node.InboundID, inboundID)
+	if node.ServerID == "" {
+		node.ServerID = nodeID
+	}
+	if node.NodeID == "" {
+		node.NodeID = nodeID
+	}
 	node.Protocol = protocol
 	node.Status = status
 	node.InboundID = inboundID

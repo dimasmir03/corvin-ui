@@ -102,7 +102,8 @@ type UserVPNProfileView struct {
 }
 
 type UserVPNProfileNodeView struct {
-	NodeID    string     `json:"node_id"`
+	ServerID  string     `json:"server_id"`
+	NodeID    string     `json:"node_id,omitempty"`
 	Status    string     `json:"status"`
 	Protocol  string     `json:"protocol"`
 	InboundID *int       `json:"inbound_id,omitempty"`
@@ -200,7 +201,12 @@ func (s *VPNService) GetUserVPNDetails(userID uint) (UserVPNDetails, error) {
 			Nodes:         make([]UserVPNProfileNodeView, 0, len(profile.Nodes)),
 		}
 		for _, node := range profile.Nodes {
+			serverID := node.ServerID
+			if serverID == "" {
+				serverID = node.NodeID
+			}
 			view.Nodes = append(view.Nodes, UserVPNProfileNodeView{
+				ServerID:  serverID,
 				NodeID:    node.NodeID,
 				Status:    node.Status,
 				Protocol:  node.Protocol,
@@ -349,18 +355,20 @@ func (s *VPNService) ensureVPNProfile(userID uint, tgID int64, client models.VPN
 		return models.VPNProfile{}, 0, 0, errors.New("jobs service is not configured")
 	}
 
-	logger.Info("vpn create job build started", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(nodes))
+	targetServerIDs := serverIDsFromNodeStates(nodes)
+	logger.Info("vpn create job build started", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(nodes), "target_servers_count", len(targetServerIDs))
 	batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
-		ProfileID:      profile.ID,
-		UserID:         userID,
-		TelegramID:     tgID,
-		ClientCode:     client.ClientCode,
-		Email:          client.Email,
-		VlessUUID:      client.VlessUUID,
-		VlessFlow:      group.Flow,
-		TrojanPassword: client.TrojanPassword,
-		Enable:         true,
-		Protocols:      []string{profileName},
+		ProfileID:       profile.ID,
+		UserID:          userID,
+		TelegramID:      tgID,
+		ClientCode:      client.ClientCode,
+		Email:           client.Email,
+		VlessUUID:       client.VlessUUID,
+		VlessFlow:       group.Flow,
+		TrojanPassword:  client.TrojanPassword,
+		Enable:          true,
+		Protocols:       []string{profileName},
+		TargetServerIDs: targetServerIDs,
 	})
 	if err != nil {
 		_ = s.vpnRepo.TouchProfilePublishError(profile.ID, err.Error())
@@ -374,6 +382,46 @@ func (s *VPNService) ensureVPNProfile(userID uint, tgID int64, client models.VPN
 	}
 	logger.Info("vpn create job published", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "batch_id", batch.ID, "job_id", jobID, "nodes_count", len(nodes))
 	return profile, batch.ID, jobID, nil
+}
+
+func serverIDsFromNodeStates(nodes []models.NodeState) []string {
+	ids := make([]string, 0, len(nodes))
+	seen := map[string]struct{}{}
+	for _, node := range nodes {
+		serverID := strings.TrimSpace(node.ServerID)
+		if serverID == "" {
+			serverID = strings.TrimSpace(node.NodeID)
+		}
+		if serverID == "" {
+			continue
+		}
+		if _, ok := seen[serverID]; ok {
+			continue
+		}
+		seen[serverID] = struct{}{}
+		ids = append(ids, serverID)
+	}
+	return ids
+}
+
+func (s *VPNService) targetServerIDsForProfiles(profiles []string) ([]string, error) {
+	ids := []string{}
+	seen := map[string]struct{}{}
+	for _, profile := range profiles {
+		group := endpointGroupForVPNProfile(profile)
+		nodes, err := s.vpnRepo.EnabledNodesByGroup(group)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range serverIDsFromNodeStates(nodes) {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 func profileReuseReason(status string) string {
@@ -927,6 +975,10 @@ func (s *VPNService) CreateVPN(input CreateVPNInput) (models.Vpn, error) {
 	}
 
 	if s.jobs != nil {
+		targetServerIDs, err := s.targetServerIDsForProfiles([]string{jobsvc.VPNProfileVLESS, jobsvc.VPNProfileTrojan})
+		if err != nil {
+			return models.Vpn{}, err
+		}
 		batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
 			UserID:            telegram.UserID,
 			TelegramID:        input.TgID,
@@ -938,6 +990,7 @@ func (s *VPNService) CreateVPN(input CreateVPNInput) (models.Vpn, error) {
 			Enable:            true,
 			TechnicalClientID: vlessParams.UID,
 			Protocols:         []string{"vless", "trojan"},
+			TargetServerIDs:   targetServerIDs,
 		})
 		if err != nil {
 			return models.Vpn{}, &VPNFlowError{Kind: VPNErrorKindJobs, Err: err}
@@ -1020,6 +1073,10 @@ func (s *VPNService) CreateVPNProtocol(input CreateVPNProtocolInput) (models.Vpn
 	}
 
 	if s.jobs != nil {
+		targetServerIDs, err := s.targetServerIDsForProfiles([]string{input.Protocol})
+		if err != nil {
+			return models.Vpn{}, err
+		}
 		technicalClientID := vlessParams.UID
 		if input.Protocol == "trojan" {
 			technicalClientID = trojanParams.Password
@@ -1035,6 +1092,7 @@ func (s *VPNService) CreateVPNProtocol(input CreateVPNProtocolInput) (models.Vpn
 			Enable:            true,
 			TechnicalClientID: technicalClientID,
 			Protocols:         []string{input.Protocol},
+			TargetServerIDs:   targetServerIDs,
 		})
 		if err != nil {
 			return models.Vpn{}, &VPNFlowError{Kind: VPNErrorKindJobs, Err: err}

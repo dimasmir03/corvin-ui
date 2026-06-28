@@ -94,58 +94,20 @@ type NodeStatsSnapshot struct {
 }
 
 type NodeState struct {
-	ID             uint       `gorm:"primary_key;autoIncrement" json:"id"`
-	ServerID       string     `gorm:"index" json:"server_id"`
-	NodeID         string     `gorm:"index" json:"node_id,omitempty"`
-	EndpointGroup  string     `gorm:"not null;index" json:"endpoint_group"`
-	Protocol       string     `gorm:"not null;index" json:"protocol"`
-	AgentVersion   string     `json:"agent_version"`
-	Status         string     `gorm:"not null;index" json:"status"`
-	Source         string     `gorm:"not null;default:discovered;index" json:"source"`
-	LastSeenAt     time.Time  `gorm:"not null;index" json:"last_seen"`
-	LastSnapshotAt *time.Time `gorm:"index" json:"last_snapshot_at,omitempty"`
-	XUIAvailable   *bool      `json:"xui_available,omitempty"`
-	InboundID      *int       `json:"inbound_id,omitempty"`
-	InboundRemark  string     `json:"inbound_remark"`
-	ClientsCount   int        `gorm:"not null;default:0" json:"clients_count"`
-	OnlineCount    int        `gorm:"not null;default:0" json:"online_count"`
-	TrafficUp      int64      `gorm:"not null;default:0" json:"traffic_up"`
-	TrafficDown    int64      `gorm:"not null;default:0" json:"traffic_down"`
-	LastError      string     `json:"last_error"`
-	Enabled        bool       `gorm:"not null;default:true" json:"enabled"`
-	SentAt         *time.Time `json:"sent_at,omitempty"`
-	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-
-type ServerRegistry struct {
 	ID               uint       `gorm:"primary_key;autoIncrement" json:"id"`
-	ServerID         string     `gorm:"uniqueIndex;not null" json:"server_id"`
+	ServerID         string     `gorm:"index" json:"server_id"`
+	NodeID           string     `gorm:"index" json:"node_id,omitempty"`
 	DisplayName      string     `json:"display_name"`
 	EndpointGroup    string     `gorm:"not null;index" json:"endpoint_group"`
-	ExpectedProtocol string     `gorm:"not null;index" json:"expected_protocol"`
-	ServerRole       string     `gorm:"not null;default:other;index" json:"server_role"`
-	Source           string     `gorm:"not null;default:discovered;index" json:"source"`
-	Enabled          bool       `gorm:"not null;default:true;index" json:"enabled"`
-	ArchivedAt       *time.Time `gorm:"index" json:"archived_at,omitempty"`
-	ArchivedReason   string     `json:"archived_reason,omitempty"`
-	FirstSeenAt      time.Time  `gorm:"not null;index" json:"first_seen_at"`
-	LastSeenAt       time.Time  `gorm:"not null;index" json:"last_seen_at"`
-	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-type NodeStats struct {
-	ID               uint       `gorm:"primary_key;autoIncrement" json:"id"`
-	ServerID         string     `gorm:"uniqueIndex;not null" json:"server_id"`
-	EndpointGroup    string     `gorm:"not null;index" json:"endpoint_group"`
-	ExpectedProtocol string     `gorm:"not null;index" json:"expected_protocol"`
-	ReportedProtocol string     `gorm:"not null;index" json:"reported_protocol"`
-	ServerRole       string     `gorm:"not null;default:other;index" json:"server_role"`
-	DisplayName      string     `json:"display_name"`
+	ExpectedProtocol string     `gorm:"not null;default:unknown;index" json:"expected_protocol"`
+	ReportedProtocol string     `gorm:"not null;default:unknown;index" json:"reported_protocol"`
+	Protocol         string     `gorm:"not null;index" json:"protocol"`
 	AgentVersion     string     `json:"agent_version"`
 	AgentAlive       bool       `gorm:"not null;default:true" json:"agent_alive"`
+	Status           string     `gorm:"not null;index" json:"status"`
+	Source           string     `gorm:"not null;default:discovered;index" json:"source"`
+	LastSeenAt       time.Time  `gorm:"not null;index" json:"last_seen"`
+	LastSnapshotAt   *time.Time `gorm:"index" json:"last_snapshot_at,omitempty"`
 	XUIAvailable     *bool      `json:"xui_available,omitempty"`
 	InboundID        *int       `json:"inbound_id,omitempty"`
 	InboundRemark    string     `json:"inbound_remark"`
@@ -154,33 +116,52 @@ type NodeStats struct {
 	TrafficUp        int64      `gorm:"not null;default:0" json:"traffic_up"`
 	TrafficDown      int64      `gorm:"not null;default:0" json:"traffic_down"`
 	LastError        string     `json:"last_error"`
-	LastSnapshotAt   *time.Time `gorm:"index" json:"last_snapshot_at,omitempty"`
+	Enabled          bool       `gorm:"not null;default:true" json:"enabled"`
+	SentAt           *time.Time `json:"sent_at,omitempty"`
 	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-type NodeStatsHistory struct {
-	ID               uint      `gorm:"primary_key;autoIncrement" json:"id"`
-	ServerID         string    `gorm:"not null;index" json:"server_id"`
-	EndpointGroup    string    `gorm:"not null;index" json:"endpoint_group"`
-	ExpectedProtocol string    `gorm:"not null;index" json:"expected_protocol"`
-	ReportedProtocol string    `gorm:"not null;index" json:"reported_protocol"`
-	ServerRole       string    `gorm:"not null;default:other;index" json:"server_role"`
-	AgentVersion     string    `json:"agent_version"`
-	AgentAlive       bool      `gorm:"not null;default:true" json:"agent_alive"`
-	XUIAvailable     *bool     `json:"xui_available,omitempty"`
-	ClientsCount     int       `gorm:"not null;default:0" json:"clients_count"`
-	OnlineCount      int       `gorm:"not null;default:0" json:"online_count"`
-	TrafficUp        int64     `gorm:"not null;default:0" json:"traffic_up"`
-	TrafficDown      int64     `gorm:"not null;default:0" json:"traffic_down"`
-	LastError        string    `json:"last_error"`
-	SentAt           time.Time `gorm:"not null;index" json:"sent_at"`
-	ReceivedAt       time.Time `gorm:"not null;index" json:"received_at"`
-	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
+type ServerRegistry struct {
+	ID               uint       `gorm:"primary_key;autoIncrement" json:"id"`
+	ServerID         string     `gorm:"uniqueIndex;not null" json:"server_id"`
+	DisplayName      string     `gorm:"not null" json:"display_name"`
+	EndpointGroup    string     `gorm:"not null;default:unknown;index" json:"endpoint_group"`
+	ExpectedProtocol string     `gorm:"not null;default:unknown;index" json:"expected_protocol"`
+	Source           string     `gorm:"not null;default:discovered;index" json:"source"`
+	Enabled          bool       `gorm:"not null;default:true;index" json:"enabled"`
+	ArchivedAt       *time.Time `gorm:"index" json:"archived_at,omitempty"`
+	ArchivedReason   string     `json:"archived_reason,omitempty"`
+	FirstSeenAt      *time.Time `gorm:"index" json:"first_seen_at,omitempty"`
+	LastSeenAt       *time.Time `gorm:"index" json:"last_seen_at,omitempty"`
+	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-func (NodeStatsHistory) TableName() string { return "node_stats_snapshots" }
+func (ServerRegistry) TableName() string { return "server_registry" }
 
+type NodeStateSnapshot struct {
+	ID               uint           `gorm:"primary_key;autoIncrement" json:"id"`
+	ServerID         string         `gorm:"not null;index" json:"server_id"`
+	DisplayName      string         `json:"display_name"`
+	EndpointGroup    string         `gorm:"not null;index" json:"endpoint_group"`
+	ExpectedProtocol string         `gorm:"not null;index" json:"expected_protocol"`
+	ReportedProtocol string         `gorm:"not null;index" json:"reported_protocol"`
+	AgentVersion     string         `json:"agent_version"`
+	AgentAlive       bool           `gorm:"not null;default:true" json:"agent_alive"`
+	XUIAvailable     *bool          `gorm:"index" json:"xui_available,omitempty"`
+	InboundID        *int           `json:"inbound_id,omitempty"`
+	InboundRemark    string         `json:"inbound_remark"`
+	ClientsCount     int            `gorm:"not null;default:0" json:"clients_count"`
+	OnlineCount      int            `gorm:"not null;default:0" json:"online_count"`
+	TrafficUp        int64          `gorm:"not null;default:0" json:"traffic_up"`
+	TrafficDown      int64          `gorm:"not null;default:0" json:"traffic_down"`
+	LastError        string         `json:"last_error"`
+	RawJSON          datatypes.JSON `gorm:"type:jsonb" json:"raw_json,omitempty"`
+	SentAt           time.Time      `gorm:"index" json:"sent_at"`
+	ReceivedAt       time.Time      `gorm:"not null;index" json:"received_at"`
+	CreatedAt        time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
+}
 
 type EndpointGroup struct {
 	ID         uint      `gorm:"primary_key;autoIncrement" json:"id"`
@@ -240,8 +221,9 @@ type VPNProfile struct {
 
 type VPNProfileNode struct {
 	ID           uint       `gorm:"primary_key;autoIncrement" json:"id"`
-	VPNProfileID uint       `gorm:"index;not null;uniqueIndex:idx_vpn_profile_node_unique" json:"vpn_profile_id"`
-	NodeID       string     `gorm:"not null;index;uniqueIndex:idx_vpn_profile_node_unique" json:"node_id"`
+	VPNProfileID uint       `gorm:"index;not null;uniqueIndex:idx_vpn_profile_server_unique" json:"vpn_profile_id"`
+	ServerID     string     `gorm:"index;uniqueIndex:idx_vpn_profile_server_unique" json:"server_id"`
+	NodeID       string     `gorm:"index" json:"node_id,omitempty"`
 	Protocol     string     `gorm:"not null;index" json:"protocol"`
 	Status       string     `gorm:"not null;index" json:"status"`
 	InboundID    *int       `json:"inbound_id,omitempty"`
@@ -327,6 +309,7 @@ type Job struct {
 	ID             uint            `gorm:"primary_key;autoIncrement" json:"id"`
 	BatchID        uint            `gorm:"not null;index" json:"batch_id"`
 	ServerID       *int            `gorm:"index" json:"server_id,omitempty"`
+	TargetServerID string          `gorm:"index" json:"target_server_id,omitempty"`
 	Protocol       string          `gorm:"not null;index" json:"protocol"`
 	Action         string          `gorm:"not null;index" json:"action"`
 	Status         string          `gorm:"not null;index" json:"status"`

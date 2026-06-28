@@ -69,6 +69,7 @@ type CreateUserConfigInput struct {
 	TotalGB           int64
 	TechnicalClientID string
 	Protocols         []string
+	TargetServerIDs   []string
 }
 
 func NewService(
@@ -188,7 +189,7 @@ func (s *Service) CollectNodeStats(serverID uint) (*models.JobBatch, *models.Job
 	}
 	if s.producer != nil {
 		if err := s.producer.PublishJob(payload); err != nil {
-			_, _ = s.MarkJobFailed(job.ID, err.Error())
+			_, _ = s.jobsRepo.MarkJobFailed(job.ID, err.Error())
 			return batch, &job, err
 		}
 	}
@@ -267,7 +268,7 @@ func (s *Service) ProbeServer(serverID int) (*models.JobBatch, *models.Job, erro
 	}
 	if s.producer != nil {
 		if err := s.producer.PublishJob(payload); err != nil {
-			_, _ = s.MarkJobFailed(job.ID, err.Error())
+			_, _ = s.jobsRepo.MarkJobFailed(job.ID, err.Error())
 			return batch, &job, err
 		}
 	}
@@ -293,64 +294,51 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 	}
 	logger.Info("job create user config started", "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "profile_id", input.ProfileID, "protocols", strings.Join(input.Protocols, ","))
 
-	servers, err := s.serverRepo.GetAll()
-	if err != nil {
-		logger.Error("job create user config server lookup failed", err, "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode)
-		return nil, nil, err
+	targetServerIDs := make([]string, 0, len(input.TargetServerIDs))
+	for _, serverID := range input.TargetServerIDs {
+		serverID = strings.TrimSpace(serverID)
+		if serverID != "" {
+			targetServerIDs = append(targetServerIDs, serverID)
+		}
 	}
-	logger.Info("job create user config servers found", "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "servers_count", len(servers))
+	if len(targetServerIDs) == 0 {
+		servers, err := s.serverRepo.GetAll()
+		if err != nil {
+			logger.Error("job create user config server lookup failed", err, "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode)
+			return nil, nil, err
+		}
+		for _, server := range servers {
+			if server.Enabled && server.Status != models.ServerStatusDisabled {
+				targetServerIDs = append(targetServerIDs, serverAgentID(server))
+			}
+		}
+		logger.Warn("job create user config using legacy servers fallback", "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "reason", "target_servers_empty")
+	}
+	logger.Info("job create user config target servers found", "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "servers_count", len(targetServerIDs))
 
 	userID := input.UserID
-	batch := &models.JobBatch{
-		Type:   BatchTypeCreateUserConfig,
-		UserID: &userID,
-		Status: BatchStatusPending,
-	}
-
+	batch := &models.JobBatch{Type: BatchTypeCreateUserConfig, UserID: &userID, Status: BatchStatusPending}
 	var createdJobs []models.Job
-	err = s.jobsRepo.DB().Transaction(func(tx *gorm.DB) error {
+	err := s.jobsRepo.DB().Transaction(func(tx *gorm.DB) error {
 		txJobsRepo := s.jobsRepo.WithTx(tx)
 		if err := txJobsRepo.CreateBatch(batch); err != nil {
 			return err
 		}
 		logger.Info("job batch created", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode)
-
-		for _, server := range servers {
-			if !server.Enabled || server.Status == models.ServerStatusDisabled {
-				logger.Info("job server skipped", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "server_id", server.Id, "status", server.Status, "reason", "server_disabled")
-				continue
-			}
+		for _, serverID := range targetServerIDs {
 			for _, protocol := range input.Protocols {
 				profile := normalizeProfile(protocol)
 				targetGroup := endpointGroupForProfile(profile)
-				if !serverSupportsEndpointProfile(server, profile, targetGroup) {
-					logger.Info("job server skipped", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "server_id", server.Id, "profile", profile, "target_group", targetGroup, "reason", "profile_not_supported")
-					continue
-				}
-
-				payload := createClientJobTask(batch.ID, serverAgentID(server), profile, targetGroup, input)
-
+				payload := createClientJobTask(batch.ID, serverID, profile, targetGroup, input)
 				payloadJSON, err := json.Marshal(payload)
 				if err != nil {
 					return err
 				}
-
-				serverID := server.Id
-				job := models.Job{
-					BatchID:        batch.ID,
-					ServerID:       &serverID,
-					Protocol:       profile,
-					Action:         ActionCreateClient,
-					Status:         JobStatusPending,
-					PayloadJSON:    datatypes.JSON(payloadJSON),
-					IdempotencyKey: idempotencyKey(ActionCreateClient, input.UserID, server.Id, profile),
-				}
-
+				job := models.Job{BatchID: batch.ID, TargetServerID: serverID, Protocol: profile, Action: ActionCreateClient, Status: JobStatusPending, PayloadJSON: datatypes.JSON(payloadJSON), IdempotencyKey: idempotencyKeyForTarget(ActionCreateClient, input.UserID, serverID, profile)}
 				if err := txJobsRepo.CreateJob(&job); err != nil {
 					return err
 				}
-				logger.Info("job created", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "server_id", server.Id, "profile", profile, "target_group", targetGroup, "action", ActionCreateClient, "client_code", input.ClientCode)
-
+				logger.Info("job created", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "server_id", serverID, "profile", profile, "target_group", targetGroup, "action", ActionCreateClient, "client_code", input.ClientCode)
 				payload.JobID = job.ID
 				payloadJSON, err = json.Marshal(payload)
 				if err != nil {
@@ -360,11 +348,9 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 				if err := tx.Model(&models.Job{}).Where("id = ?", job.ID).Update("payload_json", job.PayloadJSON).Error; err != nil {
 					return err
 				}
-
 				createdJobs = append(createdJobs, job)
 			}
 		}
-
 		status := BatchStatusProcessing
 		if len(createdJobs) == 0 {
 			status = BatchStatusPending
@@ -379,83 +365,22 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 	if len(createdJobs) == 0 {
 		batch.Status = BatchStatusPending
 	}
-
 	for _, job := range createdJobs {
 		var payload broker.JobTask
 		if err := json.Unmarshal(job.PayloadJSON, &payload); err != nil {
-			logger.Error("job payload parse failed", err, "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID)
 			return batch, createdJobs, err
 		}
+		logger.Info("job publish started", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "server_id", payload.ServerID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
 		if s.producer != nil {
-			logger.Info("job publish started", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
 			if err := s.producer.PublishJob(payload); err != nil {
-				logger.Error("job publish failed", err, "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
-				_, _ = s.MarkJobFailed(job.ID, err.Error())
+				_, _ = s.jobsRepo.MarkJobFailed(job.ID, err.Error())
 				return batch, createdJobs, err
 			}
-			logger.Info("job publish succeeded", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
-		} else {
-			logger.Warn("job publish skipped", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "reason", "producer_not_configured")
 		}
-		s.logAudit(audit.Event{
-			ActorType:  audit.ActorSystem,
-			Action:     "job.created",
-			EntityType: "job",
-			EntityID:   audit.StringID(job.ID),
-			Status:     audit.StatusSuccess,
-			Message:    "job created and queued",
-			Metadata: map[string]any{
-				"batch_id":  job.BatchID,
-				"server_id": job.ServerID,
-				"protocol":  job.Protocol,
-				"action":    job.Action,
-			},
-		})
+		logger.Info("job publish succeeded", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "server_id", payload.ServerID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
 	}
-
 	logger.Info("job create user config finished", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "jobs_count", len(createdJobs), "status", batch.Status, "reason", "success")
 	return batch, createdJobs, nil
-}
-
-func (s *Service) MarkJobProcessing(jobID uint) (*models.Job, error) {
-	job, err := s.jobsRepo.MarkJobProcessing(jobID)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.RecalculateBatchStatus(job.BatchID); err != nil {
-		return nil, err
-	}
-	return job, nil
-}
-
-func (s *Service) MarkJobSuccess(jobID uint, result datatypes.JSON) (*models.Job, error) {
-	job, err := s.jobsRepo.MarkJobSuccess(jobID, result)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.RecalculateBatchStatus(job.BatchID); err != nil {
-		return nil, err
-	}
-	return job, nil
-}
-
-func (s *Service) MarkJobFailed(jobID uint, jobError string) (*models.Job, error) {
-	job, err := s.jobsRepo.MarkJobFailed(jobID, jobError)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.RecalculateBatchStatus(job.BatchID); err != nil {
-		return nil, err
-	}
-	s.logAudit(audit.Event{
-		ActorType:  audit.ActorSystem,
-		Action:     "job.failed",
-		EntityType: "job",
-		EntityID:   audit.StringID(job.ID),
-		Status:     audit.StatusFailed,
-		Message:    jobError,
-	})
-	return job, nil
 }
 
 func (s *Service) ApplyResult(event broker.JobResultEvent) (*models.JobBatch, *models.Job, error) {
@@ -849,7 +774,6 @@ func createClientJobTask(batchID uint, serverID string, profile string, targetGr
 		BatchID:           batchID,
 		ServerID:          serverID,
 		TargetServerID:    serverID,
-		NodeID:            serverID,
 		Action:            ActionCreateClient,
 		CommandType:       ActionCreateClient,
 		Protocol:          normalizeProfile(profile),
@@ -890,6 +814,10 @@ func parseLegacyNumericServerID(value string) (int, bool) {
 		return 0, false
 	}
 	return parsed, true
+}
+
+func idempotencyKeyForTarget(action string, userID uint, serverID string, protocol string) string {
+	return fmt.Sprintf("%s:%d:%s:%s", action, userID, serverID, protocol)
 }
 
 func idempotencyKey(action string, userID uint, serverID int, protocol string) string {

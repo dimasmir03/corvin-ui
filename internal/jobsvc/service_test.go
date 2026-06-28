@@ -78,7 +78,7 @@ func TestCreateClientJobTaskCarriesCanonicalCredentials(t *testing.T) {
 	if task.EventType != ActionCreateClient || task.CommandType != ActionCreateClient {
 		t.Fatalf("unexpected event/action fields: %#v", task)
 	}
-	if task.ServerID != "direct-1" || task.TargetServerID != "direct-1" || task.NodeID != "direct-1" {
+	if task.ServerID != "direct-1" || task.TargetServerID != "direct-1" || task.NodeID != "" {
 		t.Fatalf("unexpected server identity fields: %#v", task)
 	}
 	if task.Profile != VPNProfileVLESS || task.TargetGroup != EndpointGroupDirect {
