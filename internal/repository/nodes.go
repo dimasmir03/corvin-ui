@@ -113,13 +113,11 @@ func (r *NodeRepo) GetByNodeID(nodeID string) (models.NodeState, error) {
 func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, bool, error) {
 	var stats models.NodeStats
 	var registry models.ServerRegistry
-	created := false
 	err := r.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("server_id = ?", update.ServerID).Take(&registry).Error; err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
-			created = true
 			registry = models.ServerRegistry{
 				ServerID:         update.ServerID,
 				DisplayName:      update.DisplayName,

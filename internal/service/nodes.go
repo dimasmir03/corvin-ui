@@ -204,7 +204,8 @@ func (s *NodeService) ListNodes(ctx context.Context) ([]NodeView, error) {
 		logger.Error("servers page data load failed", err, "component", "node_service", "operation", "list_nodes", "reason", "db_error")
 		return nil, err
 	}
-	views := make([]NodeView, 0, len(records))	discoveredCount := 0
+	views := make([]NodeView, 0, len(records))	
+	discoveredCount := 0
 	for _, record := range records {
 		view := s.nodeView(record)
 		if view.Source == models.NodeSourceDiscovered {
