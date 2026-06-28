@@ -39,7 +39,9 @@ type JobTask struct {
 	EventType         string         `json:"event_type,omitempty"`
 	JobID             uint           `json:"job_id"`
 	BatchID           uint           `json:"batch_id"`
-	ServerID          int            `json:"server_id"`
+	ServerID          string         `json:"server_id"`
+	TargetServerID    string         `json:"target_server_id,omitempty"`
+	NodeID            string         `json:"node_id,omitempty"`
 	Action            string         `json:"action"`
 	CommandType       string         `json:"command_type,omitempty"`
 	Protocol          string         `json:"protocol"`
@@ -77,7 +79,7 @@ type JobResultEvent struct {
 	JobID          uint             `json:"job_id"`
 	ProfileID      uint             `json:"profile_id,omitempty"`
 	BatchID        uint             `json:"batch_id"`
-	ServerID       *int             `json:"server_id,omitempty"`
+	ServerID       string           `json:"server_id,omitempty"`
 	NodeID         string           `json:"node_id,omitempty"`
 	TargetGroup    string           `json:"target_group,omitempty"`
 	Profile        string           `json:"profile,omitempty"`
@@ -100,6 +102,8 @@ func (e *JobResultEvent) UnmarshalJSON(data []byte) error {
 		*alias
 		JobID     json.RawMessage `json:"job_id"`
 		ProfileID json.RawMessage `json:"profile_id"`
+		ServerID  json.RawMessage `json:"server_id"`
+		NodeID    json.RawMessage `json:"node_id"`
 	}
 	aux.alias = (*alias)(e)
 	if err := json.Unmarshal(data, &aux); err != nil {
@@ -107,7 +111,16 @@ func (e *JobResultEvent) UnmarshalJSON(data []byte) error {
 	}
 	e.JobID = flexibleUint(aux.JobID)
 	e.ProfileID = flexibleUint(aux.ProfileID)
+	e.ServerID = flexibleString(aux.ServerID)
+	e.NodeID = flexibleString(aux.NodeID)
 	return nil
+}
+
+func (e JobResultEvent) EffectiveServerID() string {
+	if strings.TrimSpace(e.ServerID) != "" {
+		return strings.TrimSpace(e.ServerID)
+	}
+	return strings.TrimSpace(e.NodeID)
 }
 
 func flexibleUint(raw json.RawMessage) uint {
@@ -135,8 +148,8 @@ func flexibleUint(raw json.RawMessage) uint {
 
 type NodeSnapshotEvent struct {
 	EventType     string    `json:"event_type"`
-	NodeID        string    `json:"node_id"`
-	ServerID      string    `json:"server_id,omitempty"`
+	ServerID      string    `json:"server_id"`
+	NodeID        string    `json:"node_id,omitempty"`
 	EndpointGroup string    `json:"endpoint_group"`
 	Protocol      string    `json:"protocol"`
 	AgentVersion  string    `json:"agent_version,omitempty"`
@@ -175,8 +188,8 @@ func (e *NodeSnapshotEvent) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	e.EventType = aux.EventType
-	e.NodeID = flexibleString(aux.NodeID)
 	e.ServerID = flexibleString(aux.ServerID)
+	e.NodeID = flexibleString(aux.NodeID)
 	if strings.TrimSpace(e.NodeID) == "" {
 		e.NodeID = e.ServerID
 	}
@@ -196,6 +209,13 @@ func (e *NodeSnapshotEvent) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (e NodeSnapshotEvent) EffectiveServerID() string {
+	if strings.TrimSpace(e.ServerID) != "" {
+		return strings.TrimSpace(e.ServerID)
+	}
+	return strings.TrimSpace(e.NodeID)
+}
+
 func flexibleString(raw json.RawMessage) string {
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
@@ -212,10 +232,12 @@ func flexibleString(raw json.RawMessage) string {
 }
 
 type CollectSnapshotCommand struct {
-	EventType    string    `json:"event_type"`
-	CommandID    string    `json:"command_id"`
-	TargetNodeID string    `json:"target_node_id,omitempty"`
-	TargetGroup  string    `json:"target_group,omitempty"`
-	RequestedBy  string    `json:"requested_by,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	EventType      string    `json:"event_type"`
+	CommandID      string    `json:"command_id"`
+	ServerID       string    `json:"server_id,omitempty"`
+	TargetServerID string    `json:"target_server_id,omitempty"`
+	TargetNodeID   string    `json:"target_node_id,omitempty"`
+	TargetGroup    string    `json:"target_group,omitempty"`
+	RequestedBy    string    `json:"requested_by,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }

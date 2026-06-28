@@ -126,22 +126,60 @@ func (p *Producer) PublishCreateUser(msg any) error {
 func (p *Producer) PublishJob(msg JobTask) error {
 	routingKey := ""
 	if msg.EventType == "create_client" || msg.Action == "create_client" {
-		routingKey = "create." + msg.TargetGroup
-		logger.Info("create_client command routing resolved", "component", "rabbitmq", "operation", "publish", "exchange", p.exchangeJobs, "routing_key", routingKey, "job_id", msg.JobID, "batch_id", msg.BatchID, "profile_id", msg.ProfileID, "profile", msg.Profile, "target_group", msg.TargetGroup, "protocol", msg.Protocol, "client_code", msg.ClientCode)
+		serverID := effectiveJobTaskServerID(msg)
+		routingKey = createClientRoutingKey(msg)
+		logger.Info("create_client command routing resolved", "component", "rabbitmq", "operation", "publish", "exchange", p.exchangeJobs, "routing_key", routingKey, "job_id", msg.JobID, "batch_id", msg.BatchID, "profile_id", msg.ProfileID, "server_id", serverID, "profile", msg.Profile, "target_group", msg.TargetGroup, "protocol", msg.Protocol, "client_code", msg.ClientCode)
 	}
 	return p.publishWithRoutingKey(p.publisherJobs, p.exchangeJobs, routingKey, msg)
 }
 
 func (p *Producer) PublishCollectSnapshotCommand(msg CollectSnapshotCommand) error {
-	routingKey := "collect.node." + msg.TargetNodeID
-	if msg.TargetNodeID == "" && msg.TargetGroup != "" {
-		routingKey = "collect.group." + msg.TargetGroup
-	}
-	if msg.TargetNodeID == "" && msg.TargetGroup == "" {
-		routingKey = "collect.group.all"
-	}
-	logger.Info("collect_snapshot command routing resolved", "component", "rabbitmq", "operation", "publish", "exchange", p.exchangeCommands, "routing_key", routingKey, "command_id", msg.CommandID, "target_node_id", msg.TargetNodeID, "target_group", msg.TargetGroup, "requested_by", msg.RequestedBy)
+	serverID := effectiveCollectSnapshotServerID(msg)
+	routingKey := collectSnapshotRoutingKey(msg)
+	logger.Info("collect_snapshot command routing resolved", "component", "rabbitmq", "operation", "publish", "exchange", p.exchangeCommands, "routing_key", routingKey, "command_id", msg.CommandID, "server_id", serverID, "target_group", msg.TargetGroup, "requested_by", msg.RequestedBy)
 	return p.publishWithRoutingKey(p.publisherCommands, p.exchangeCommands, routingKey, msg)
+}
+
+func createClientRoutingKey(msg JobTask) string {
+	serverID := effectiveJobTaskServerID(msg)
+	if serverID != "" {
+		return "create.server." + serverID
+	}
+	if msg.TargetGroup != "" {
+		return "create.group." + msg.TargetGroup
+	}
+	return ""
+}
+
+func collectSnapshotRoutingKey(msg CollectSnapshotCommand) string {
+	serverID := effectiveCollectSnapshotServerID(msg)
+	if serverID != "" {
+		return "collect.server." + serverID
+	}
+	if msg.TargetGroup != "" {
+		return "collect.group." + msg.TargetGroup
+	}
+	return "collect.group.all"
+}
+
+func effectiveJobTaskServerID(msg JobTask) string {
+	if strings.TrimSpace(msg.TargetServerID) != "" {
+		return strings.TrimSpace(msg.TargetServerID)
+	}
+	if strings.TrimSpace(msg.ServerID) != "" {
+		return strings.TrimSpace(msg.ServerID)
+	}
+	return strings.TrimSpace(msg.NodeID)
+}
+
+func effectiveCollectSnapshotServerID(msg CollectSnapshotCommand) string {
+	if strings.TrimSpace(msg.TargetServerID) != "" {
+		return strings.TrimSpace(msg.TargetServerID)
+	}
+	if strings.TrimSpace(msg.ServerID) != "" {
+		return strings.TrimSpace(msg.ServerID)
+	}
+	return strings.TrimSpace(msg.TargetNodeID)
 }
 
 type JobResultHandler func(JobResultEvent) error
@@ -208,26 +246,29 @@ func handleResultQueueJobResult(queue string, body []byte, handler JobResultHand
 		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "reason", "invalid_payload")
 		return rabbitmq.Ack
 	}
-	logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID, "status", event.Status)
+	logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "status", event.Status)
+	if strings.TrimSpace(event.ServerID) == "" && strings.TrimSpace(event.NodeID) != "" {
+		logger.Warn("job_result server_id fallback", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "legacy_node_id_fallback")
+	}
 
 	if reason := validateJobResultForApply(event); reason != "" {
-		logger.Warn("job_result ignored", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID, "status", event.Status, "reason", reason)
-		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "node_id", event.NodeID, "reason", reason)
+		logger.Warn("job_result ignored", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "status", event.Status, "reason", reason)
+		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", reason)
 		return rabbitmq.Ack
 	}
 	if handler == nil {
-		logger.Warn("job_result ignored", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "node_id", event.NodeID, "reason", "handler_is_nil")
-		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "node_id", event.NodeID, "reason", "handler_is_nil")
+		logger.Warn("job_result ignored", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "handler_is_nil")
+		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "job_id", event.JobID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "handler_is_nil")
 		return rabbitmq.Ack
 	}
 
 	if err := handler(event); err != nil {
-		logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID)
+		logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID)
 		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "reason", "legacy_ack_after_handler_error")
 		return rabbitmq.Ack
 	}
 
-	logger.Info("rabbit message handler succeeded", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID)
+	logger.Info("rabbit message handler succeeded", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID)
 	logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "reason", "handler_success")
 	return rabbitmq.Ack
 }
@@ -239,23 +280,23 @@ func handleResultQueueNodeSnapshot(queue string, body []byte, handler NodeSnapsh
 		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "node_snapshot", "reason", "invalid_payload")
 		return rabbitmq.Ack
 	}
-	logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+	logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
 	if handler == nil {
-		logger.Warn("node_snapshot ignored", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "node_id", event.NodeID, "reason", "handler_is_nil")
-		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "node_id", event.NodeID, "reason", "handler_is_nil")
+		logger.Warn("node_snapshot ignored", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "handler_is_nil")
+		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "handler_is_nil")
 		return rabbitmq.Ack
 	}
 	stale, err := handler(event)
 	if err != nil {
-		logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol)
-		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "node_id", event.NodeID, "reason", "node_snapshot_in_result_queue_handler_failed")
+		logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol)
+		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "node_snapshot_in_result_queue_handler_failed")
 		return rabbitmq.Ack
 	}
 	reason := "node_snapshot_in_result_queue"
 	if stale {
 		reason = "stale_snapshot"
 	}
-	logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "node_id", event.NodeID, "reason", reason)
+	logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", reason)
 	return rabbitmq.Ack
 }
 
@@ -269,8 +310,8 @@ func validateJobResultForApply(event JobResultEvent) string {
 	if strings.TrimSpace(event.Status) == "" {
 		return "invalid_job_result_missing_status"
 	}
-	if strings.TrimSpace(event.NodeID) == "" {
-		return "invalid_job_result_missing_node_id"
+	if strings.TrimSpace(event.EffectiveServerID()) == "" {
+		return "invalid_job_result_missing_server_id"
 	}
 	return ""
 }
@@ -355,26 +396,26 @@ func handleAgentEventQueueMessage(exchange string, queue string, routingKey stri
 			logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "reason", "invalid_payload")
 			return rabbitmq.Ack
 		}
-		logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+		logger.Info("rabbit message parsed", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
 		if snapshotHandler == nil {
-			logger.Warn("node_snapshot ignored", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "reason", "handler_is_nil")
-			logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "reason", "handler_is_nil")
+			logger.Warn("node_snapshot ignored", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "handler_is_nil")
+			logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "handler_is_nil")
 			return rabbitmq.Ack
 		}
 		stale, err := snapshotHandler(event)
 		if err != nil {
-			logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
-			logger.Info("rabbit message nack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "reason", "handler_failed")
+			logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+			logger.Info("rabbit message nack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "handler_failed")
 			return rabbitmq.NackRequeue
 		}
 		reason := "handler_success"
 		if stale {
 			reason = "stale_snapshot"
-			logger.Info("panel node snapshot ignored", "component", "rabbitmq", "operation", "consume", "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt, "reason", reason)
+			logger.Info("panel node snapshot ignored", "component", "rabbitmq", "operation", "consume", "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt, "reason", reason)
 		} else {
-			logger.Info("rabbit message handler succeeded", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
+			logger.Info("rabbit message handler succeeded", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "endpoint_group", event.EndpointGroup, "protocol", event.Protocol, "clients_count", event.ClientsCount, "online_count", event.OnlineCount, "xui_available", event.XUIAvailable, "sent_at", event.SentAt)
 		}
-		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "node_id", event.NodeID, "reason", reason)
+		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", event.EventType, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", reason)
 		return rabbitmq.Ack
 	case "job_result":
 		var event JobResultEvent
@@ -383,8 +424,8 @@ func handleAgentEventQueueMessage(exchange string, queue string, routingKey stri
 			logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "reason", "invalid_payload")
 			return rabbitmq.Ack
 		}
-		logger.Warn("panel job_result ignored", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "reason", "job_result_not_expected_here")
-		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "reason", "job_result_not_expected_here")
+		logger.Warn("panel job_result ignored", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "job_result_not_expected_here")
+		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "exchange", exchange, "queue", queue, "routing_key", routingKey, "event_type", envelope.EventType, "job_id", event.JobID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "job_result_not_expected_here")
 		return rabbitmq.Ack
 	default:
 		logger.Info("panel agent event ignored", "component", "rabbitmq", "operation", "consume", "event_type", envelope.EventType, "reason", "unsupported_event_type")
@@ -431,9 +472,9 @@ func publishLogFields(exchange string, routingKey string, payloadSize int, msg a
 		if eventType == "" {
 			eventType = m.Action
 		}
-		fields = append(fields, "event_type", eventType, "job_id", m.JobID, "batch_id", m.BatchID, "profile_id", m.ProfileID, "profile", m.Profile, "target_group", m.TargetGroup, "protocol", m.Protocol, "client_code", m.ClientCode)
+		fields = append(fields, "event_type", eventType, "job_id", m.JobID, "batch_id", m.BatchID, "profile_id", m.ProfileID, "server_id", effectiveJobTaskServerID(m), "profile", m.Profile, "target_group", m.TargetGroup, "protocol", m.Protocol, "client_code", m.ClientCode)
 	case CollectSnapshotCommand:
-		fields = append(fields, "event_type", m.EventType, "command_id", m.CommandID, "target_node_id", m.TargetNodeID, "target_group", m.TargetGroup, "requested_by", m.RequestedBy)
+		fields = append(fields, "event_type", m.EventType, "command_id", m.CommandID, "server_id", effectiveCollectSnapshotServerID(m), "target_group", m.TargetGroup, "requested_by", m.RequestedBy)
 	case CreateUserTask:
 		fields = append(fields, "event_type", "create_user_legacy", "tg_id", m.UserID, "username", m.Username)
 	default:

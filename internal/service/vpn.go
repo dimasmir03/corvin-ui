@@ -436,30 +436,30 @@ func (s *VPNService) ApplyJobResult(ctx context.Context, event broker.JobResultE
 	_ = ctx
 	status, ok := normalizeProfileNodeResultStatus(event.Status)
 	if !ok {
-		logger.Error("vpn job_result unknown status", nil, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+		logger.Error("vpn job_result unknown status", nil, "job_id", event.JobID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
 		return nil, nil
 	}
 	if event.ProfileID == 0 {
-		logger.Warn("vpn job_result unknown profile", "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+		logger.Warn("vpn job_result unknown profile", "job_id", event.JobID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
 		return nil, nil
 	}
 
-	logger.Info("job_result received", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
-	logger.Info("job_result profile lookup started", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID)
+	logger.Info("job_result received", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+	logger.Info("job_result profile lookup started", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID)
 
 	profile, err := s.vpnRepo.GetProfileByID(event.ProfileID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		logger.Warn("vpn job_result unknown profile", "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
+		logger.Warn("vpn job_result unknown profile", "job_id", event.JobID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "profile", event.Profile, "target_group", event.TargetGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
 		return nil, nil
 	}
 	if err != nil {
-		logger.Error("job_result profile lookup failed", err, "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID, "reason", "db_error")
+		logger.Error("job_result profile lookup failed", err, "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "reason", "db_error")
 		return nil, err
 	}
 	logger.Info("job_result profile found", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", profile.Status, "client_code", profile.VPNClient.ClientCode)
 
-	nodeID := strings.TrimSpace(event.NodeID)
-	if nodeID == "" {
+	serverID := strings.TrimSpace(event.EffectiveServerID())
+	if serverID == "" {
 		logger.Warn("vpn job_result missing node", "job_id", event.JobID, "profile_id", event.ProfileID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", event.Protocol, "status", event.Status, "client_code", event.ClientCode)
 		return nil, nil
 	}
@@ -475,18 +475,18 @@ func (s *VPNService) ApplyJobResult(ctx context.Context, event broker.JobResultE
 	if event.CreatedAt != nil && !event.CreatedAt.IsZero() {
 		appliedAt = *event.CreatedAt
 	}
-	logger.Info("job_result profile node lookup started", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "node_id", nodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", protocol)
-	node, duplicate, err := s.vpnRepo.ApplyProfileNodeResult(profile, nodeID, protocol, status, event.InboundID, valueOrEmptyString(event.Error), appliedAt)
+	logger.Info("job_result profile node lookup started", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "server_id", serverID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", protocol)
+	node, duplicate, err := s.vpnRepo.ApplyProfileNodeResult(profile, serverID, protocol, status, event.InboundID, valueOrEmptyString(event.Error), appliedAt)
 	if err != nil {
-		logger.Error("job_result profile node update failed", err, "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "node_id", nodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", protocol)
+		logger.Error("job_result profile node update failed", err, "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "server_id", serverID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", protocol)
 		return nil, err
 	}
 	if duplicate {
-		logger.Info("vpn job_result ignored duplicate", "job_id", event.JobID, "profile_id", profile.ID, "node_id", nodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", protocol, "status", status, "client_code", profile.VPNClient.ClientCode)
+		logger.Info("vpn job_result ignored duplicate", "job_id", event.JobID, "profile_id", profile.ID, "server_id", serverID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", protocol, "status", status, "client_code", profile.VPNClient.ClientCode)
 	}
-	logger.Info("vpn profile node result applied", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "node_id", node.NodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", node.Protocol, "status", node.Status, "client_code", profile.VPNClient.ClientCode)
+	logger.Info("vpn profile node result applied", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "server_id", node.NodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", node.Protocol, "status", node.Status, "client_code", profile.VPNClient.ClientCode)
 
-	logger.Info("vpn profile status recalculation started", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "node_id", node.NodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup)
+	logger.Info("vpn profile status recalculation started", "component", "vpn_service", "operation", "apply_job_result", "job_id", event.JobID, "profile_id", profile.ID, "server_id", node.NodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup)
 	profile, err = s.vpnRepo.GetProfileByID(profile.ID)
 	if err != nil {
 		return nil, err
@@ -516,7 +516,7 @@ func (s *VPNService) ApplyJobResult(ctx context.Context, event broker.JobResultE
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("vpn profile status recalculated", "job_id", event.JobID, "profile_id", profile.ID, "node_id", nodeID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", profile.Status, "client_code", profile.VPNClient.ClientCode)
+	logger.Info("vpn profile status recalculated", "job_id", event.JobID, "profile_id", profile.ID, "server_id", serverID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", profile.Status, "client_code", profile.VPNClient.ClientCode)
 
 	if profile.Status == models.VPNProfileStatusPartial {
 		logger.Warn("vpn admin notified partial", "job_id", event.JobID, "profile_id", profile.ID, "profile", profile.Profile, "target_group", profile.EndpointGroup, "protocol", profile.Protocol, "status", profile.Status, "client_code", profile.VPNClient.ClientCode, "failed_nodes", failedProfileNodes(profile.Nodes))

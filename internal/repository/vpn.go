@@ -138,7 +138,7 @@ func (r *VpnRepo) GetOrCreateEndpointGroup(code string) (models.EndpointGroup, e
 
 func (r *VpnRepo) EnabledNodesByGroup(group string) ([]models.NodeState, error) {
 	var nodes []models.NodeState
-	if err := r.DB.Where("endpoint_group = ? AND enabled = ?", group, true).Order("node_id ASC").Find(&nodes).Error; err != nil {
+	if err := r.DB.Where("endpoint_group = ? AND enabled = ?", group, true).Order("server_id ASC, node_id ASC").Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 	return nodes, nil
@@ -156,7 +156,11 @@ func (r *VpnRepo) CreateProfileWithNodes(profile models.VPNProfile, nodes []mode
 			return err
 		}
 		for _, node := range nodes {
-			profileNode := models.VPNProfileNode{VPNProfileID: profile.ID, NodeID: node.NodeID, Protocol: profile.Protocol, Status: models.VPNProfileNodeStatusPending}
+			nodeID := node.ServerID
+			if nodeID == "" {
+				nodeID = node.NodeID
+			}
+			profileNode := models.VPNProfileNode{VPNProfileID: profile.ID, NodeID: nodeID, Protocol: profile.Protocol, Status: models.VPNProfileNodeStatusPending}
 			if err := tx.Create(&profileNode).Error; err != nil {
 				return err
 			}

@@ -61,9 +61,9 @@ func seedVPNServiceCreateData(t *testing.T, db *gorm.DB) models.Telegram {
 	}
 
 	nodes := []models.NodeState{
-		{NodeID: "direct-1", EndpointGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Status: models.ServerStatusOnline, Enabled: true},
-		{NodeID: "direct-2", EndpointGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Status: models.ServerStatusOnline, Enabled: true},
-		{NodeID: "ru-1", EndpointGroup: jobsvc.EndpointGroupRU, Protocol: jobsvc.VPNProfileTrojan, Status: models.ServerStatusOnline, Enabled: true},
+		{ServerID: "direct-1", NodeID: "direct-1", EndpointGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Status: models.ServerStatusOnline, Enabled: true},
+		{ServerID: "direct-2", NodeID: "direct-2", EndpointGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Status: models.ServerStatusOnline, Enabled: true},
+		{ServerID: "ru-1", NodeID: "ru-1", EndpointGroup: jobsvc.EndpointGroupRU, Protocol: jobsvc.VPNProfileTrojan, Status: models.ServerStatusOnline, Enabled: true},
 	}
 	for _, node := range nodes {
 		if err := db.Create(&node).Error; err != nil {
@@ -130,6 +130,9 @@ func TestRequestCreateVPNVLESSCreatesCanonicalProfileAndPayload(t *testing.T) {
 	if payload.ProfileID != profile.ID || payload.Profile != jobsvc.VPNProfileVLESS || payload.TargetGroup != jobsvc.EndpointGroupDirect {
 		t.Fatalf("unexpected payload profile fields: %#v", payload)
 	}
+	if payload.ServerID == "" || payload.TargetServerID == "" || payload.ServerID != payload.TargetServerID {
+		t.Fatalf("unexpected payload server identity: %#v", payload)
+	}
 	if payload.Credentials.VLESS.ID != client.VlessUUID || payload.Credentials.Trojan.Password != client.TrojanPassword {
 		t.Fatalf("payload does not carry canonical credentials")
 	}
@@ -138,7 +141,7 @@ func TestRequestCreateVPNVLESSCreatesCanonicalProfileAndPayload(t *testing.T) {
 		t.Fatalf("marshal payload: %v", err)
 	}
 	payloadString := string(payloadJSON)
-	for _, forbidden := range []string{"public_host", "public_domain", "final_link", "subscription_link", "raven.net.ru", "br.raven.net.ru"} {
+	for _, forbidden := range []string{"target_node_id", "public_host", "public_domain", "final_link", "subscription_link", "raven.net.ru", "br.raven.net.ru"} {
 		if strings.Contains(payloadString, forbidden) {
 			t.Fatalf("payload contains forbidden %q: %s", forbidden, payloadString)
 		}

@@ -3,6 +3,7 @@ package jobsvc
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"vpnpanel/internal/audit"
@@ -137,10 +138,12 @@ func (s *Service) CollectNodeStats(serverID uint) (*models.JobBatch, *models.Job
 		logger.Info("job batch created", "component", "jobsvc", "operation", "collect_node_stats", "batch_id", batch.ID, "server_id", server.Id, "action", ActionCollectNodeStats)
 
 		payload := broker.JobTask{
-			BatchID:  batch.ID,
-			ServerID: server.Id,
-			Action:   ActionCollectNodeStats,
-			Protocol: server.Type,
+			BatchID:        batch.ID,
+			ServerID:       serverAgentID(*server),
+			TargetServerID: serverAgentID(*server),
+			NodeID:         serverAgentID(*server),
+			Action:         ActionCollectNodeStats,
+			Protocol:       server.Type,
 		}
 		payloadJSON, err := json.Marshal(payload)
 		if err != nil {
@@ -214,10 +217,12 @@ func (s *Service) ProbeServer(serverID int) (*models.JobBatch, *models.Job, erro
 		}
 
 		payload := broker.JobTask{
-			BatchID:  batch.ID,
-			ServerID: server.Id,
-			Action:   ActionProbeNode,
-			Protocol: server.Type,
+			BatchID:        batch.ID,
+			ServerID:       serverAgentID(*server),
+			TargetServerID: serverAgentID(*server),
+			NodeID:         serverAgentID(*server),
+			Action:         ActionProbeNode,
+			Protocol:       server.Type,
 		}
 		payloadJSON, err := json.Marshal(payload)
 		if err != nil {
@@ -323,7 +328,7 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 					continue
 				}
 
-				payload := createClientJobTask(batch.ID, server.Id, profile, targetGroup, input)
+				payload := createClientJobTask(batch.ID, serverAgentID(server), profile, targetGroup, input)
 
 				payloadJSON, err := json.Marshal(payload)
 				if err != nil {
@@ -454,7 +459,7 @@ func (s *Service) MarkJobFailed(jobID uint, jobError string) (*models.Job, error
 }
 
 func (s *Service) ApplyResult(event broker.JobResultEvent) (*models.JobBatch, *models.Job, error) {
-	logger.Info("job_result apply started", "component", "jobsvc", "operation", "apply_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "node_id", event.NodeID, "status", event.Status)
+	logger.Info("job_result apply started", "component", "jobsvc", "operation", "apply_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "status", event.Status)
 	job, err := s.jobsRepo.GetJob(event.JobID)
 	if err != nil {
 		logger.Error("job_result job lookup failed", err, "component", "jobsvc", "operation", "apply_result", "job_id", event.JobID, "batch_id", event.BatchID)
@@ -576,8 +581,8 @@ func (s *Service) applyNodeStatsResult(job *models.Job, event broker.JobResultEv
 	serverID := 0
 	if job.ServerID != nil {
 		serverID = *job.ServerID
-	} else if event.ServerID != nil {
-		serverID = *event.ServerID
+	} else if parsedServerID, ok := parseLegacyNumericServerID(event.ServerID); ok {
+		serverID = parsedServerID
 	}
 	if serverID == 0 {
 		return fmt.Errorf("node stats result has no server_id")
@@ -689,8 +694,8 @@ func (s *Service) applyProbeResult(job *models.Job, event broker.JobResultEvent,
 	serverID := 0
 	if job.ServerID != nil {
 		serverID = *job.ServerID
-	} else if event.ServerID != nil {
-		serverID = *event.ServerID
+	} else if parsedServerID, ok := parseLegacyNumericServerID(event.ServerID); ok {
+		serverID = parsedServerID
 	}
 	if serverID == 0 {
 		return fmt.Errorf("probe result has no server_id")
@@ -765,7 +770,7 @@ func resultPayload(event broker.JobResultEvent) (datatypes.JSON, error) {
 	data, err := json.Marshal(map[string]any{
 		"job_id":           event.JobID,
 		"batch_id":         event.BatchID,
-		"server_id":        event.ServerID,
+		"server_id":        event.EffectiveServerID(),
 		"status":           event.Status,
 		"remote_client_id": event.RemoteClientID,
 		"config_link":      event.ConfigLink,
@@ -815,7 +820,7 @@ func serverSupportsEndpointProfile(server models.Server, profile string, targetG
 	return serverSupportsProtocol(server, profile) && strings.EqualFold(strings.TrimSpace(server.NodeRole), targetGroup)
 }
 
-func createClientJobTask(batchID uint, serverID int, profile string, targetGroup string, input CreateUserConfigInput) broker.JobTask {
+func createClientJobTask(batchID uint, serverID string, profile string, targetGroup string, input CreateUserConfigInput) broker.JobTask {
 	clientCode := strings.TrimSpace(input.ClientCode)
 	if clientCode == "" {
 		clientCode = strings.TrimSpace(input.TechnicalClientID)
@@ -843,6 +848,8 @@ func createClientJobTask(batchID uint, serverID int, profile string, targetGroup
 		EventType:         ActionCreateClient,
 		BatchID:           batchID,
 		ServerID:          serverID,
+		TargetServerID:    serverID,
+		NodeID:            serverID,
 		Action:            ActionCreateClient,
 		CommandType:       ActionCreateClient,
 		Protocol:          normalizeProfile(profile),
@@ -868,6 +875,21 @@ func createClientJobTask(batchID uint, serverID int, profile string, targetGroup
 			},
 		},
 	}
+}
+
+func serverAgentID(server models.Server) string {
+	if strings.TrimSpace(server.Name) != "" {
+		return strings.TrimSpace(server.Name)
+	}
+	return strconv.Itoa(server.Id)
+}
+
+func parseLegacyNumericServerID(value string) (int, bool) {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed == 0 {
+		return 0, false
+	}
+	return parsed, true
 }
 
 func idempotencyKey(action string, userID uint, serverID int, protocol string) string {

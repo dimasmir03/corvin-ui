@@ -10,10 +10,10 @@ import (
 
 func TestResultQueueValidJobResultCallsApply(t *testing.T) {
 	calls := 0
-	body := mustJSON(t, JobResultEvent{EventType: "job_result", JobID: 42, BatchID: 7, NodeID: "01", Status: "success"})
+	body := mustJSON(t, JobResultEvent{EventType: "job_result", JobID: 42, BatchID: 7, ServerID: "foreign-01", Status: "success"})
 	action := handleResultQueueMessage("corvin.job.results", body, func(event JobResultEvent) error {
 		calls++
-		if event.JobID != 42 || event.NodeID != "01" || event.Status != "success" {
+		if event.JobID != 42 || event.ServerID != "foreign-01" || event.Status != "success" {
 			t.Fatalf("unexpected event: %#v", event)
 		}
 		return nil
@@ -45,13 +45,13 @@ func TestResultQueueNodeSnapshotIsRoutedToSnapshotHandler(t *testing.T) {
 	jobCalls := 0
 	snapshotCalls := 0
 	sentAt := time.Date(2026, 6, 28, 10, 0, 0, 0, time.UTC)
-	body := mustJSON(t, NodeSnapshotEvent{EventType: "node_snapshot", NodeID: "01", EndpointGroup: "direct", Protocol: "vless", XUIAvailable: true, ClientsCount: 11, OnlineCount: 3, SentAt: sentAt})
+	body := mustJSON(t, NodeSnapshotEvent{EventType: "node_snapshot", ServerID: "direct-01", EndpointGroup: "direct", Protocol: "vless", XUIAvailable: true, ClientsCount: 11, OnlineCount: 3, SentAt: sentAt})
 	action := handleResultQueueMessage("corvin.job.results", body, func(event JobResultEvent) error {
 		jobCalls++
 		return nil
 	}, func(event NodeSnapshotEvent) (bool, error) {
 		snapshotCalls++
-		if event.NodeID != "01" || event.EndpointGroup != "direct" || event.Protocol != "vless" {
+		if event.ServerID != "direct-01" || event.EndpointGroup != "direct" || event.Protocol != "vless" {
 			t.Fatalf("unexpected snapshot: %#v", event)
 		}
 		return false, nil
@@ -156,4 +156,28 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatalf("marshal json: %v", err)
 	}
 	return data
+}
+
+func TestCreateClientRoutingKeyUsesServerID(t *testing.T) {
+	key := createClientRoutingKey(JobTask{EventType: "create_client", ServerID: "foreign-01", TargetServerID: "foreign-01", TargetGroup: "foreign"})
+	if key != "create.server.foreign-01" {
+		t.Fatalf("routing key = %q", key)
+	}
+}
+
+func TestCollectSnapshotRoutingKeyUsesServerID(t *testing.T) {
+	key := collectSnapshotRoutingKey(CollectSnapshotCommand{EventType: "collect_snapshot", ServerID: "foreign-01", TargetServerID: "foreign-01"})
+	if key != "collect.server.foreign-01" {
+		t.Fatalf("routing key = %q", key)
+	}
+}
+
+func TestJobResultLegacyNodeIDFallback(t *testing.T) {
+	var event JobResultEvent
+	if err := json.Unmarshal([]byte(`{"event_type":"job_result","job_id":42,"node_id":"legacy-01","status":"success"}`), &event); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if event.EffectiveServerID() != "legacy-01" {
+		t.Fatalf("effective server id = %q", event.EffectiveServerID())
+	}
 }

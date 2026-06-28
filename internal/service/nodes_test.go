@@ -175,14 +175,14 @@ func TestRequestSnapshotPublishesCollectSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestSnapshot: %v", err)
 	}
-	if result.NodeID != "direct-1" || result.Status != "queued" || result.CommandID == "" {
+	if result.ServerID != "direct-1" || result.Status != "queued" || result.CommandID == "" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 	if len(publisher.commands) != 1 {
 		t.Fatalf("commands = %d, want 1", len(publisher.commands))
 	}
 	cmd := publisher.commands[0]
-	if cmd.EventType != "collect_snapshot" || cmd.TargetNodeID != "direct-1" || cmd.RequestedBy != "admin" {
+	if cmd.EventType != "collect_snapshot" || cmd.TargetServerID != "direct-1" || cmd.ServerID != "direct-1" || cmd.RequestedBy != "admin" {
 		t.Fatalf("unexpected command: %#v", cmd)
 	}
 }
@@ -197,5 +197,68 @@ func TestRequestSnapshotUnknownNodeDoesNotPublish(t *testing.T) {
 	}
 	if len(publisher.commands) != 0 {
 		t.Fatalf("commands = %d, want 0", len(publisher.commands))
+	}
+}
+
+func TestApplySnapshotUsesServerIDAsPrimaryKey(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 11, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, now)
+
+	node, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, ServerID: "foreign-01", NodeID: "legacy-different", EndpointGroup: "foreign", Protocol: "vless", XUIAvailable: true, SentAt: now})
+	if err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+	if node.ServerID != "foreign-01" || node.NodeID != "foreign-01" {
+		t.Fatalf("unexpected identity: %#v", node)
+	}
+}
+
+func TestApplySnapshotRejectsWhenServerAndLegacyNodeIDMissing(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 11, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, now)
+
+	if _, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, EndpointGroup: "foreign", Protocol: "vless", XUIAvailable: true, SentAt: now}); err == nil {
+		t.Fatalf("ApplySnapshot error = nil, want server_id required")
+	}
+}
+
+func TestApplySnapshotDifferentServerIDsCreateDifferentRecords(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 11, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, now)
+
+	for _, id := range []string{"foreign-01", "foreign-02"} {
+		if _, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, ServerID: id, EndpointGroup: "foreign", Protocol: "vless", XUIAvailable: true, SentAt: now}); err != nil {
+			t.Fatalf("ApplySnapshot %s: %v", id, err)
+		}
+	}
+	nodes, err := svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("nodes = %d, want 2", len(nodes))
+	}
+}
+
+func TestApplySnapshotSameServerIDUpdatesOneRecord(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 11, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, now)
+
+	if _, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, ServerID: "foreign-01", EndpointGroup: "foreign", Protocol: "vless", XUIAvailable: true, ClientsCount: 1, SentAt: now}); err != nil {
+		t.Fatalf("first ApplySnapshot: %v", err)
+	}
+	if _, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, ServerID: "foreign-01", EndpointGroup: "foreign", Protocol: "vless", XUIAvailable: true, ClientsCount: 2, SentAt: now.Add(time.Second)}); err != nil {
+		t.Fatalf("second ApplySnapshot: %v", err)
+	}
+	nodes, err := svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].ClientsCount != 2 {
+		t.Fatalf("unexpected nodes: %#v", nodes)
 	}
 }

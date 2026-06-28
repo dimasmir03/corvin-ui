@@ -74,9 +74,12 @@ func TestCreateClientJobTaskCarriesCanonicalCredentials(t *testing.T) {
 		Enable:         true,
 	}
 
-	task := createClientJobTask(7, 11, VPNProfileVLESS, EndpointGroupDirect, input)
+	task := createClientJobTask(7, "direct-1", VPNProfileVLESS, EndpointGroupDirect, input)
 	if task.EventType != ActionCreateClient || task.CommandType != ActionCreateClient {
 		t.Fatalf("unexpected event/action fields: %#v", task)
+	}
+	if task.ServerID != "direct-1" || task.TargetServerID != "direct-1" || task.NodeID != "direct-1" {
+		t.Fatalf("unexpected server identity fields: %#v", task)
 	}
 	if task.Profile != VPNProfileVLESS || task.TargetGroup != EndpointGroupDirect {
 		t.Fatalf("unexpected profile/group: %s/%s", task.Profile, task.TargetGroup)

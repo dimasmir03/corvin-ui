@@ -69,7 +69,7 @@ func Init(options DBOptions, w io.Writer) {
 }
 
 func migrate() error {
-	return DB.AutoMigrate(
+	if err := DB.AutoMigrate(
 		&models.User{},
 		&models.Server{},
 		&models.ServerStat{},
@@ -86,5 +86,11 @@ func migrate() error {
 		&models.JobBatch{},
 		&models.Job{},
 		&models.AuditLog{},
-	)
+	); err != nil {
+		return err
+	}
+	if err := DB.Exec("UPDATE node_states SET server_id = node_id WHERE (server_id IS NULL OR server_id = '') AND node_id <> ''").Error; err != nil {
+		return err
+	}
+	return DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_node_states_server_id_unique ON node_states (server_id) WHERE server_id IS NOT NULL AND server_id <> ''").Error
 }

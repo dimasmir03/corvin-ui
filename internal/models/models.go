@@ -95,7 +95,8 @@ type NodeStatsSnapshot struct {
 
 type NodeState struct {
 	ID             uint       `gorm:"primary_key;autoIncrement" json:"id"`
-	NodeID         string     `gorm:"uniqueIndex;not null" json:"node_id"`
+	ServerID       string     `gorm:"index" json:"server_id"`
+	NodeID         string     `gorm:"index" json:"node_id,omitempty"`
 	EndpointGroup  string     `gorm:"not null;index" json:"endpoint_group"`
 	Protocol       string     `gorm:"not null;index" json:"protocol"`
 	AgentVersion   string     `json:"agent_version"`
