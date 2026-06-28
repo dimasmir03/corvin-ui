@@ -136,6 +136,7 @@ func flexibleUint(raw json.RawMessage) uint {
 type NodeSnapshotEvent struct {
 	EventType     string    `json:"event_type"`
 	NodeID        string    `json:"node_id"`
+	ServerID      string    `json:"server_id,omitempty"`
 	EndpointGroup string    `json:"endpoint_group"`
 	Protocol      string    `json:"protocol"`
 	AgentVersion  string    `json:"agent_version,omitempty"`
@@ -149,6 +150,65 @@ type NodeSnapshotEvent struct {
 	TrafficDown   int64     `json:"traffic_down"`
 	LastError     string    `json:"last_error,omitempty"`
 	SentAt        time.Time `json:"sent_at"`
+}
+
+func (e *NodeSnapshotEvent) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		EventType     string          `json:"event_type"`
+		NodeID        json.RawMessage `json:"node_id"`
+		ServerID      json.RawMessage `json:"server_id"`
+		EndpointGroup string          `json:"endpoint_group"`
+		Protocol      string          `json:"protocol"`
+		AgentVersion  string          `json:"agent_version,omitempty"`
+		AgentAlive    bool            `json:"agent_alive"`
+		InboundID     *int            `json:"inbound_id,omitempty"`
+		InboundRemark string          `json:"inbound_remark,omitempty"`
+		XUIAvailable  bool            `json:"xui_available"`
+		ClientsCount  int             `json:"clients_count"`
+		OnlineCount   int             `json:"online_count"`
+		TrafficUp     int64           `json:"traffic_up"`
+		TrafficDown   int64           `json:"traffic_down"`
+		LastError     string          `json:"last_error,omitempty"`
+		SentAt        time.Time       `json:"sent_at"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	e.EventType = aux.EventType
+	e.NodeID = flexibleString(aux.NodeID)
+	e.ServerID = flexibleString(aux.ServerID)
+	if strings.TrimSpace(e.NodeID) == "" {
+		e.NodeID = e.ServerID
+	}
+	e.EndpointGroup = aux.EndpointGroup
+	e.Protocol = aux.Protocol
+	e.AgentVersion = aux.AgentVersion
+	e.AgentAlive = aux.AgentAlive
+	e.InboundID = aux.InboundID
+	e.InboundRemark = aux.InboundRemark
+	e.XUIAvailable = aux.XUIAvailable
+	e.ClientsCount = aux.ClientsCount
+	e.OnlineCount = aux.OnlineCount
+	e.TrafficUp = aux.TrafficUp
+	e.TrafficDown = aux.TrafficDown
+	e.LastError = aux.LastError
+	e.SentAt = aux.SentAt
+	return nil
+}
+
+func flexibleString(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return strings.TrimSpace(text)
+	}
+	var value json.Number
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return strings.TrimSpace(value.String())
+	}
+	return ""
 }
 
 type CollectSnapshotCommand struct {

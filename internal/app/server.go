@@ -130,26 +130,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 				_, stale, err := nodeService.ApplySnapshot(context.Background(), event)
 				return stale, err
 			},
-			func(event broker.JobResultEvent) error {
-				if event.JobID != 0 {
-					if _, _, err := jobService.ApplyResult(event); err != nil {
-						logger.Error("job result apply failed", err, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID)
-						return err
-					}
-				}
-
-				notification, err := vpnService.ApplyJobResult(context.Background(), event)
-				if err != nil {
-					logger.Error("vpn job_result apply failed", err, "job_id", event.JobID, "profile_id", event.ProfileID, "node_id", event.NodeID)
-					return err
-				}
-				if notification != nil && tgNotifier != nil {
-					if err := tgNotifier.SendVPNReady(notification.TgID, notification.Link); err != nil {
-						logger.Error("telegram vpn ready notification failed", err, "tg_id", notification.TgID, "protocol", notification.Protocol)
-					}
-				}
-				return nil
-			},
+			nil,
 		)
 		if err != nil {
 			logger.Error("failed to start RabbitMQ agent events consumer", err, "component", "startup", "operation", "rabbit_consumers_start", "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.EventsRouting)
@@ -158,31 +139,38 @@ func NewServer(cfg config.Config) (*Server, error) {
 			logger.Info("rabbit agent events consumer started", "component", "startup", "operation", "rabbit_consumers_start", "exchange", cfg.RabbitMQ.EventsExchange, "queue", cfg.RabbitMQ.EventsQueue, "routing_key", cfg.RabbitMQ.EventsRouting)
 		}
 
-		consumer, err := broker.GlobalProducer.StartResultConsumer(cfg.RabbitMQ.ResultQueue, func(event broker.JobResultEvent) error {
-			_, job, err := jobService.ApplyResult(event)
-			if err != nil {
-				logger.Error("job result apply failed", err, "job_id", event.JobID, "batch_id", event.BatchID)
-				return err
-			}
+		consumer, err := broker.GlobalProducer.StartResultConsumer(
+			cfg.RabbitMQ.ResultQueue,
+			func(event broker.JobResultEvent) error {
+				_, job, err := jobService.ApplyResult(event)
+				if err != nil {
+					logger.Error("job result apply failed", err, "job_id", event.JobID, "batch_id", event.BatchID)
+					return err
+				}
 
-			notification, err := vpnService.ApplyAgentCreateResult(job, event)
-			if err != nil {
-				logger.Error("vpn agent result apply failed", err, "job_id", event.JobID, "batch_id", event.BatchID)
-				return err
-			}
+				notification, err := vpnService.ApplyAgentCreateResult(job, event)
+				if err != nil {
+					logger.Error("vpn agent result apply failed", err, "job_id", event.JobID, "batch_id", event.BatchID)
+					return err
+				}
 
-			if notification != nil {
-				logger.Info("agent vpn result applied", "tg_id", notification.TgID, "protocol", notification.Protocol, "job_id", event.JobID, "batch_id", event.BatchID)
-				logger.Info("vpn link saved", "tg_id", notification.TgID, "protocol", notification.Protocol, "job_id", event.JobID, "batch_id", event.BatchID)
-				if tgNotifier != nil {
-					if err := tgNotifier.SendVPNReady(notification.TgID, notification.Link); err != nil {
-						logger.Error("telegram vpn ready notification failed", err, "tg_id", notification.TgID, "protocol", notification.Protocol)
+				if notification != nil {
+					logger.Info("agent vpn result applied", "tg_id", notification.TgID, "protocol", notification.Protocol, "job_id", event.JobID, "batch_id", event.BatchID)
+					logger.Info("vpn link saved", "tg_id", notification.TgID, "protocol", notification.Protocol, "job_id", event.JobID, "batch_id", event.BatchID)
+					if tgNotifier != nil {
+						if err := tgNotifier.SendVPNReady(notification.TgID, notification.Link); err != nil {
+							logger.Error("telegram vpn ready notification failed", err, "tg_id", notification.TgID, "protocol", notification.Protocol)
+						}
 					}
 				}
-			}
 
-			return nil
-		})
+				return nil
+			},
+			func(event broker.NodeSnapshotEvent) (bool, error) {
+				_, stale, err := nodeService.ApplySnapshot(context.Background(), event)
+				return stale, err
+			},
+		)
 		if err != nil {
 			logger.Error("failed to start RabbitMQ result consumer", err, "component", "startup", "operation", "rabbit_consumers_start", "queue", cfg.RabbitMQ.ResultQueue)
 		} else {
