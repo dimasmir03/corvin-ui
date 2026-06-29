@@ -302,12 +302,16 @@ func (b *Bot) requestCreateVPN(c telebot.Context, protocol string) error {
 		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol)
 		return b.send(c, msgVPNUnsupportedProtocol)
 	}
+	if errors.Is(err, service.ErrNoMatchingServers) || errors.Is(err, service.ErrNoJobsQueued) {
+		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol, "reason", "jobs_not_queued")
+		return b.send(c, msgVPNCreateFailed)
+	}
 	if err != nil {
 		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol)
 		return b.send(c, msgVPNCreateFailed)
 	}
 
-	b.logger.Info("telegram vpn create request queued", "tg_id", sender.ID, "protocol", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID)
+	b.logger.Info("telegram vpn create request queued", "tg_id", sender.ID, "protocol", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID, "jobs_count", result.JobsCount)
 	return b.send(c, msgVPNCreateRequested)
 }
 

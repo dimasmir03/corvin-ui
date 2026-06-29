@@ -138,7 +138,15 @@ func (r *VpnRepo) GetOrCreateEndpointGroup(code string) (models.EndpointGroup, e
 
 func (r *VpnRepo) EnabledNodesByGroup(group string) ([]models.NodeState, error) {
 	var nodes []models.NodeState
-	if err := r.DB.Where("endpoint_group = ? AND expected_protocol = ? AND enabled = ?", group, protocolForEndpointGroup(group), true).Where("server_id <> ''").Order("server_id ASC, node_id ASC").Find(&nodes).Error; err != nil {
+	err := r.DB.Table("node_states").
+		Select("node_states.*").
+		Joins("JOIN server_registry ON server_registry.server_id = node_states.server_id").
+		Where("node_states.endpoint_group = ? AND node_states.expected_protocol = ? AND node_states.enabled = ?", group, protocolForEndpointGroup(group), true).
+		Where("node_states.server_id <> ''").
+		Where("server_registry.enabled = ? AND server_registry.archived_at IS NULL", true).
+		Order("node_states.server_id ASC, node_states.node_id ASC").
+		Find(&nodes).Error
+	if err != nil {
 		return nil, err
 	}
 	return nodes, nil
@@ -181,6 +189,47 @@ func (r *VpnRepo) CreateProfileWithNodes(profile models.VPNProfile, nodes []mode
 		return models.VPNProfile{}, err
 	}
 	return profile, nil
+}
+
+func (r *VpnRepo) EnsureProfileNodes(profile models.VPNProfile, nodes []models.NodeState) (models.VPNProfile, []models.VPNProfileNode, error) {
+	created := []models.VPNProfileNode{}
+	err := r.DB.Transaction(func(tx *gorm.DB) error {
+		for _, node := range nodes {
+			serverID := node.ServerID
+			if serverID == "" {
+				serverID = node.NodeID
+			}
+			if serverID == "" {
+				continue
+			}
+			var existing models.VPNProfileNode
+			err := tx.Where("vpn_profile_id = ? AND (server_id = ? OR node_id = ?)", profile.ID, serverID, serverID).Take(&existing).Error
+			if err == nil {
+				continue
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			profileNode := models.VPNProfileNode{VPNProfileID: profile.ID, ServerID: serverID, NodeID: serverID, Protocol: profile.Protocol, Status: models.VPNProfileNodeStatusPending}
+			if err := tx.Create(&profileNode).Error; err != nil {
+				return err
+			}
+			created = append(created, profileNode)
+		}
+		return nil
+	})
+	if err != nil {
+		return models.VPNProfile{}, nil, err
+	}
+	profile, err = r.GetProfileByID(profile.ID)
+	if err != nil {
+		return models.VPNProfile{}, nil, err
+	}
+	return profile, created, nil
+}
+
+func (r *VpnRepo) UpdateProfileStatus(profileID uint, status string, lastError string) error {
+	return r.DB.Model(&models.VPNProfile{}).Where("id = ?", profileID).Updates(map[string]any{"status": status, "last_error": lastError, "updated_at": time.Now()}).Error
 }
 
 func (r *VpnRepo) TouchProfilePublishError(profileID uint, errText string) error {

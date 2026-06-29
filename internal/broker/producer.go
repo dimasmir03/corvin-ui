@@ -76,7 +76,7 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, exchangeCommands, certf
 		return nil, fmt.Errorf("failed to create publisher: %w", err)
 	}
 
-	exchangeJobs := "vpn.jobs"
+	exchangeJobs := exchangeCommands
 	publisherJobs, err := rabbitmq.NewPublisher(
 		conn,
 		rabbitmq.WithPublisherOptionsExchangeName(exchangeJobs),
@@ -99,7 +99,7 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, exchangeCommands, certf
 		return nil, fmt.Errorf("failed to create publisher for commands: %w", err)
 	}
 
-	logger.Info("rabbit command publisher ready", "exchange_jobs", exchangeJobs, "exchange_commands", exchangeCommands)
+	logger.Info("rabbit command publisher ready", "exchange", exchangeCommands, "create_exchange", exchangeJobs, "collect_exchange", exchangeCommands)
 	logger.Info("rabbit legacy publishers ready", "exchange_complaints", exchangeComplaints, "exchange_users", exchangeUsers)
 
 	return &Producer{

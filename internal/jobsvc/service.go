@@ -57,6 +57,7 @@ type JobPublisher interface {
 
 type CreateUserConfigInput struct {
 	ProfileID         uint
+	VPNClientID       uint
 	UserID            uint
 	TelegramID        int64
 	ClientCode        string
@@ -302,17 +303,8 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 		}
 	}
 	if len(targetServerIDs) == 0 {
-		servers, err := s.serverRepo.GetAll()
-		if err != nil {
-			logger.Error("job create user config server lookup failed", err, "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode)
-			return nil, nil, err
-		}
-		for _, server := range servers {
-			if server.Enabled && server.Status != models.ServerStatusDisabled {
-				targetServerIDs = append(targetServerIDs, serverAgentID(server))
-			}
-		}
-		logger.Warn("job create user config using legacy servers fallback", "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "reason", "target_servers_empty")
+		logger.Warn("job create user config rejected", "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "reason", "target_servers_required")
+		return nil, nil, fmt.Errorf("target servers are required")
 	}
 	logger.Info("job create user config target servers found", "component", "jobsvc", "operation", "create_user_config", "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "servers_count", len(targetServerIDs))
 
@@ -334,11 +326,11 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 				if err != nil {
 					return err
 				}
-				job := models.Job{BatchID: batch.ID, TargetServerID: serverID, Protocol: profile, Action: ActionCreateClient, Status: JobStatusPending, PayloadJSON: datatypes.JSON(payloadJSON), IdempotencyKey: idempotencyKeyForTarget(ActionCreateClient, input.UserID, serverID, profile)}
+				job := models.Job{BatchID: batch.ID, TargetServerID: serverID, ProfileID: input.ProfileID, Protocol: profile, Action: ActionCreateClient, Status: JobStatusPending, PayloadJSON: datatypes.JSON(payloadJSON), IdempotencyKey: idempotencyKeyForTarget(ActionCreateClient, input.UserID, input.ProfileID, serverID, profile)}
 				if err := txJobsRepo.CreateJob(&job); err != nil {
 					return err
 				}
-				logger.Info("job created", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "server_id", serverID, "profile", profile, "target_group", targetGroup, "action", ActionCreateClient, "client_code", input.ClientCode)
+				logger.Info("create client job created", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", input.ProfileID, "server_id", serverID, "profile", profile, "target_group", targetGroup, "action", ActionCreateClient, "client_code", input.ClientCode)
 				payload.JobID = job.ID
 				payloadJSON, err = json.Marshal(payload)
 				if err != nil {
@@ -370,17 +362,24 @@ func (s *Service) CreateUserConfig(input CreateUserConfigInput) (*models.JobBatc
 		if err := json.Unmarshal(job.PayloadJSON, &payload); err != nil {
 			return batch, createdJobs, err
 		}
-		logger.Info("job publish started", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "server_id", payload.ServerID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
+		logger.Info("create client job publish started", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "server_id", payload.ServerID, "exchange", "corvin.job.commands", "routing_key", "create.server."+payload.ServerID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
 		if s.producer != nil {
 			if err := s.producer.PublishJob(payload); err != nil {
 				_, _ = s.jobsRepo.MarkJobFailed(job.ID, err.Error())
 				return batch, createdJobs, err
 			}
 		}
-		logger.Info("job publish succeeded", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "server_id", payload.ServerID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
+		logger.Info("create client job published", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "job_id", job.ID, "profile_id", payload.ProfileID, "server_id", payload.ServerID, "routing_key", "create.server."+payload.ServerID, "profile", payload.Profile, "target_group", payload.TargetGroup, "protocol", payload.Protocol, "client_code", payload.ClientCode)
 	}
 	logger.Info("job create user config finished", "component", "jobsvc", "operation", "create_user_config", "batch_id", batch.ID, "user_id", input.UserID, "tg_id", input.TelegramID, "client_code", input.ClientCode, "jobs_count", len(createdJobs), "status", batch.Status, "reason", "success")
 	return batch, createdJobs, nil
+}
+
+func (s *Service) ExistingCreateClientTargets(profileID uint) (map[string]struct{}, error) {
+	if profileID == 0 {
+		return map[string]struct{}{}, nil
+	}
+	return s.jobsRepo.ExistingCreateClientTargets(profileID)
 }
 
 func (s *Service) ApplyResult(event broker.JobResultEvent) (*models.JobBatch, *models.Job, error) {
@@ -778,6 +777,7 @@ func createClientJobTask(batchID uint, serverID string, profile string, targetGr
 		CommandType:       ActionCreateClient,
 		Protocol:          normalizeProfile(profile),
 		ProfileID:         input.ProfileID,
+		VPNClientID:       input.VPNClientID,
 		Profile:           normalizeProfile(profile),
 		TargetGroup:       targetGroup,
 		TelegramID:        input.TelegramID,
@@ -816,8 +816,8 @@ func parseLegacyNumericServerID(value string) (int, bool) {
 	return parsed, true
 }
 
-func idempotencyKeyForTarget(action string, userID uint, serverID string, protocol string) string {
-	return fmt.Sprintf("%s:%d:%s:%s", action, userID, serverID, protocol)
+func idempotencyKeyForTarget(action string, userID uint, profileID uint, serverID string, protocol string) string {
+	return fmt.Sprintf("%s:%d:%d:%s:%s:%d", action, userID, profileID, serverID, protocol, time.Now().UnixNano())
 }
 
 func idempotencyKey(action string, userID uint, serverID int, protocol string) string {

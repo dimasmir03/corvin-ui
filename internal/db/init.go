@@ -71,9 +71,6 @@ func Init(options DBOptions, w io.Writer) {
 func migrate() error {
 	if err := DB.AutoMigrate(
 		&models.User{},
-		&models.Server{},
-		&models.ServerStat{},
-		&models.NodeStatsSnapshot{},
 		&models.NodeState{},
 		&models.ServerRegistry{},
 		&models.NodeStateSnapshot{},

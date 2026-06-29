@@ -310,6 +310,7 @@ type Job struct {
 	BatchID        uint            `gorm:"not null;index" json:"batch_id"`
 	ServerID       *int            `gorm:"index" json:"server_id,omitempty"`
 	TargetServerID string          `gorm:"index" json:"target_server_id,omitempty"`
+	ProfileID      uint            `gorm:"index" json:"profile_id,omitempty"`
 	Protocol       string          `gorm:"not null;index" json:"protocol"`
 	Action         string          `gorm:"not null;index" json:"action"`
 	Status         string          `gorm:"not null;index" json:"status"`

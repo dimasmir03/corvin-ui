@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"vpnpanel/internal/broker"
@@ -37,7 +38,6 @@ func newVPNServiceTestDB(t *testing.T) *gorm.DB {
 		&models.NodeState{},
 		&models.ServerRegistry{},
 		&models.NodeStateSnapshot{},
-		&models.Server{},
 		&models.EndpointGroup{},
 		&models.VPNClient{},
 		&models.VPNProfile{},
@@ -73,14 +73,14 @@ func seedVPNServiceCreateData(t *testing.T, db *gorm.DB) models.Telegram {
 		}
 	}
 
-	servers := []models.Server{
-		{Name: "direct-1", IP: "10.0.0.1", Port: 443, ApiKey: "x", Type: jobsvc.VPNProfileVLESS, NodeRole: jobsvc.EndpointGroupDirect, Enabled: true, Status: models.ServerStatusOnline, ManagementMode: models.ServerManagementModeAgent},
-		{Name: "direct-2", IP: "10.0.0.2", Port: 443, ApiKey: "x", Type: jobsvc.VPNProfileVLESS, NodeRole: jobsvc.EndpointGroupDirect, Enabled: true, Status: models.ServerStatusOnline, ManagementMode: models.ServerManagementModeAgent},
-		{Name: "ru-1", IP: "10.0.1.1", Port: 443, ApiKey: "x", Type: jobsvc.VPNProfileTrojan, NodeRole: jobsvc.EndpointGroupRU, Enabled: true, Status: models.ServerStatusOnline, ManagementMode: models.ServerManagementModeAgent},
+	registries := []models.ServerRegistry{
+		{ServerID: "direct-1", DisplayName: "direct-1", EndpointGroup: jobsvc.EndpointGroupDirect, ExpectedProtocol: jobsvc.VPNProfileVLESS, Source: models.NodeSourceDiscovered, Enabled: true},
+		{ServerID: "direct-2", DisplayName: "direct-2", EndpointGroup: jobsvc.EndpointGroupDirect, ExpectedProtocol: jobsvc.VPNProfileVLESS, Source: models.NodeSourceDiscovered, Enabled: true},
+		{ServerID: "ru-1", DisplayName: "ru-1", EndpointGroup: jobsvc.EndpointGroupRU, ExpectedProtocol: jobsvc.VPNProfileTrojan, Source: models.NodeSourceDiscovered, Enabled: true},
 	}
-	for _, server := range servers {
-		if err := db.Create(&server).Error; err != nil {
-			t.Fatalf("create server %s: %v", server.Name, err)
+	for _, registry := range registries {
+		if err := db.Create(&registry).Error; err != nil {
+			t.Fatalf("create server registry %s: %v", registry.ServerID, err)
 		}
 	}
 
@@ -104,6 +104,9 @@ func TestRequestCreateVPNVLESSCreatesCanonicalProfileAndPayload(t *testing.T) {
 	}
 	if result.Protocol != jobsvc.VPNProfileVLESS {
 		t.Fatalf("protocol = %q", result.Protocol)
+	}
+	if result.BatchID == 0 || result.JobID == 0 || result.JobsCount != 2 {
+		t.Fatalf("queued result = %#v, want non-zero batch/job and 2 jobs", result)
 	}
 
 	var client models.VPNClient
@@ -203,8 +206,8 @@ func TestRequestCreateVPNRepeatedCreateDoesNotDuplicate(t *testing.T) {
 		t.Fatalf("load client before: %v", err)
 	}
 
-	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS}); err != nil {
-		t.Fatalf("repeated create: %v", err)
+	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS}); !errors.Is(err, ErrNoJobsQueued) {
+		t.Fatalf("repeated create err = %v, want ErrNoJobsQueued", err)
 	}
 	if len(publisher.messages) != published {
 		t.Fatalf("repeated create published new messages: got %d want %d", len(publisher.messages), published)
@@ -286,8 +289,8 @@ func TestRequestCreateVPNNoEnabledNodesCreatesFailedProfileWithoutPublish(t *tes
 	publisher := &captureJobPublisher{}
 	svc := newTestVPNService(db, publisher)
 
-	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileTrojan}); err != nil {
-		t.Fatalf("RequestCreateVPN trojan: %v", err)
+	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileTrojan}); !errors.Is(err, ErrNoMatchingServers) {
+		t.Fatalf("RequestCreateVPN trojan err = %v, want ErrNoMatchingServers", err)
 	}
 
 	var client models.VPNClient
@@ -454,6 +457,65 @@ func TestApplyJobResultGeneratesFinalLinkFromPanelData(t *testing.T) {
 	}
 	if strings.Contains(profile.FinalLink, "10.0.0.1") || strings.Contains(profile.FinalLink, "direct-1") {
 		t.Fatalf("final link contains node private data: %q", profile.FinalLink)
+	}
+}
+
+func TestRequestCreateVPNPendingProfileWithoutJobsRequeuesJobs(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNServiceCreateData(t, db)
+	publisher := &captureJobPublisher{}
+	svc := newTestVPNService(db, publisher)
+
+	first, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS})
+	if err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	if first.BatchID == 0 || first.JobID == 0 || first.JobsCount != 2 {
+		t.Fatalf("first result = %#v, want queued jobs", first)
+	}
+
+	var client models.VPNClient
+	if err := db.Where("user_id = ?", telegram.UserID).Take(&client).Error; err != nil {
+		t.Fatalf("load client: %v", err)
+	}
+	var profile models.VPNProfile
+	if err := db.Where("vpn_client_id = ? AND profile = ?", client.ID, jobsvc.VPNProfileVLESS).Take(&profile).Error; err != nil {
+		t.Fatalf("load profile: %v", err)
+	}
+	if err := db.Where("profile_id = ?", profile.ID).Delete(&models.Job{}).Error; err != nil {
+		t.Fatalf("delete jobs: %v", err)
+	}
+	publisher.messages = nil
+
+	second, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS})
+	if err != nil {
+		t.Fatalf("requeue pending profile without jobs: %v", err)
+	}
+	if second.BatchID == 0 || second.JobID == 0 || second.JobsCount != 2 {
+		t.Fatalf("second result = %#v, want requeued jobs", second)
+	}
+	if len(publisher.messages) != 2 {
+		t.Fatalf("published messages = %d, want 2", len(publisher.messages))
+	}
+}
+
+func TestRequestCreateVPNDoesNotUseLegacyServersTable(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNServiceCreateData(t, db)
+	if db.Migrator().HasTable(&models.Server{}) {
+		t.Fatal("legacy servers table must not be part of VPN create test schema")
+	}
+	if err := db.Where("endpoint_group = ?", jobsvc.EndpointGroupDirect).Delete(&models.ServerRegistry{}).Error; err != nil {
+		t.Fatalf("delete server registry: %v", err)
+	}
+
+	publisher := &captureJobPublisher{}
+	svc := newTestVPNService(db, publisher)
+	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS}); !errors.Is(err, ErrNoMatchingServers) {
+		t.Fatalf("RequestCreateVPN err = %v, want ErrNoMatchingServers", err)
+	}
+	if len(publisher.messages) != 0 {
+		t.Fatalf("published messages = %d, want 0", len(publisher.messages))
 	}
 }
 

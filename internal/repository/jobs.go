@@ -40,6 +40,21 @@ func (r *JobsRepo) GetJob(id uint) (*models.Job, error) {
 	return &job, nil
 }
 
+func (r *JobsRepo) ExistingCreateClientTargets(profileID uint) (map[string]struct{}, error) {
+	var jobs []models.Job
+	err := r.db.Where("profile_id = ? AND action = ? AND status IN ?", profileID, "create_client", []string{models.JobStatusPending, models.JobStatusProcessing, models.JobStatusSuccess}).Find(&jobs).Error
+	if err != nil {
+		return nil, err
+	}
+	targets := make(map[string]struct{}, len(jobs))
+	for _, job := range jobs {
+		if job.TargetServerID != "" {
+			targets[job.TargetServerID] = struct{}{}
+		}
+	}
+	return targets, nil
+}
+
 func (r *JobsRepo) JobsByBatch(batchID uint) ([]models.Job, error) {
 	var jobs []models.Job
 	if err := r.db.Where("batch_id = ?", batchID).Find(&jobs).Error; err != nil {

@@ -64,6 +64,8 @@ func TestServerSupportsEndpointProfile(t *testing.T) {
 
 func TestCreateClientJobTaskCarriesCanonicalCredentials(t *testing.T) {
 	input := CreateUserConfigInput{
+		ProfileID:      99,
+		VPNClientID:    11,
 		UserID:         55,
 		TelegramID:     123456789,
 		ClientCode:     "cvn_8f3a91c2",
@@ -80,6 +82,9 @@ func TestCreateClientJobTaskCarriesCanonicalCredentials(t *testing.T) {
 	}
 	if task.ServerID != "direct-1" || task.TargetServerID != "direct-1" || task.NodeID != "" {
 		t.Fatalf("unexpected server identity fields: %#v", task)
+	}
+	if task.ProfileID != input.ProfileID || task.VPNClientID != input.VPNClientID {
+		t.Fatalf("unexpected profile/client ids: %#v", task)
 	}
 	if task.Profile != VPNProfileVLESS || task.TargetGroup != EndpointGroupDirect {
 		t.Fatalf("unexpected profile/group: %s/%s", task.Profile, task.TargetGroup)

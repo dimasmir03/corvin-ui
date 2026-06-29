@@ -46,6 +46,7 @@ type JobTask struct {
 	CommandType       string         `json:"command_type,omitempty"`
 	Protocol          string         `json:"protocol"`
 	ProfileID         uint           `json:"profile_id,omitempty"`
+	VPNClientID       uint           `json:"vpn_client_id,omitempty"`
 	Profile           string         `json:"profile,omitempty"`
 	TargetGroup       string         `json:"target_group,omitempty"`
 	TelegramID        int64          `json:"telegram_id,omitempty"`

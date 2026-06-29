@@ -96,8 +96,8 @@ func Load() (Config, error) {
 		RabbitMQ: RabbitMQConfig{
 			URL:            getEnv("RABBITMQ_URL", ""),
 			ResultQueue:    getEnv("RABBITMQ_RESULT_QUEUE", "corvin.job.results"),
-			EventsExchange: getEnv("RABBITMQ_EVENTS_EXCHANGE", "corvin.events"),
-			EventsQueue:    getEnv("RABBITMQ_EVENTS_QUEUE", "corvin.agent.events"),
+			EventsExchange: getEnv("RABBITMQ_EVENTS_EXCHANGE", "corvin.agent.events"),
+			EventsQueue:    getEnv("RABBITMQ_EVENTS_QUEUE", "corvin.agent.events.panel"),
 			EventsRouting:  getEnv("RABBITMQ_EVENTS_ROUTING_KEY", "node.snapshot"),
 		},
 		Telegram: TelegramConfig{
@@ -121,7 +121,7 @@ func Load() (Config, error) {
 		Defaults: DefaultsConfig{
 			AMQPExchangeComplaints: getEnv("AMQP_EXCHANGE_COMPLAINTS", "vpn.complaints"),
 			AMQPExchangeUsers:      getEnv("AMQP_EXCHANGE_USERS", "vpn.users"),
-			AMQPExchangeCommands:   getEnv("AMQP_EXCHANGE_COMMANDS", "corvin.commands"),
+			AMQPExchangeCommands:   getEnv("AMQP_EXCHANGE_COMMANDS", "corvin.job.commands"),
 			CertFile:               getEnv("CERT_FILE", "/opt/corvin-ui/cert/cert.pem"),
 			KeyFile:                getEnv("KEY_FILE", "/opt/corvin-ui/cert/key.pem"),
 			CAFile:                 getEnv("CA_FILE", "/opt/corvin-ui/cert/ca.pem"),

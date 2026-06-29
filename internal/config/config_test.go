@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestValidateAllowsLoopbackWhenAuthModeNone(t *testing.T) {
 	for _, addr := range []string{"127.0.0.1:8080", "localhost:8080", "[::1]:8080"} {
@@ -70,5 +73,41 @@ func TestValidateRequiresTelegramTokenWhenEnabled(t *testing.T) {
 	cfg.Telegram.Token = "token"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected enabled telegram with token to be allowed: %v", err)
+	}
+}
+
+func TestLoadDefaultsRabbitMQTopology(t *testing.T) {
+	keys := []string{"AMQP_EXCHANGE_COMMANDS", "RABBITMQ_EVENTS_EXCHANGE", "RABBITMQ_EVENTS_QUEUE", "RABBITMQ_EVENTS_ROUTING_KEY"}
+	originals := map[string]*string{}
+	for _, key := range keys {
+		if value, ok := os.LookupEnv(key); ok {
+			copyValue := value
+			originals[key] = &copyValue
+		} else {
+			originals[key] = nil
+		}
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatalf("unset %s: %v", key, err)
+		}
+	}
+	defer func() {
+		for _, key := range keys {
+			if originals[key] == nil {
+				_ = os.Unsetenv(key)
+				continue
+			}
+			_ = os.Setenv(key, *originals[key])
+		}
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Defaults.AMQPExchangeCommands != "corvin.job.commands" {
+		t.Fatalf("commands exchange = %q", cfg.Defaults.AMQPExchangeCommands)
+	}
+	if cfg.RabbitMQ.EventsExchange != "corvin.agent.events" || cfg.RabbitMQ.EventsQueue != "corvin.agent.events.panel" || cfg.RabbitMQ.EventsRouting != "node.snapshot" {
+		t.Fatalf("unexpected events topology: %#v", cfg.RabbitMQ)
 	}
 }
