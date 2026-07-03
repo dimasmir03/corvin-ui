@@ -357,6 +357,7 @@ func (p *Producer) StartAgentEventConsumer(exchange, queue, routingKey string, s
 		rabbitmq.WithConsumerOptionsExchangeName(exchange),
 		rabbitmq.WithConsumerOptionsExchangeKind("topic"),
 		rabbitmq.WithConsumerOptionsExchangeDeclare,
+		rabbitmq.WithConsumerOptionsExchangeDurable,
 		rabbitmq.WithConsumerOptionsRoutingKey(routingKey),
 		rabbitmq.WithConsumerOptionsQueueDurable,
 		rabbitmq.WithConsumerOptionsConcurrency(1),
