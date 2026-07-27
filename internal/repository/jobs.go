@@ -55,6 +55,20 @@ func (r *JobsRepo) ExistingCreateClientTargets(profileID uint) (map[string]struc
 	return targets, nil
 }
 
+func (r *JobsRepo) SupersedeCreateClientJobs(profileID uint, targetServerIDs []string) (int64, error) {
+	if profileID == 0 || len(targetServerIDs) == 0 {
+		return 0, nil
+	}
+	res := r.db.Model(&models.Job{}).
+		Where("profile_id = ? AND action = ? AND status IN ?", profileID, "create_client", []string{models.JobStatusPending, models.JobStatusProcessing}).
+		Where("target_server_id IN ?", targetServerIDs).
+		Updates(map[string]any{"status": models.JobStatusSuperseded})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
 func (r *JobsRepo) JobsByBatch(batchID uint) ([]models.Job, error) {
 	var jobs []models.Job
 	if err := r.db.Where("batch_id = ?", batchID).Find(&jobs).Error; err != nil {

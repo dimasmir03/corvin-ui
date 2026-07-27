@@ -293,6 +293,7 @@ const (
 	JobStatusSuccess    = "success"
 	JobStatusFailed     = "failed"
 	JobStatusRetrying   = "retrying"
+	JobStatusSuperseded = "superseded"
 )
 
 type JobBatch struct {

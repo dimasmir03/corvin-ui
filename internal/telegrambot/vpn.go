@@ -311,6 +311,11 @@ func (b *Bot) requestCreateVPN(c telebot.Context, protocol string) error {
 		return b.send(c, msgVPNCreateFailed)
 	}
 
+	if result.JobsCount == 0 && hasVPNLink(result.FinalLink) && result.Protocol != "all" && !strings.Contains(result.Protocol, ",") {
+		b.logger.Info("telegram vpn existing link returned", "tg_id", sender.ID, "protocol", result.Protocol, "reason", "profile_already_active")
+		return b.send(c, formatLinkMessage(result.Protocol, result.FinalLink))
+	}
+
 	b.logger.Info("telegram vpn create request queued", "tg_id", sender.ID, "protocol", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID, "jobs_count", result.JobsCount)
 	return b.send(c, msgVPNCreateRequested)
 }

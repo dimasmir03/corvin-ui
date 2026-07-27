@@ -92,7 +92,7 @@ func newTestVPNService(db *gorm.DB, publisher jobsvc.JobPublisher) *VPNService {
 	return NewVPNService(repository.NewVpnRepo(db), repository.NewTelegramRepo(db), jobs, nil)
 }
 
-func TestRequestCreateVPNVLESSCreatesCanonicalProfileAndPayload(t *testing.T) {
+func TestRequestCreateVPNVLESSCreatesProfileAndPayload(t *testing.T) {
 	db := newVPNServiceTestDB(t)
 	telegram := seedVPNServiceCreateData(t, db)
 	publisher := &captureJobPublisher{}
@@ -108,13 +108,20 @@ func TestRequestCreateVPNVLESSCreatesCanonicalProfileAndPayload(t *testing.T) {
 	if result.BatchID == 0 || result.JobID == 0 || result.JobsCount != 2 {
 		t.Fatalf("queued result = %#v, want non-zero batch/job and 2 jobs", result)
 	}
+	var batch models.JobBatch
+	if err := db.Take(&batch, result.BatchID).Error; err != nil {
+		t.Fatalf("load batch: %v", err)
+	}
+	if batch.Type != "create_vpn" {
+		t.Fatalf("batch type = %q, want create_vpn", batch.Type)
+	}
 
 	var client models.VPNClient
 	if err := db.Where("user_id = ?", telegram.UserID).Take(&client).Error; err != nil {
 		t.Fatalf("vpn client not created: %v", err)
 	}
 	if client.ClientCode == "" || client.Email == "" || client.VlessUUID == "" || client.TrojanPassword == "" {
-		t.Fatalf("canonical credentials are incomplete: %#v", client)
+		t.Fatalf("vpn client credentials are incomplete: %#v", client)
 	}
 
 	var profile models.VPNProfile
@@ -138,8 +145,15 @@ func TestRequestCreateVPNVLESSCreatesCanonicalProfileAndPayload(t *testing.T) {
 	if payload.ServerID == "" || payload.TargetServerID == "" || payload.ServerID != payload.TargetServerID {
 		t.Fatalf("unexpected payload server identity: %#v", payload)
 	}
+	var job models.Job
+	if err := db.Take(&job, payload.JobID).Error; err != nil {
+		t.Fatalf("load job: %v", err)
+	}
+	if job.TargetServerID != payload.ServerID || job.ServerID != nil || job.Protocol != jobsvc.VPNProfileVLESS || job.Action != jobsvc.ActionCreateClient || job.ProfileID != profile.ID {
+		t.Fatalf("unexpected job row: %#v", job)
+	}
 	if payload.Credentials.VLESS.ID != client.VlessUUID || payload.Credentials.Trojan.Password != client.TrojanPassword {
-		t.Fatalf("payload does not carry canonical credentials")
+		t.Fatalf("payload does not carry vpn client credentials")
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -153,7 +167,7 @@ func TestRequestCreateVPNVLESSCreatesCanonicalProfileAndPayload(t *testing.T) {
 	}
 }
 
-func TestRequestCreateVPNTrojanReusesCanonicalClient(t *testing.T) {
+func TestRequestCreateVPNTrojanReusesVPNClient(t *testing.T) {
 	db := newVPNServiceTestDB(t)
 	telegram := seedVPNServiceCreateData(t, db)
 	publisher := &captureJobPublisher{}
@@ -175,7 +189,7 @@ func TestRequestCreateVPNTrojanReusesCanonicalClient(t *testing.T) {
 		t.Fatalf("load client after: %v", err)
 	}
 	if before.ID != after.ID || before.ClientCode != after.ClientCode || before.VlessUUID != after.VlessUUID || before.TrojanPassword != after.TrojanPassword {
-		t.Fatalf("canonical credentials changed: before=%#v after=%#v", before, after)
+		t.Fatalf("vpn client credentials changed: before=%#v after=%#v", before, after)
 	}
 
 	var profile models.VPNProfile
@@ -191,26 +205,41 @@ func TestRequestCreateVPNTrojanReusesCanonicalClient(t *testing.T) {
 	}
 }
 
-func TestRequestCreateVPNRepeatedCreateDoesNotDuplicate(t *testing.T) {
+func TestRequestCreateVPNPendingProfileCreatesFreshJobsAndSupersedesOldJobs(t *testing.T) {
 	db := newVPNServiceTestDB(t)
 	telegram := seedVPNServiceCreateData(t, db)
 	publisher := &captureJobPublisher{}
 	svc := newTestVPNService(db, publisher)
 
-	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS}); err != nil {
+	first, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS})
+	if err != nil {
 		t.Fatalf("first create: %v", err)
 	}
-	published := len(publisher.messages)
+	if first.BatchID == 0 || first.JobID == 0 || first.JobsCount != 2 {
+		t.Fatalf("first result = %#v, want queued jobs", first)
+	}
 	var clientBefore models.VPNClient
 	if err := db.Where("user_id = ?", telegram.UserID).Take(&clientBefore).Error; err != nil {
 		t.Fatalf("load client before: %v", err)
 	}
 
-	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS}); !errors.Is(err, ErrNoJobsQueued) {
-		t.Fatalf("repeated create err = %v, want ErrNoJobsQueued", err)
+	second, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS})
+	if err != nil {
+		t.Fatalf("second create: %v", err)
 	}
-	if len(publisher.messages) != published {
-		t.Fatalf("repeated create published new messages: got %d want %d", len(publisher.messages), published)
+	if second.BatchID == 0 || second.JobID == 0 || second.JobsCount != 2 || second.BatchID == first.BatchID {
+		t.Fatalf("second result = %#v, want fresh non-zero batch/jobs", second)
+	}
+	if len(publisher.messages) != 4 {
+		t.Fatalf("published messages = %d, want 4", len(publisher.messages))
+	}
+
+	var superseded int64
+	if err := db.Model(&models.Job{}).Where("profile_id = ? AND batch_id = ? AND status = ?", loadTestProfile(t, db, telegram.UserID, jobsvc.VPNProfileVLESS).ID, first.BatchID, models.JobStatusSuperseded).Count(&superseded).Error; err != nil {
+		t.Fatalf("count superseded jobs: %v", err)
+	}
+	if superseded != 2 {
+		t.Fatalf("superseded jobs = %d, want 2", superseded)
 	}
 
 	var clients int64
@@ -227,16 +256,13 @@ func TestRequestCreateVPNRepeatedCreateDoesNotDuplicate(t *testing.T) {
 	if profiles != 1 {
 		t.Fatalf("profiles = %d, want 1", profiles)
 	}
-	var profile models.VPNProfile
-	if err := db.Where("vpn_client_id = ? AND profile = ?", clientBefore.ID, jobsvc.VPNProfileVLESS).Take(&profile).Error; err != nil {
-		t.Fatalf("load profile: %v", err)
-	}
 	var profileNodes int64
-	if err := db.Model(&models.VPNProfileNode{}).Where("vpn_profile_id = ?", profile.ID).Count(&profileNodes).Error; err != nil {
+	profile := loadTestProfile(t, db, telegram.UserID, jobsvc.VPNProfileVLESS)
+	if err := db.Model(&models.VPNProfileNode{}).Where("vpn_profile_id = ? AND status = ?", profile.ID, models.VPNProfileNodeStatusPending).Count(&profileNodes).Error; err != nil {
 		t.Fatalf("count profile nodes: %v", err)
 	}
 	if profileNodes != 2 {
-		t.Fatalf("profile nodes = %d, want 2", profileNodes)
+		t.Fatalf("pending profile nodes = %d, want 2", profileNodes)
 	}
 
 	var clientAfter models.VPNClient
@@ -277,6 +303,39 @@ func TestRequestCreateVPNAllCreatesVLESSAndTrojanProfiles(t *testing.T) {
 	}
 	if len(publisher.messages) != 3 {
 		t.Fatalf("published messages = %d, want 3", len(publisher.messages))
+	}
+}
+
+func TestRequestCreateVPNActiveProfileReturnsExistingLinkWithoutJobs(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNServiceCreateData(t, db)
+	client := models.VPNClient{UserID: telegram.UserID, TelegramID: telegram.TgID, ClientCode: "cvn_active", Email: "cvn_active", VlessUUID: "vless-secret", TrojanPassword: "trojan-secret"}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatalf("create vpn client: %v", err)
+	}
+	profile := models.VPNProfile{VPNClientID: client.ID, Profile: jobsvc.VPNProfileVLESS, EndpointGroup: jobsvc.EndpointGroupDirect, Protocol: jobsvc.VPNProfileVLESS, Status: models.VPNProfileStatusActive, FinalLink: "vless://existing-link"}
+	if err := db.Create(&profile).Error; err != nil {
+		t.Fatalf("create active profile: %v", err)
+	}
+	publisher := &captureJobPublisher{}
+	svc := newTestVPNService(db, publisher)
+
+	result, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS})
+	if err != nil {
+		t.Fatalf("RequestCreateVPN active profile: %v", err)
+	}
+	if result.JobsCount != 0 || result.BatchID != 0 || result.JobID != 0 || result.FinalLink != "vless://existing-link" || result.Status != models.VPNProfileStatusActive {
+		t.Fatalf("result = %#v, want existing active link without jobs", result)
+	}
+	if len(publisher.messages) != 0 {
+		t.Fatalf("published messages = %d, want 0", len(publisher.messages))
+	}
+	var jobs int64
+	if err := db.Model(&models.Job{}).Count(&jobs).Error; err != nil {
+		t.Fatalf("count jobs: %v", err)
+	}
+	if jobs != 0 {
+		t.Fatalf("jobs = %d, want 0", jobs)
 	}
 }
 

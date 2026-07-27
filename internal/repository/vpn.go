@@ -142,6 +142,7 @@ func (r *VpnRepo) EnabledNodesByGroup(group string) ([]models.NodeState, error) 
 		Select("node_states.*").
 		Joins("JOIN server_registry ON server_registry.server_id = node_states.server_id").
 		Where("node_states.endpoint_group = ? AND node_states.expected_protocol = ? AND node_states.enabled = ?", group, protocolForEndpointGroup(group), true).
+		Where("server_registry.endpoint_group = ? AND server_registry.expected_protocol = ?", group, protocolForEndpointGroup(group)).
 		Where("node_states.server_id <> ''").
 		Where("server_registry.enabled = ? AND server_registry.archived_at IS NULL", true).
 		Order("node_states.server_id ASC, node_states.node_id ASC").
@@ -205,6 +206,18 @@ func (r *VpnRepo) EnsureProfileNodes(profile models.VPNProfile, nodes []models.N
 			var existing models.VPNProfileNode
 			err := tx.Where("vpn_profile_id = ? AND (server_id = ? OR node_id = ?)", profile.ID, serverID, serverID).Take(&existing).Error
 			if err == nil {
+				updates := map[string]any{
+					"server_id":  serverID,
+					"node_id":    serverID,
+					"protocol":   profile.Protocol,
+					"status":     models.VPNProfileNodeStatusPending,
+					"last_error": "",
+					"applied_at": nil,
+					"updated_at": time.Now(),
+				}
+				if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+					return err
+				}
 				continue
 			}
 			if !errors.Is(err, gorm.ErrRecordNotFound) {

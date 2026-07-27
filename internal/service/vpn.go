@@ -71,6 +71,8 @@ type RequestCreateVPNResult struct {
 	BatchID   uint
 	JobID     uint
 	JobsCount int
+	Status    string
+	FinalLink string
 }
 
 type VPNReadyNotification struct {
@@ -253,19 +255,20 @@ func (s *VPNService) RequestCreateVPN(input RequestCreateVPNInput) (*RequestCrea
 	}
 	logger.Info("telegram user found", "component", "vpn_service", "operation", "request_create_vpn", "telegram_id", input.TgID, "user_id", telegram.UserID)
 
-	logger.Info("vpn canonical client lookup started", "component", "vpn_service", "operation", "request_create_vpn", "user_id", telegram.UserID, "telegram_id", input.TgID)
+	logger.Info("vpn client lookup started", "component", "vpn_service", "operation", "request_create_vpn", "user_id", telegram.UserID, "telegram_id", input.TgID)
 	client, created, err := s.vpnRepo.GetOrCreateVPNClient(telegram.UserID, input.TgID)
 	if err != nil {
-		logger.Error("vpn canonical client lookup failed", err, "component", "vpn_service", "operation", "request_create_vpn", "user_id", telegram.UserID, "telegram_id", input.TgID, "reason", "db_error")
+		logger.Error("vpn client lookup failed", err, "component", "vpn_service", "operation", "request_create_vpn", "user_id", telegram.UserID, "telegram_id", input.TgID, "reason", "db_error")
 		return nil, err
 	}
 	if created {
-		logger.Info("vpn canonical client created", "component", "vpn_service", "operation", "request_create_vpn", "user_id", telegram.UserID, "telegram_id", input.TgID, "client_code", client.ClientCode)
+		logger.Info("vpn client created", "component", "vpn_service", "operation", "request_create_vpn", "user_id", telegram.UserID, "telegram_id", input.TgID, "client_code", client.ClientCode)
 	} else {
-		logger.Info("vpn canonical client reused", "component", "vpn_service", "operation", "request_create_vpn", "user_id", telegram.UserID, "telegram_id", input.TgID, "client_code", client.ClientCode)
+		logger.Info("vpn client reused", "component", "vpn_service", "operation", "request_create_vpn", "user_id", telegram.UserID, "telegram_id", input.TgID, "client_code", client.ClientCode)
 	}
 
 	result := &RequestCreateVPNResult{TgID: input.TgID, Protocol: strings.Join(profiles, ",")}
+	activeProfiles := 0
 	for _, profileName := range profiles {
 		profile, batchID, jobID, jobsCount, err := s.ensureVPNProfile(telegram.UserID, input.TgID, client, profileName)
 		if err != nil {
@@ -280,10 +283,23 @@ func (s *VPNService) RequestCreateVPN(input RequestCreateVPNInput) (*RequestCrea
 		result.JobsCount += jobsCount
 		if len(profiles) == 1 {
 			result.Protocol = profile.Profile
+			result.Status = profile.Status
+			result.FinalLink = profile.FinalLink
+		}
+		if profile.Status == models.VPNProfileStatusActive && strings.TrimSpace(profile.FinalLink) != "" {
+			activeProfiles++
 		}
 	}
-	if result.JobsCount == 0 || result.BatchID == 0 || result.JobID == 0 {
+	if result.JobsCount == 0 {
+		if activeProfiles == len(profiles) {
+			logger.Info("vpn create request returned existing link", "component", "vpn_service", "operation", "request_create_vpn", "telegram_id", input.TgID, "profile", result.Protocol, "reason", "profile_already_active")
+			return result, nil
+		}
 		logger.Warn("vpn create request not queued", "component", "vpn_service", "operation", "request_create_vpn", "telegram_id", input.TgID, "profile", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID, "jobs_count", result.JobsCount, "reason", "no_jobs_created")
+		return nil, ErrNoJobsQueued
+	}
+	if result.BatchID == 0 || result.JobID == 0 {
+		logger.Warn("vpn create request not queued", "component", "vpn_service", "operation", "request_create_vpn", "telegram_id", input.TgID, "profile", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID, "jobs_count", result.JobsCount, "reason", "invalid_job_ids")
 		return nil, ErrNoJobsQueued
 	}
 	logger.Info("vpn create request queued", "component", "vpn_service", "operation", "request_create_vpn", "telegram_id", input.TgID, "profile", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID, "jobs_count", result.JobsCount)
@@ -305,33 +321,25 @@ func requestedVPNProfiles(protocol string) ([]string, error) {
 
 func (s *VPNService) ensureVPNProfile(userID uint, tgID int64, client models.VPNClient, profileName string) (models.VPNProfile, uint, uint, int, error) {
 	endpointGroup := endpointGroupForVPNProfile(profileName)
-	logger.Info("vpn profile lookup started", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup)
+	expectedProtocol := profileName
+	logger.Info("vpn profile lookup started", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "protocol", expectedProtocol)
 	group, err := s.vpnRepo.GetOrCreateEndpointGroup(endpointGroup)
 	if err != nil {
-		logger.Error("vpn endpoint group lookup failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup)
+		logger.Error("vpn endpoint group lookup failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup)
 		return models.VPNProfile{}, 0, 0, 0, err
 	}
-
-	expectedProtocol := group.Protocol
-	if strings.TrimSpace(expectedProtocol) == "" {
-		expectedProtocol = profileName
+	if strings.TrimSpace(group.Protocol) != "" {
+		expectedProtocol = strings.TrimSpace(group.Protocol)
 	}
-	logger.Info("vpn profile target servers lookup started", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "expected_protocol", expectedProtocol)
-	nodes, err := s.vpnRepo.EnabledNodesByGroup(endpointGroup)
-	if err != nil {
-		logger.Error("vpn profile target servers lookup failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "expected_protocol", expectedProtocol)
-		return models.VPNProfile{}, 0, 0, 0, err
-	}
-	logger.Info("vpn profile target servers found", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "expected_protocol", expectedProtocol, "count", len(nodes))
 
 	existing, err := s.vpnRepo.GetProfile(client.ID, profileName)
 	profileCreated := false
 	var profile models.VPNProfile
 	if err == nil {
 		profile = existing
-		logger.Info("vpn profile found", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "profile_id", profile.ID, "status", profile.Status)
+		logger.Info("vpn profile reused", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "profile_id", profile.ID, "status", profile.Status)
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		logger.Info("vpn profile not found", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "reason", "vpn_profiles_not_found")
+		logger.Info("vpn profile not found", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "reason", "vpn_profiles_not_found")
 		profile = models.VPNProfile{
 			VPNClientID:   client.ID,
 			Profile:       profileName,
@@ -342,58 +350,68 @@ func (s *VPNService) ensureVPNProfile(userID uint, tgID int64, client models.VPN
 		}
 		profile, err = s.vpnRepo.CreateProfileWithNodes(profile, nil)
 		if err != nil {
-			logger.Error("vpn profile create failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup)
+			logger.Error("vpn profile create failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup)
 			return models.VPNProfile{}, 0, 0, 0, err
 		}
 		profileCreated = true
-		logger.Info("vpn profile created", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "status", profile.Status)
+		logger.Info("vpn profile created", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "profile_id", profile.ID, "status", profile.Status)
 	} else {
-		logger.Error("vpn profile lookup failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "reason", "db_error")
+		logger.Error("vpn profile lookup failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "reason", "db_error")
 		return models.VPNProfile{}, 0, 0, 0, err
 	}
 
+	if profile.Status == models.VPNProfileStatusActive && strings.TrimSpace(profile.FinalLink) != "" {
+		logger.Info("vpn profile reused", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "profile_id", profile.ID, "status", profile.Status, "reason", "profile_already_active")
+		return profile, 0, 0, 0, nil
+	}
+
+	logger.Info("vpn provisioning rebuild started", "component", "vpn_service", "operation", "ensure_vpn_profile", "profile_id", profile.ID, "profile", profileName, "reason", "profile_not_active")
+	logger.Info("vpn target servers lookup started", "component", "vpn_service", "operation", "ensure_vpn_profile", "endpoint_group", endpointGroup, "expected_protocol", expectedProtocol)
+	nodes, err := s.vpnRepo.EnabledNodesByGroup(endpointGroup)
+	if err != nil {
+		logger.Error("vpn target servers lookup failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "profile_id", profile.ID, "endpoint_group", endpointGroup, "expected_protocol", expectedProtocol)
+		return models.VPNProfile{}, 0, 0, 0, err
+	}
+	logger.Info("vpn target servers found", "component", "vpn_service", "operation", "ensure_vpn_profile", "endpoint_group", endpointGroup, "expected_protocol", expectedProtocol, "count", len(nodes))
+
 	if len(nodes) == 0 {
-		lastError := "no matching servers"
+		lastError := "no_matching_servers"
 		_ = s.vpnRepo.UpdateProfileStatus(profile.ID, models.VPNProfileStatusFailed, lastError)
-		logger.Warn("vpn profile has no matching servers", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "expected_protocol", expectedProtocol, "profile_id", profile.ID, "reason", "no_matching_servers")
+		logger.Warn("vpn profile has no matching servers", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "expected_protocol", expectedProtocol, "profile_id", profile.ID, "reason", lastError)
+		profile.Status = models.VPNProfileStatusFailed
+		profile.LastError = lastError
 		return profile, 0, 0, 0, ErrNoMatchingServers
 	}
 
-	profile, createdNodes, err := s.vpnRepo.EnsureProfileNodes(profile, nodes)
+	profile, _, err = s.vpnRepo.EnsureProfileNodes(profile, nodes)
 	if err != nil {
-		logger.Error("vpn profile nodes ensure failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID)
+		logger.Error("vpn profile nodes ensure failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "profile_id", profile.ID)
 		return models.VPNProfile{}, 0, 0, 0, err
 	}
-	for _, node := range createdNodes {
-		logger.Info("vpn profile node created", "component", "vpn_service", "operation", "ensure_vpn_profile", "profile_id", profile.ID, "server_id", node.ServerID, "profile", profileName, "target_group", endpointGroup)
+	for _, node := range profile.Nodes {
+		logger.Info("vpn profile node pending", "component", "vpn_service", "operation", "ensure_vpn_profile", "profile_id", profile.ID, "server_id", node.ServerID, "profile", profileName, "endpoint_group", endpointGroup)
 	}
-	if profileCreated && len(createdNodes) == 0 {
+	if profileCreated && len(profile.Nodes) == 0 {
 		logger.Warn("vpn profile created without nodes", "component", "vpn_service", "operation", "ensure_vpn_profile", "profile_id", profile.ID, "profile", profileName, "reason", "no_profile_nodes_created")
 	}
 
 	if s.jobs == nil {
-		logger.Error("vpn create job build failed", nil, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "reason", "jobs_service_not_configured")
+		logger.Error("vpn create job build failed", nil, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "profile_id", profile.ID, "reason", "jobs_service_not_configured")
 		return models.VPNProfile{}, 0, 0, 0, errors.New("jobs service is not configured")
 	}
 
-	existingJobTargets, err := s.jobs.ExistingCreateClientTargets(profile.ID)
-	if err != nil {
-		return models.VPNProfile{}, 0, 0, 0, err
-	}
-	targetServerIDs := targetServerIDsForProfileNodes(profile.Nodes, existingJobTargets)
+	targetServerIDs := targetServerIDsForProfileNodes(profile.Nodes)
 	if len(targetServerIDs) == 0 {
-		reason := "profile_has_no_queued_targets"
-		if profile.Status == models.VPNProfileStatusPending {
-			reason = "pending_profile_already_has_jobs"
-		}
-		logger.Warn("vpn create job build skipped", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "status", profile.Status, "reason", reason)
-		return profile, 0, 0, 0, nil
+		logger.Warn("vpn create job build skipped", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "profile_id", profile.ID, "status", profile.Status, "reason", "profile_has_no_targets")
+		return profile, 0, 0, 0, ErrNoJobsQueued
 	}
-	if profile.Status == models.VPNProfileStatusPending && len(existingJobTargets) == 0 && !profileCreated {
-		logger.Warn("vpn profile pending without jobs", "component", "vpn_service", "operation", "ensure_vpn_profile", "profile_id", profile.ID, "profile", profileName, "reason", "pending_without_jobs")
+	if superseded, err := s.jobs.SupersedeCreateClientJobs(profile.ID, targetServerIDs); err != nil {
+		return models.VPNProfile{}, 0, 0, 0, err
+	} else if superseded > 0 {
+		logger.Info("vpn create jobs superseded", "component", "vpn_service", "operation", "ensure_vpn_profile", "profile_id", profile.ID, "jobs_count", superseded, "reason", "rebuild_provisioning_plan")
 	}
 
-	logger.Info("vpn create job build started", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(profile.Nodes), "target_servers_count", len(targetServerIDs))
+	logger.Info("vpn create job build started", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(profile.Nodes), "target_servers_count", len(targetServerIDs))
 	batch, jobs, err := s.jobs.CreateUserConfig(jobsvc.CreateUserConfigInput{
 		ProfileID:       profile.ID,
 		VPNClientID:     client.ID,
@@ -410,20 +428,25 @@ func (s *VPNService) ensureVPNProfile(userID uint, tgID int64, client models.VPN
 	})
 	if err != nil {
 		_ = s.vpnRepo.TouchProfilePublishError(profile.ID, err.Error())
-		logger.Error("vpn create job publish failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(profile.Nodes))
+		logger.Error("vpn create job publish failed", err, "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "profile_id", profile.ID, "nodes_count", len(profile.Nodes))
 		return models.VPNProfile{}, 0, 0, 0, &VPNFlowError{Kind: VPNErrorKindJobs, Err: err}
 	}
 	if len(jobs) == 0 || batch == nil || batch.ID == 0 {
-		logger.Warn("vpn create jobs missing after build", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "reason", "jobs_not_created")
+		logger.Warn("vpn create jobs missing after build", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "profile_id", profile.ID, "reason", "jobs_not_created")
 		return profile, 0, 0, 0, ErrNoJobsQueued
 	}
 
+	if err := s.vpnRepo.UpdateProfileStatus(profile.ID, models.VPNProfileStatusPending, ""); err != nil {
+		return models.VPNProfile{}, 0, 0, 0, err
+	}
+	profile.Status = models.VPNProfileStatusPending
+	profile.LastError = ""
 	jobID := jobs[0].ID
-	logger.Info("vpn create job published", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "target_group", endpointGroup, "profile_id", profile.ID, "batch_id", batch.ID, "job_id", jobID, "jobs_count", len(jobs))
+	logger.Info("vpn create job published", "component", "vpn_service", "operation", "ensure_vpn_profile", "user_id", userID, "telegram_id", tgID, "client_code", client.ClientCode, "profile", profileName, "endpoint_group", endpointGroup, "profile_id", profile.ID, "batch_id", batch.ID, "job_id", jobID, "jobs_count", len(jobs))
 	return profile, batch.ID, jobID, len(jobs), nil
 }
 
-func targetServerIDsForProfileNodes(nodes []models.VPNProfileNode, existingJobTargets map[string]struct{}) []string {
+func targetServerIDsForProfileNodes(nodes []models.VPNProfileNode) []string {
 	ids := []string{}
 	seen := map[string]struct{}{}
 	for _, node := range nodes {
@@ -431,10 +454,7 @@ func targetServerIDsForProfileNodes(nodes []models.VPNProfileNode, existingJobTa
 		if serverID == "" {
 			serverID = strings.TrimSpace(node.NodeID)
 		}
-		if serverID == "" || node.Status == models.VPNProfileNodeStatusSuccess {
-			continue
-		}
-		if _, ok := existingJobTargets[serverID]; ok {
+		if serverID == "" {
 			continue
 		}
 		if _, ok := seen[serverID]; ok {
@@ -836,31 +856,31 @@ func (s *VPNService) GetLinkOverview(tgID int64) (LinkOverviewResult, error) {
 }
 
 func (s *VPNService) applyCanonicalLinkProfiles(overview *LinkOverviewResult, userID uint) (bool, error) {
-	logger.Info("canonical vpn client lookup started", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID)
+	logger.Info("vpn client lookup started", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID)
 	client, err := s.vpnRepo.GetVPNClientByUserID(userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Warn("canonical vpn client not_found", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "reason", "canonical_client_not_found")
+			logger.Warn("vpn client not_found", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "reason", "vpn_client_not_found")
 			return false, nil
 		}
-		logger.Error("canonical vpn client lookup failed", err, "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "reason", "db_error")
+		logger.Error("vpn client lookup failed", err, "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "reason", "db_error")
 		return false, err
 	}
 	overview.ClientID = client.ID
 	overview.ClientCode = client.ClientCode
-	logger.Info("canonical vpn client found", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode)
+	logger.Info("vpn client found", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode)
 
-	logger.Info("canonical vpn profiles lookup started", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode)
+	logger.Info("vpn profiles lookup started", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode)
 	profiles, err := s.vpnRepo.ListProfilesByClientID(client.ID)
 	if err != nil {
-		logger.Error("canonical vpn profiles lookup failed", err, "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode, "reason", "db_error")
+		logger.Error("vpn profiles lookup failed", err, "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode, "reason", "db_error")
 		return true, err
 	}
 	if len(profiles) == 0 {
-		logger.Warn("canonical vpn profiles not_found", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode, "reason", "vpn_profiles_not_found")
+		logger.Warn("vpn profiles not_found", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode, "reason", "vpn_profiles_not_found")
 		return false, nil
 	}
-	logger.Info("canonical vpn profiles found", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode, "profiles_count", len(profiles))
+	logger.Info("vpn profiles found", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode, "profiles_count", len(profiles))
 
 	hasSupportedProfile := false
 	for _, profile := range profiles {
@@ -871,7 +891,7 @@ func (s *VPNService) applyCanonicalLinkProfiles(overview *LinkOverviewResult, us
 		hasSupportedProfile = true
 		view := canonicalLinkProfileView(profile)
 		overview.Profiles[name] = view
-		logger.Info("canonical vpn profile evaluated", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode, "protocol", name, "profile_id", profile.ID, "status", view.Status, "has_final_link", strings.TrimSpace(view.FinalLink) != "", "usable", view.Usable, "reason", view.Reason)
+		logger.Info("vpn profile evaluated", "component", "vpn_service", "operation", "link_overview", "tg_id", overview.TgID, "user_id", userID, "client_code", client.ClientCode, "protocol", name, "profile_id", profile.ID, "status", view.Status, "has_final_link", strings.TrimSpace(view.FinalLink) != "", "usable", view.Usable, "reason", view.Reason)
 	}
 	return hasSupportedProfile, nil
 }
@@ -933,12 +953,12 @@ func (s *VPNService) GetProtocolLink(tgID int64, protocol string) (ProtocolLinkR
 	profile := overview.Profiles[protocol]
 	result := ProtocolLinkResult{TgID: tgID, Protocol: protocol, Status: profile.Status, Exists: profile.Exists, Usable: profile.Usable, Link: profile.FinalLink}
 	if profile.Source == "canonical" && profile.Usable && strings.TrimSpace(profile.FinalLink) != "" {
-		logger.Info("canonical protocol link found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "status", profile.Status)
+		logger.Info("vpn protocol link found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "status", profile.Status)
 	} else {
-		logger.Info("canonical protocol link not_found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "status", profile.Status, "reason", profile.Reason)
-		logger.Info("legacy protocol fallback started", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "protocol", protocol)
+		logger.Info("vpn protocol link not_found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "client_code", overview.ClientCode, "protocol", protocol, "status", profile.Status, "reason", profile.Reason)
+		logger.Info("legacy protocol fallback started", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "protocol", protocol, "reason", "legacy_vpn_fallback")
 		if profile.Source == "legacy" && profile.Usable && strings.TrimSpace(profile.FinalLink) != "" {
-			logger.Info("legacy protocol link found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "protocol", protocol)
+			logger.Info("legacy protocol link found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "protocol", protocol, "reason", "legacy_vpn_fallback")
 		} else {
 			logger.Warn("legacy protocol link not_found", "component", "vpn_service", "operation", "protocol_link", "tg_id", tgID, "user_id", overview.UserID, "protocol", protocol, "reason", profile.Reason)
 		}

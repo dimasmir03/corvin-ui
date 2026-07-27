@@ -23,7 +23,7 @@ const (
 	VPNProfileVLESS  = "vless"
 	VPNProfileTrojan = "trojan"
 
-	BatchTypeCreateUserConfig = "create_user_config"
+	BatchTypeCreateUserConfig = "create_vpn"
 	BatchTypeProbeNode        = "probe_node"
 	BatchTypeCollectNodeStats = "collect_node_stats"
 
@@ -42,6 +42,7 @@ const (
 	JobStatusSuccess    = models.JobStatusSuccess
 	JobStatusFailed     = models.JobStatusFailed
 	JobStatusRetrying   = models.JobStatusRetrying
+	JobStatusSuperseded = models.JobStatusSuperseded
 )
 
 type Service struct {
@@ -382,6 +383,13 @@ func (s *Service) ExistingCreateClientTargets(profileID uint) (map[string]struct
 	return s.jobsRepo.ExistingCreateClientTargets(profileID)
 }
 
+func (s *Service) SupersedeCreateClientJobs(profileID uint, targetServerIDs []string) (int64, error) {
+	if profileID == 0 || len(targetServerIDs) == 0 {
+		return 0, nil
+	}
+	return s.jobsRepo.SupersedeCreateClientJobs(profileID, targetServerIDs)
+}
+
 func (s *Service) ApplyResult(event broker.JobResultEvent) (*models.JobBatch, *models.Job, error) {
 	logger.Info("job_result apply started", "component", "jobsvc", "operation", "apply_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID, "status", event.Status)
 	job, err := s.jobsRepo.GetJob(event.JobID)
@@ -482,7 +490,7 @@ func CalculateBatchStatus(jobs []models.Job) string {
 		switch job.Status {
 		case JobStatusSuccess:
 			successCount++
-		case JobStatusFailed:
+		case JobStatusFailed, JobStatusSuperseded:
 			failedCount++
 		default:
 			activeCount++
