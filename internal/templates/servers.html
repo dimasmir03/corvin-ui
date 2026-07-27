@@ -3,6 +3,7 @@
    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
       <h1 class="mb-0">{{.Title}}</h1>
       <button type="button" class="btn btn-outline-secondary" @click="loadAll">Reload</button>
+      <button type="button" class="btn btn-outline-danger" @click="archiveStaleDiscovered">Archive stale discovered</button>
    </div>
 
    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
@@ -51,54 +52,97 @@
          <table class="table table-striped table-sm align-middle">
             <thead>
                <tr>
-                  <th>Server ID</th>
                   <th>Name</th>
+                  <th>Server ID</th>
+                  <th>Group</th>
                   <th>Expected</th>
                   <th>Reported</th>
-                  <th>Source</th>
+                  <th>Managed inbound</th>
+                  <th>Inbounds</th>
                   <th>Agent</th>
-                  <th>3x-ui</th>
+                  <th>X-UI</th>
                   <th>Clients</th>
                   <th>Online</th>
-                  <th>Traffic</th>
-                  <th>Inbound</th>
-                  <th>Last Seen</th>
-                  <th>Last Snapshot</th>
+                  <th>Last snapshot</th>
                   <th>Error</th>
                   <th>Actions</th>
                </tr>
             </thead>
             <tbody>
-               <tr v-for="node in group.nodes" :key="serverID(node)">
-                  <td>
-                     <div>[[ serverID(node) ]]</div>
-                     <small class="text-muted">[[ node.agent_version || "-" ]]</small>
-                  </td>
-                  <td>[[ node.display_name || "-" ]]</td>
-                  <td>[[ node.expected_protocol || node.protocol || "unknown" ]]</td>
-                  <td>[[ node.reported_protocol || node.protocol || "unknown" ]]</td>
-                  <td><span class="badge text-bg-info">[[ node.source || "unknown" ]]</span></td>
-                  <td><span class="badge" :class="agentStatusClass(agentStatus(node))">[[ agentStatus(node) ]]</span></td>
-                  <td><span class="badge" :class="xuiClass(xuiStatus(node))">[[ xuiStatus(node) ]]</span></td>
-                  <td>[[ node.clients_count || 0 ]]</td>
-                  <td>[[ node.online_count || 0 ]]</td>
-                  <td>
-                     <div>↑ [[ formatBytes(node.traffic_up) ]]</div>
-                     <div>↓ [[ formatBytes(node.traffic_down) ]]</div>
-                  </td>
-                  <td>
-                     <div>[[ node.inbound_id || "-" ]]</div>
-                     <small class="text-muted">[[ node.inbound_remark || "" ]]</small>
-                  </td>
-                  <td>[[ formatDate(node.last_seen) ]]</td>
-                  <td>[[ formatDate(node.last_snapshot_at) ]]</td>
-                  <td class="text-danger">[[ node.last_error || "" ]]</td>
-                  <td>
-                     <button type="button" class="btn btn-sm btn-outline-primary" :disabled="refreshing[serverID(node)]" @click="refreshNode(serverID(node))">
-                        [[ refreshing[serverID(node)] ? "Queued" : "Обновить" ]]
-                     </button>
-                  </td>
-               </tr>
+               <template v-for="node in group.nodes">
+                  <tr :key="serverID(node)">
+                     <td>
+                        <div class="fw-semibold">[[ node.display_name || "-" ]]</div>
+                        <small class="text-muted">[[ node.source || "unknown" ]]</small>
+                     </td>
+                     <td>
+                        <div>[[ serverID(node) ]]</div>
+                        <small class="text-muted">[[ node.agent_version || "-" ]]</small>
+                     </td>
+                     <td><span class="badge text-bg-info">[[ node.endpoint_group || "unknown" ]]</span></td>
+                     <td>[[ node.expected_protocol || node.protocol || "unknown" ]]</td>
+                     <td>[[ node.reported_protocol || node.protocol || "unknown" ]]</td>
+                     <td>
+                        <div>[[ managedInboundLabel(node) ]]</div>
+                        <small class="text-muted" v-if="extraProtocols(node)">extra: [[ extraProtocols(node) ]]</small>
+                     </td>
+                     <td>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @click="toggleInbounds(serverID(node))">
+                           [[ node.inbounds_count || inboundList(node).length || 0 ]] inbounds
+                        </button>
+                     </td>
+                     <td><span class="badge" :class="agentStatusClass(agentStatus(node))">[[ agentStatus(node) ]]</span></td>
+                     <td><span class="badge" :class="xuiClass(xuiStatus(node))">[[ xuiStatus(node) ]]</span></td>
+                     <td>[[ node.clients_count || 0 ]]</td>
+                     <td>[[ node.online_count || 0 ]]</td>
+                     <td>[[ formatDate(node.last_snapshot_at) ]]</td>
+                     <td class="text-danger">[[ displayError(node) ]]</td>
+                     <td>
+                        <div class="btn-group btn-group-sm" role="group">
+                           <button type="button" class="btn btn-outline-primary" :disabled="refreshing[serverID(node)]" @click="refreshNode(serverID(node))">
+                              [[ refreshing[serverID(node)] ? "Queued" : "Refresh" ]]
+                           </button>
+                           <button type="button" class="btn btn-outline-warning" v-if="node.enabled" @click="serverAction(node, 'disable')">Disable</button>
+                           <button type="button" class="btn btn-outline-success" v-else @click="serverAction(node, 'enable')">Enable</button>
+                           <button type="button" class="btn btn-outline-danger" @click="serverAction(node, 'archive')">Archive</button>
+                           <button type="button" class="btn btn-outline-success" v-if="node.archived_at" @click="serverAction(node, 'restore')">Restore</button>
+                        </div>
+                     </td>
+                  </tr>
+                  <tr v-if="expanded[serverID(node)]" :key="serverID(node) + '-inbounds'" class="table-light">
+                     <td colspan="14">
+                        <table class="table table-sm mb-0 align-middle">
+                           <thead>
+                              <tr>
+                                 <th>ID</th>
+                                 <th>Remark</th>
+                                 <th>Protocol</th>
+                                 <th>Port</th>
+                                 <th>Managed</th>
+                                 <th>Enabled</th>
+                                 <th>Clients</th>
+                                 <th>Online</th>
+                              </tr>
+                           </thead>
+                           <tbody>
+                              <tr v-for="inbound in inboundList(node)" :key="serverID(node) + '-' + inbound.inbound_id">
+                                 <td>#[[ inbound.inbound_id ]]</td>
+                                 <td>[[ inbound.remark || "-" ]]</td>
+                                 <td><span class="badge text-bg-secondary">[[ inbound.protocol || "unknown" ]]</span></td>
+                                 <td>[[ inbound.port || "-" ]]</td>
+                                 <td>[[ inbound.is_managed ? "yes" : "no" ]]</td>
+                                 <td>[[ inbound.enabled === null || inbound.enabled === undefined ? "-" : (inbound.enabled ? "yes" : "no") ]]</td>
+                                 <td>[[ inbound.clients_count || 0 ]]</td>
+                                 <td>[[ inbound.online_count || 0 ]]</td>
+                              </tr>
+                              <tr v-if="inboundList(node).length === 0">
+                                 <td colspan="8" class="text-muted">No inbound data</td>
+                              </tr>
+                           </tbody>
+                        </table>
+                     </td>
+                  </tr>
+               </template>
             </tbody>
          </table>
       </section>
@@ -114,6 +158,7 @@
          return {
             nodes: [],
             refreshing: {},
+            expanded: {},
             notice: "",
             error: "",
             groupFilter: "all",
@@ -123,8 +168,8 @@
             xuiStatusFilter: "all",
             sourceFilter: "all",
             groupFilters: ["all", "direct", "ru", "foreign", "unknown", "other"],
-            protocolFilters: ["all", "vless", "trojan", "unknown"],
-            agentStatusFilters: ["all", "online", "stale", "offline", "never_seen"],
+            protocolFilters: ["all", "vless", "trojan", "mtproto", "unknown"],
+            agentStatusFilters: ["all", "online", "stale", "offline", "lost", "abandoned", "never_seen"],
             xuiStatusFilters: ["all", "ok", "error", "unknown"],
             sourceFilters: ["all", "discovered", "registered", "migrated"],
          };
@@ -183,6 +228,64 @@
          serverID(node) {
             return node.server_id || node.node_id || "-";
          },
+         toggleInbounds(serverID) {
+            this.$set(this.expanded, serverID, !this.expanded[serverID]);
+         },
+         inboundList(node) {
+            return Array.isArray(node.inbounds) ? node.inbounds : [];
+         },
+         managedInbound(node) {
+            return this.inboundList(node).find((inbound) => inbound.is_managed) || null;
+         },
+         managedInboundLabel(node) {
+            const inbound = this.managedInbound(node);
+            if (inbound) {
+               const remark = inbound.remark ? ` ${inbound.remark}` : "";
+               return `#${inbound.inbound_id}${remark} / ${inbound.protocol || "unknown"}`;
+            }
+            if (node.inbound_id) {
+               const remark = node.inbound_remark ? ` ${node.inbound_remark}` : "";
+               return `#${node.inbound_id}${remark} / ${node.reported_protocol || node.protocol || "unknown"}`;
+            }
+            return "-";
+         },
+         extraProtocols(node) {
+            const managed = this.managedInbound(node);
+            const managedID = managed ? managed.inbound_id : node.managed_inbound_id;
+            const protocols = [...new Set(this.inboundList(node)
+               .filter((inbound) => inbound.inbound_id !== managedID)
+               .map((inbound) => inbound.protocol || "unknown"))];
+            return protocols.join(", ");
+         },
+         displayError(node) {
+            const text = node.last_error || "";
+            if (text.toLowerCase().includes("multiple inbounds") && this.managedInbound(node)) return "";
+            return text;
+         },
+         async archiveStaleDiscovered() {
+            this.notice = "";
+            this.error = "";
+            try {
+               const response = await axios.post("/api/servers/archive-stale-discovered");
+               const count = response.data.obj ? response.data.obj.archived_count : 0;
+               this.notice = `Archived ${count} stale discovered servers`;
+               this.loadAll();
+            } catch (error) {
+               this.error = String(error);
+            }
+         },
+         async serverAction(node, action) {
+            const id = this.serverID(node);
+            this.notice = "";
+            this.error = "";
+            try {
+               await axios.post(`/api/servers/${encodeURIComponent(id)}/${action}`);
+               this.notice = `${action} completed for ${id}`;
+               this.loadAll();
+            } catch (error) {
+               this.error = String(error);
+            }
+         },
          async refreshNode(serverID) {
             this.$set(this.refreshing, serverID, true);
             this.notice = "";
@@ -215,6 +318,7 @@
             if (status === "online") return "text-bg-success";
             if (status === "stale") return "text-bg-warning";
             if (status === "offline") return "text-bg-danger";
+            if (status === "lost" || status === "abandoned") return "text-bg-dark";
             return "text-bg-secondary";
          },
          xuiStatus(node) {

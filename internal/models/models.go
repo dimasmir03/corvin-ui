@@ -140,6 +140,22 @@ type ServerRegistry struct {
 
 func (ServerRegistry) TableName() string { return "server_registry" }
 
+type ServerInbound struct {
+	ID           uint      `gorm:"primary_key;autoIncrement" json:"id"`
+	ServerID     string    `gorm:"not null;index;uniqueIndex:idx_server_inbound_unique" json:"server_id"`
+	InboundID    int64     `gorm:"not null;uniqueIndex:idx_server_inbound_unique" json:"inbound_id"`
+	Remark       string    `json:"remark"`
+	Protocol     string    `gorm:"not null;default:unknown;index" json:"protocol"`
+	Port         *int64    `json:"port,omitempty"`
+	Enabled      *bool     `json:"enabled,omitempty"`
+	IsManaged    bool      `gorm:"not null;default:false;index" json:"is_managed"`
+	ClientsCount int64     `gorm:"not null;default:0" json:"clients_count"`
+	OnlineCount  int64     `gorm:"not null;default:0" json:"online_count"`
+	LastSeenAt   time.Time `gorm:"not null;index" json:"last_seen_at"`
+	CreatedAt    time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
 type NodeStateSnapshot struct {
 	ID               uint           `gorm:"primary_key;autoIncrement" json:"id"`
 	ServerID         string         `gorm:"not null;index" json:"server_id"`

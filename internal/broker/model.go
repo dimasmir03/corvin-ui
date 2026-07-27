@@ -147,43 +147,56 @@ func flexibleUint(raw json.RawMessage) uint {
 	return uint(parsed)
 }
 
+type NodeSnapshotInbound struct {
+	InboundID    int64  `json:"inbound_id"`
+	Remark       string `json:"remark,omitempty"`
+	Protocol     string `json:"protocol,omitempty"`
+	Port         *int64 `json:"port,omitempty"`
+	Enabled      *bool  `json:"enabled,omitempty"`
+	ClientsCount int64  `json:"clients_count,omitempty"`
+	OnlineCount  int64  `json:"online_count,omitempty"`
+	IsManaged    bool   `json:"is_managed,omitempty"`
+}
+
 type NodeSnapshotEvent struct {
-	EventType     string    `json:"event_type"`
-	ServerID      string    `json:"server_id"`
-	NodeID        string    `json:"node_id,omitempty"`
-	EndpointGroup string    `json:"endpoint_group"`
-	Protocol      string    `json:"protocol"`
-	AgentVersion  string    `json:"agent_version,omitempty"`
-	AgentAlive    bool      `json:"agent_alive"`
-	InboundID     *int      `json:"inbound_id,omitempty"`
-	InboundRemark string    `json:"inbound_remark,omitempty"`
-	XUIAvailable  bool      `json:"xui_available"`
-	ClientsCount  int       `json:"clients_count"`
-	OnlineCount   int       `json:"online_count"`
-	TrafficUp     int64     `json:"traffic_up"`
-	TrafficDown   int64     `json:"traffic_down"`
-	LastError     string    `json:"last_error,omitempty"`
-	SentAt        time.Time `json:"sent_at"`
+	EventType     string                `json:"event_type"`
+	ServerID      string                `json:"server_id"`
+	NodeID        string                `json:"node_id,omitempty"`
+	EndpointGroup string                `json:"endpoint_group"`
+	Protocol      string                `json:"protocol"`
+	AgentVersion  string                `json:"agent_version,omitempty"`
+	AgentAlive    bool                  `json:"agent_alive"`
+	InboundID     *int                  `json:"inbound_id,omitempty"`
+	InboundRemark string                `json:"inbound_remark,omitempty"`
+	Inbounds      []NodeSnapshotInbound `json:"inbounds,omitempty"`
+	XUIAvailable  bool                  `json:"xui_available"`
+	ClientsCount  int                   `json:"clients_count"`
+	OnlineCount   int                   `json:"online_count"`
+	TrafficUp     int64                 `json:"traffic_up"`
+	TrafficDown   int64                 `json:"traffic_down"`
+	LastError     string                `json:"last_error,omitempty"`
+	SentAt        time.Time             `json:"sent_at"`
 }
 
 func (e *NodeSnapshotEvent) UnmarshalJSON(data []byte) error {
 	var aux struct {
-		EventType     string          `json:"event_type"`
-		NodeID        json.RawMessage `json:"node_id"`
-		ServerID      json.RawMessage `json:"server_id"`
-		EndpointGroup string          `json:"endpoint_group"`
-		Protocol      string          `json:"protocol"`
-		AgentVersion  string          `json:"agent_version,omitempty"`
-		AgentAlive    bool            `json:"agent_alive"`
-		InboundID     *int            `json:"inbound_id,omitempty"`
-		InboundRemark string          `json:"inbound_remark,omitempty"`
-		XUIAvailable  bool            `json:"xui_available"`
-		ClientsCount  int             `json:"clients_count"`
-		OnlineCount   int             `json:"online_count"`
-		TrafficUp     int64           `json:"traffic_up"`
-		TrafficDown   int64           `json:"traffic_down"`
-		LastError     string          `json:"last_error,omitempty"`
-		SentAt        time.Time       `json:"sent_at"`
+		EventType     string                `json:"event_type"`
+		NodeID        json.RawMessage       `json:"node_id"`
+		ServerID      json.RawMessage       `json:"server_id"`
+		EndpointGroup string                `json:"endpoint_group"`
+		Protocol      string                `json:"protocol"`
+		AgentVersion  string                `json:"agent_version,omitempty"`
+		AgentAlive    bool                  `json:"agent_alive"`
+		InboundID     *int                  `json:"inbound_id,omitempty"`
+		InboundRemark string                `json:"inbound_remark,omitempty"`
+		Inbounds      []NodeSnapshotInbound `json:"inbounds,omitempty"`
+		XUIAvailable  bool                  `json:"xui_available"`
+		ClientsCount  int                   `json:"clients_count"`
+		OnlineCount   int                   `json:"online_count"`
+		TrafficUp     int64                 `json:"traffic_up"`
+		TrafficDown   int64                 `json:"traffic_down"`
+		LastError     string                `json:"last_error,omitempty"`
+		SentAt        time.Time             `json:"sent_at"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -200,6 +213,7 @@ func (e *NodeSnapshotEvent) UnmarshalJSON(data []byte) error {
 	e.AgentAlive = aux.AgentAlive
 	e.InboundID = aux.InboundID
 	e.InboundRemark = aux.InboundRemark
+	e.Inbounds = aux.Inbounds
 	e.XUIAvailable = aux.XUIAvailable
 	e.ClientsCount = aux.ClientsCount
 	e.OnlineCount = aux.OnlineCount

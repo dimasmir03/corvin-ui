@@ -15,6 +15,17 @@ type NodeRepo struct {
 
 var ErrStaleNodeSnapshot = errors.New("stale node snapshot")
 
+type NodeSnapshotInboundUpdate struct {
+	InboundID    int64
+	Remark       string
+	Protocol     string
+	Port         *int64
+	Enabled      *bool
+	IsManaged    bool
+	ClientsCount int64
+	OnlineCount  int64
+}
+
 type NodeSnapshotUpdate struct {
 	ServerID         string
 	DisplayName      string
@@ -26,6 +37,7 @@ type NodeSnapshotUpdate struct {
 	XUIAvailable     bool
 	InboundID        *int
 	InboundRemark    string
+	Inbounds         []NodeSnapshotInboundUpdate
 	ClientsCount     int
 	OnlineCount      int
 	TrafficUp        int64
@@ -39,6 +51,7 @@ type NodeSnapshotUpdate struct {
 type NodeRecord struct {
 	Registry models.ServerRegistry
 	State    *models.NodeState
+	Inbounds []models.ServerInbound
 }
 
 func NewNodeRepo(db *gorm.DB) *NodeRepo {
@@ -49,7 +62,7 @@ func (r *NodeRepo) ListRecords(includeArchived bool) ([]NodeRecord, error) {
 	var registries []models.ServerRegistry
 	query := r.DB.Order("endpoint_group ASC, server_id ASC")
 	if !includeArchived {
-		query = query.Where("archived_at IS NULL AND enabled = ?", true)
+		query = query.Where("archived_at IS NULL")
 	}
 	if err := query.Find(&registries).Error; err != nil {
 		return nil, err
@@ -59,14 +72,18 @@ func (r *NodeRepo) ListRecords(includeArchived bool) ([]NodeRecord, error) {
 	for _, registry := range registries {
 		var state models.NodeState
 		err := r.DB.Where("server_id = ?", registry.ServerID).Take(&state).Error
+		inbounds, inboundErr := r.ListInbounds(registry.ServerID)
+		if inboundErr != nil {
+			return nil, inboundErr
+		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			records = append(records, NodeRecord{Registry: registry})
+			records = append(records, NodeRecord{Registry: registry, Inbounds: inbounds})
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, NodeRecord{Registry: registry, State: &state})
+		records = append(records, NodeRecord{Registry: registry, State: &state, Inbounds: inbounds})
 	}
 	return records, nil
 }
@@ -89,13 +106,25 @@ func (r *NodeRepo) GetRecordByServerID(serverID string) (NodeRecord, error) {
 		return NodeRecord{}, err
 	}
 	var state models.NodeState
+	inbounds, err := r.ListInbounds(serverID)
+	if err != nil {
+		return NodeRecord{}, err
+	}
 	if err := r.DB.Where("server_id = ?", serverID).Take(&state).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return NodeRecord{Registry: registry}, nil
+			return NodeRecord{Registry: registry, Inbounds: inbounds}, nil
 		}
 		return NodeRecord{}, err
 	}
-	return NodeRecord{Registry: registry, State: &state}, nil
+	return NodeRecord{Registry: registry, State: &state, Inbounds: inbounds}, nil
+}
+
+func (r *NodeRepo) ListInbounds(serverID string) ([]models.ServerInbound, error) {
+	var inbounds []models.ServerInbound
+	if err := r.DB.Where("server_id = ?", serverID).Order("is_managed DESC, inbound_id ASC").Find(&inbounds).Error; err != nil {
+		return nil, err
+	}
+	return inbounds, nil
 }
 
 func (r *NodeRepo) GetByServerID(serverID string) (models.NodeState, error) {
@@ -230,6 +259,46 @@ func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, b
 			}
 		}
 
+		if len(update.Inbounds) > 0 {
+			for _, inbound := range update.Inbounds {
+				if inbound.InboundID == 0 {
+					continue
+				}
+				protocol := inbound.Protocol
+				if protocol == "" {
+					protocol = models.ServerStatusUnknown
+				}
+				row := models.ServerInbound{
+					ServerID:     update.ServerID,
+					InboundID:    inbound.InboundID,
+					Remark:       inbound.Remark,
+					Protocol:     protocol,
+					Port:         inbound.Port,
+					Enabled:      inbound.Enabled,
+					IsManaged:    inbound.IsManaged,
+					ClientsCount: inbound.ClientsCount,
+					OnlineCount:  inbound.OnlineCount,
+					LastSeenAt:   update.ReceivedAt,
+				}
+				if err := tx.Clauses(clause.OnConflict{
+					Columns: []clause.Column{{Name: "server_id"}, {Name: "inbound_id"}},
+					DoUpdates: clause.Assignments(map[string]any{
+						"remark":        row.Remark,
+						"protocol":      row.Protocol,
+						"port":          row.Port,
+						"enabled":       row.Enabled,
+						"is_managed":    row.IsManaged,
+						"clients_count": row.ClientsCount,
+						"online_count":  row.OnlineCount,
+						"last_seen_at":  row.LastSeenAt,
+						"updated_at":    update.ReceivedAt,
+					}),
+				}).Create(&row).Error; err != nil {
+					return err
+				}
+			}
+		}
+
 		xuiAvailable := update.XUIAvailable
 		snapshot := models.NodeStateSnapshot{
 			ServerID:         update.ServerID,
@@ -262,6 +331,14 @@ func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, b
 	return nodeStateFromRecord(NodeRecord{Registry: registry, State: &state}), false, nil
 }
 
+func (r *NodeRepo) DisableServer(serverID string) error {
+	return r.DB.Model(&models.ServerRegistry{}).Where("server_id = ?", serverID).Update("enabled", false).Error
+}
+
+func (r *NodeRepo) EnableServer(serverID string) error {
+	return r.DB.Model(&models.ServerRegistry{}).Where("server_id = ?", serverID).Update("enabled", true).Error
+}
+
 func (r *NodeRepo) ArchiveServer(serverID, reason string, archivedAt time.Time) error {
 	return r.DB.Model(&models.ServerRegistry{}).Where("server_id = ?", serverID).Updates(map[string]any{
 		"archived_at":     &archivedAt,
@@ -278,10 +355,13 @@ func (r *NodeRepo) RestoreServer(serverID string) error {
 }
 
 func (r *NodeRepo) ArchiveStaleDiscovered(cutoff time.Time, reason string, archivedAt time.Time) (int64, error) {
-	result := r.DB.Model(&models.ServerRegistry{}).Where("source = ? AND archived_at IS NULL AND last_seen_at < ?", models.NodeSourceDiscovered, cutoff).Updates(map[string]any{
-		"archived_at":     &archivedAt,
-		"archived_reason": reason,
-	})
+	result := r.DB.Model(&models.ServerRegistry{}).
+		Where("source = ? AND archived_at IS NULL AND last_seen_at < ?", models.NodeSourceDiscovered, cutoff).
+		Where("enabled = ? OR server_id IN (SELECT server_id FROM node_states WHERE last_snapshot_at < ?)", false, cutoff).
+		Updates(map[string]any{
+			"archived_at":     &archivedAt,
+			"archived_reason": reason,
+		})
 	return result.RowsAffected, result.Error
 }
 

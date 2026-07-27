@@ -73,6 +73,7 @@ func migrate() error {
 		&models.User{},
 		&models.NodeState{},
 		&models.ServerRegistry{},
+		&models.ServerInbound{},
 		&models.NodeStateSnapshot{},
 		&models.EndpointGroup{},
 		&models.VPNClient{},

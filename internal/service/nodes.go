@@ -19,8 +19,10 @@ import (
 const (
 	NodeSnapshotEventType = "node_snapshot"
 
-	nodeOnlineWindow = 90 * time.Second
-	nodeStaleWindow  = 5 * time.Minute
+	nodeOnlineWindow    = 90 * time.Second
+	nodeStaleWindow     = 5 * time.Minute
+	nodeLostWindow      = 24 * time.Hour
+	nodeAbandonedWindow = 7 * 24 * time.Hour
 )
 
 type SnapshotCommandPublisher interface {
@@ -34,34 +36,48 @@ type RequestSnapshotResult struct {
 	Status    string `json:"status"`
 }
 
+type NodeInboundView struct {
+	InboundID    int64  `json:"inbound_id"`
+	Remark       string `json:"remark"`
+	Protocol     string `json:"protocol"`
+	Port         *int64 `json:"port,omitempty"`
+	Enabled      *bool  `json:"enabled,omitempty"`
+	IsManaged    bool   `json:"is_managed"`
+	ClientsCount int64  `json:"clients_count"`
+	OnlineCount  int64  `json:"online_count"`
+}
+
 type NodeView struct {
-	ServerID         string     `json:"server_id"`
-	NodeID           string     `json:"node_id,omitempty"`
-	DisplayName      string     `json:"display_name"`
-	EndpointGroup    string     `json:"endpoint_group"`
-	ExpectedProtocol string     `json:"expected_protocol"`
-	ReportedProtocol string     `json:"reported_protocol"`
-	Protocol         string     `json:"protocol"`
-	Source           string     `json:"source"`
-	Enabled          bool       `json:"enabled"`
-	ArchivedAt       *time.Time `json:"archived_at,omitempty"`
-	ArchivedReason   string     `json:"archived_reason,omitempty"`
-	AgentVersion     string     `json:"agent_version"`
-	AgentAlive       bool       `json:"agent_alive"`
-	AgentStatus      string     `json:"agent_status"`
-	Status           string     `json:"status"`
-	XUIAvailable     *bool      `json:"xui_available,omitempty"`
-	XUIStatus        string     `json:"xui_status"`
-	InboundID        *int       `json:"inbound_id,omitempty"`
-	InboundRemark    string     `json:"inbound_remark"`
-	ClientsCount     int        `json:"clients_count"`
-	OnlineCount      int        `json:"online_count"`
-	TrafficUp        int64      `json:"traffic_up"`
-	TrafficDown      int64      `json:"traffic_down"`
-	LastError        string     `json:"last_error"`
-	FirstSeenAt      time.Time  `json:"first_seen_at"`
-	LastSeenAt       time.Time  `json:"last_seen"`
-	LastSnapshotAt   *time.Time `json:"last_snapshot_at,omitempty"`
+	ServerID         string            `json:"server_id"`
+	NodeID           string            `json:"node_id,omitempty"`
+	DisplayName      string            `json:"display_name"`
+	EndpointGroup    string            `json:"endpoint_group"`
+	ExpectedProtocol string            `json:"expected_protocol"`
+	ReportedProtocol string            `json:"reported_protocol"`
+	Protocol         string            `json:"protocol"`
+	Source           string            `json:"source"`
+	Enabled          bool              `json:"enabled"`
+	ArchivedAt       *time.Time        `json:"archived_at,omitempty"`
+	ArchivedReason   string            `json:"archived_reason,omitempty"`
+	AgentVersion     string            `json:"agent_version"`
+	AgentAlive       bool              `json:"agent_alive"`
+	AgentStatus      string            `json:"agent_status"`
+	Status           string            `json:"status"`
+	XUIAvailable     *bool             `json:"xui_available,omitempty"`
+	XUIStatus        string            `json:"xui_status"`
+	InboundID        *int              `json:"inbound_id,omitempty"`
+	InboundRemark    string            `json:"inbound_remark"`
+	ManagedInboundID *int64            `json:"managed_inbound_id,omitempty"`
+	InboundsCount    int               `json:"inbounds_count"`
+	Inbounds         []NodeInboundView `json:"inbounds"`
+	ClientsCount     int               `json:"clients_count"`
+	OnlineCount      int               `json:"online_count"`
+	TrafficUp        int64             `json:"traffic_up"`
+	TrafficDown      int64             `json:"traffic_down"`
+	LastError        string            `json:"last_error"`
+	FirstSeenAt      time.Time         `json:"first_seen_at"`
+	LastSeenAt       time.Time         `json:"last_seen"`
+	LastSnapshotAt   *time.Time        `json:"last_snapshot_at,omitempty"`
 }
 
 type NodeService struct {
@@ -170,6 +186,7 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		XUIAvailable:     event.XUIAvailable,
 		InboundID:        event.InboundID,
 		InboundRemark:    strings.TrimSpace(event.InboundRemark),
+		Inbounds:         snapshotInboundUpdates(event),
 		ClientsCount:     event.ClientsCount,
 		OnlineCount:      event.OnlineCount,
 		TrafficUp:        event.TrafficUp,
@@ -183,6 +200,7 @@ func (s *NodeService) ApplySnapshot(ctx context.Context, event broker.NodeSnapsh
 		logger.Error("node snapshot processing failed", err, "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "server_id", serverID, "endpoint_group", endpointGroup, "reported_protocol", reportedProtocol, "reason", "state_update_failed")
 		return models.NodeState{}, false, err
 	}
+	logSnapshotInbounds(serverID, snapshotInboundUpdates(event))
 	node.Status = s.calculateNodeStatus(node)
 	if stale {
 		logger.Info("node snapshot processing finished", "component", "node_service", "operation", "apply_snapshot", "event_type", event.EventType, "server_id", serverID, "endpoint_group", endpointGroup, "reported_protocol", reportedProtocol, "status", node.Status, "reason", "stale_snapshot")
@@ -227,6 +245,34 @@ func (s *NodeService) GetNode(ctx context.Context, serverID string) (NodeView, e
 		return NodeView{}, err
 	}
 	return s.nodeView(record), nil
+}
+
+func (s *NodeService) DisableServer(ctx context.Context, serverID string) error {
+	_ = ctx
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return fmt.Errorf("server_id is required")
+	}
+	if err := s.nodeRepo.DisableServer(serverID); err != nil {
+		logger.Error("server disable failed", err, "component", "node_service", "operation", "disable_server", "server_id", serverID)
+		return err
+	}
+	logger.Info("server disabled", "component", "node_service", "operation", "disable_server", "server_id", serverID)
+	return nil
+}
+
+func (s *NodeService) EnableServer(ctx context.Context, serverID string) error {
+	_ = ctx
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return fmt.Errorf("server_id is required")
+	}
+	if err := s.nodeRepo.EnableServer(serverID); err != nil {
+		logger.Error("server enable failed", err, "component", "node_service", "operation", "enable_server", "server_id", serverID)
+		return err
+	}
+	logger.Info("server enabled", "component", "node_service", "operation", "enable_server", "server_id", serverID)
+	return nil
 }
 
 func (s *NodeService) ArchiveServer(ctx context.Context, serverID string, reason string) error {
@@ -291,6 +337,16 @@ func (s *NodeService) nodeView(record repository.NodeRecord) NodeView {
 		AgentStatus:      models.ServerStatusOffline,
 		Status:           models.ServerStatusOffline,
 		XUIStatus:        models.ServerStatusUnknown,
+		Inbounds:         []NodeInboundView{},
+	}
+	view.Inbounds = nodeInboundViews(record.Inbounds)
+	view.InboundsCount = len(view.Inbounds)
+	for _, inbound := range view.Inbounds {
+		if inbound.IsManaged {
+			id := inbound.InboundID
+			view.ManagedInboundID = &id
+			break
+		}
 	}
 	if registry.FirstSeenAt != nil {
 		view.FirstSeenAt = *registry.FirstSeenAt
@@ -317,6 +373,10 @@ func (s *NodeService) nodeView(record repository.NodeRecord) NodeView {
 	view.XUIStatus = xuiStatus(stats.XUIAvailable)
 	view.InboundID = stats.InboundID
 	view.InboundRemark = stats.InboundRemark
+	if view.ManagedInboundID == nil && stats.InboundID != nil {
+		id := int64(*stats.InboundID)
+		view.ManagedInboundID = &id
+	}
 	view.ClientsCount = stats.ClientsCount
 	view.OnlineCount = stats.OnlineCount
 	view.TrafficUp = stats.TrafficUp
@@ -366,5 +426,78 @@ func (s *NodeService) CalculateStatus(lastSeen time.Time) string {
 	if age <= nodeStaleWindow {
 		return models.ServerStatusStale
 	}
-	return models.ServerStatusOffline
+	if age <= nodeLostWindow {
+		return models.ServerStatusOffline
+	}
+	if age <= nodeAbandonedWindow {
+		return "lost"
+	}
+	return "abandoned"
+}
+
+func snapshotInboundUpdates(event broker.NodeSnapshotEvent) []repository.NodeSnapshotInboundUpdate {
+	updates := make([]repository.NodeSnapshotInboundUpdate, 0, len(event.Inbounds))
+	managedID := int64(0)
+	if event.InboundID != nil {
+		managedID = int64(*event.InboundID)
+	}
+	if len(event.Inbounds) > 0 {
+		for _, inbound := range event.Inbounds {
+			if inbound.InboundID == 0 {
+				continue
+			}
+			protocol := fallbackString(inbound.Protocol, models.ServerStatusUnknown)
+			isManaged := inbound.IsManaged || (managedID != 0 && inbound.InboundID == managedID)
+			updates = append(updates, repository.NodeSnapshotInboundUpdate{
+				InboundID:    inbound.InboundID,
+				Remark:       strings.TrimSpace(inbound.Remark),
+				Protocol:     protocol,
+				Port:         inbound.Port,
+				Enabled:      inbound.Enabled,
+				IsManaged:    isManaged,
+				ClientsCount: inbound.ClientsCount,
+				OnlineCount:  inbound.OnlineCount,
+			})
+		}
+		return updates
+	}
+	if event.InboundID == nil {
+		return updates
+	}
+	updates = append(updates, repository.NodeSnapshotInboundUpdate{
+		InboundID:    int64(*event.InboundID),
+		Remark:       strings.TrimSpace(event.InboundRemark),
+		Protocol:     fallbackString(event.Protocol, models.ServerStatusUnknown),
+		IsManaged:    true,
+		ClientsCount: int64(event.ClientsCount),
+		OnlineCount:  int64(event.OnlineCount),
+	})
+	return updates
+}
+
+func logSnapshotInbounds(serverID string, inbounds []repository.NodeSnapshotInboundUpdate) {
+	if len(inbounds) == 0 {
+		return
+	}
+	logger.Info("server inbounds upsert started", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID, "count", len(inbounds))
+	for _, inbound := range inbounds {
+		logger.Info("server inbound upserted", "component", "node_service", "operation", "apply_snapshot", "server_id", serverID, "inbound_id", inbound.InboundID, "protocol", inbound.Protocol, "is_managed", inbound.IsManaged)
+	}
+}
+
+func nodeInboundViews(inbounds []models.ServerInbound) []NodeInboundView {
+	views := make([]NodeInboundView, 0, len(inbounds))
+	for _, inbound := range inbounds {
+		views = append(views, NodeInboundView{
+			InboundID:    inbound.InboundID,
+			Remark:       inbound.Remark,
+			Protocol:     fallbackString(inbound.Protocol, models.ServerStatusUnknown),
+			Port:         inbound.Port,
+			Enabled:      inbound.Enabled,
+			IsManaged:    inbound.IsManaged,
+			ClientsCount: inbound.ClientsCount,
+			OnlineCount:  inbound.OnlineCount,
+		})
+	}
+	return views
 }

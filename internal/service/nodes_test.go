@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 	"vpnpanel/internal/broker"
@@ -325,5 +327,153 @@ func TestArchiveAndRestoreServerAffectsListNodes(t *testing.T) {
 	}
 	if len(nodes) != 1 || nodes[0].ServerID != "foreign-01" {
 		t.Fatalf("unexpected nodes after restore: %#v", nodes)
+	}
+}
+
+func TestApplySnapshotWithInboundsCreatesServerInboundRows(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, now)
+	port443 := int64(443)
+	port8443 := int64(8443)
+	enabled := true
+	managedID := 1
+
+	_, stale, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{
+		EventType:     NodeSnapshotEventType,
+		ServerID:      "3",
+		EndpointGroup: "ru",
+		Protocol:      "trojan",
+		InboundID:     &managedID,
+		InboundRemark: "Corvin",
+		XUIAvailable:  true,
+		SentAt:        now,
+		Inbounds: []broker.NodeSnapshotInbound{
+			{InboundID: 1, Remark: "Corvin", Protocol: "trojan", Port: &port443, Enabled: &enabled, ClientsCount: 173, OnlineCount: 10},
+			{InboundID: 2, Remark: "Telegram MTProto", Protocol: "mtproto", Port: &port8443, Enabled: &enabled},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+	if stale {
+		t.Fatalf("stale = true, want false")
+	}
+
+	var rows []models.ServerInbound
+	if err := db.Where("server_id = ?", "3").Order("inbound_id ASC").Find(&rows).Error; err != nil {
+		t.Fatalf("load inbounds: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("inbounds = %d, want 2", len(rows))
+	}
+	if !rows[0].IsManaged || rows[0].Protocol != "trojan" || rows[0].ClientsCount != 173 {
+		t.Fatalf("managed inbound not saved correctly: %#v", rows[0])
+	}
+	if rows[1].IsManaged || rows[1].Protocol != "mtproto" || rows[1].Remark != "Telegram MTProto" {
+		t.Fatalf("mtproto inbound not saved correctly: %#v", rows[1])
+	}
+
+	nodes, err := svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].InboundsCount != 2 || len(nodes[0].Inbounds) != 2 {
+		t.Fatalf("node inbounds not shown: %#v", nodes)
+	}
+	if nodes[0].ManagedInboundID == nil || *nodes[0].ManagedInboundID != 1 {
+		t.Fatalf("managed_inbound_id = %#v, want 1", nodes[0].ManagedInboundID)
+	}
+	if nodes[0].Inbounds[1].Protocol != "mtproto" {
+		t.Fatalf("mtproto inbound missing from API view: %#v", nodes[0].Inbounds)
+	}
+}
+
+func TestNodeStatusLifecycleByLastSnapshotAt(t *testing.T) {
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(newVPNServiceTestDB(t)), nil, now)
+	tests := []struct {
+		name string
+		seen time.Time
+		want string
+	}{
+		{name: "online", seen: now.Add(-90 * time.Second), want: models.ServerStatusOnline},
+		{name: "stale", seen: now.Add(-5 * time.Minute), want: models.ServerStatusStale},
+		{name: "offline", seen: now.Add(-6 * time.Minute), want: models.ServerStatusOffline},
+		{name: "lost", seen: now.Add(-25 * time.Hour), want: "lost"},
+		{name: "abandoned", seen: now.Add(-8 * 24 * time.Hour), want: "abandoned"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := svc.CalculateStatus(tt.seen); got != tt.want {
+				t.Fatalf("status = %q, want %q", got, tt.want)
+			}
+		})
+	}
+	if got := svc.calculateAgentStatus(nil); got != "never_seen" {
+		t.Fatalf("nil snapshot status = %q, want never_seen", got)
+	}
+}
+
+func TestDisableArchiveRestoreServerLifecycleAffectsListNodes(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	now := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, now)
+
+	if _, _, err := svc.ApplySnapshot(context.Background(), broker.NodeSnapshotEvent{EventType: NodeSnapshotEventType, ServerID: "foreign-01", EndpointGroup: "foreign", Protocol: "vless", XUIAvailable: true, SentAt: now}); err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+	if err := svc.DisableServer(context.Background(), "foreign-01"); err != nil {
+		t.Fatalf("DisableServer: %v", err)
+	}
+	nodes, err := svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes after disable: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].Enabled {
+		t.Fatalf("nodes after disable = %#v, want visible disabled server", nodes)
+	}
+	if err := svc.EnableServer(context.Background(), "foreign-01"); err != nil {
+		t.Fatalf("EnableServer: %v", err)
+	}
+	nodes, err = svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes after enable: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("nodes after enable = %d, want 1", len(nodes))
+	}
+	if err := svc.ArchiveServer(context.Background(), "foreign-01", "manual"); err != nil {
+		t.Fatalf("ArchiveServer: %v", err)
+	}
+	nodes, err = svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes after archive: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("nodes after archive = %d, want 0", len(nodes))
+	}
+	if err := svc.RestoreServer(context.Background(), "foreign-01"); err != nil {
+		t.Fatalf("RestoreServer: %v", err)
+	}
+	nodes, err = svc.ListNodes(context.Background())
+	if err != nil {
+		t.Fatalf("ListNodes after restore: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].ServerID != "foreign-01" {
+		t.Fatalf("unexpected nodes after restore: %#v", nodes)
+	}
+}
+
+func TestServersTemplatePutsNameBeforeServerID(t *testing.T) {
+	data, err := os.ReadFile("../templates/servers.html")
+	if err != nil {
+		t.Fatalf("read servers template: %v", err)
+	}
+	body := string(data)
+	nameIndex := strings.Index(body, "<th>Name</th>")
+	serverIDIndex := strings.Index(body, "<th>Server ID</th>")
+	if nameIndex < 0 || serverIDIndex < 0 || nameIndex > serverIDIndex {
+		t.Fatalf("Name column must appear before Server ID")
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
+	"vpnpanel/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,10 +19,15 @@ type ServersController struct {
 	Repo  *repository.ServerRepo
 	jobs  *jobsvc.Service
 	audit *audit.Logger
+	nodes *service.NodeService
 }
 
-func NewServersController(repo *repository.ServerRepo, jobs *jobsvc.Service, auditLogger *audit.Logger) *ServersController {
-	return &ServersController{Repo: repo, jobs: jobs, audit: auditLogger}
+func NewServersController(repo *repository.ServerRepo, jobs *jobsvc.Service, auditLogger *audit.Logger, nodes ...*service.NodeService) *ServersController {
+	controller := &ServersController{Repo: repo, jobs: jobs, audit: auditLogger}
+	if len(nodes) > 0 {
+		controller.nodes = nodes[0]
+	}
+	return controller
 }
 
 type ServerRequest struct {
@@ -156,6 +162,11 @@ func (s ServersController) Register(r *gin.RouterGroup) {
 	r.POST("/create", s.CreateServer)
 	r.GET("/onlines", s.OnlineUsersServers)
 	r.GET("/online_history", s.OnlineHistory)
+	r.POST("/archive-stale-discovered", s.ArchiveStaleDiscoveredServers)
+	r.POST("/:id/disable", s.DisableServerRegistry)
+	r.POST("/:id/enable", s.EnableServerRegistry)
+	r.POST("/:id/archive", s.ArchiveServerRegistry)
+	r.POST("/:id/restore", s.RestoreServerRegistry)
 	r.GET("/:id", s.GetServer)
 	r.POST("/:id/edit", s.UpdateServer)
 	r.POST("/:id/delete", s.DeleteServer)
@@ -169,6 +180,15 @@ func (s ServersController) Register(r *gin.RouterGroup) {
 // #region CRUD
 
 func (s ServersController) AllServers(c *gin.Context) {
+	if s.nodes != nil && c.Query("role") == "" {
+		nodes, err := s.nodes.ListNodes(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, Response{Success: true, Obj: nodes})
+		return
+	}
 	servers, err := s.Repo.GetAllFiltered(c.Query("role"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: err.Error()})
@@ -180,6 +200,71 @@ func (s ServersController) AllServers(c *gin.Context) {
 func (s ServersController) CreateServer(c *gin.Context) {
 	logger.Info("server management disabled", "component", "http_api", "handler", "servers_createserver", "operation", "server_management", "reason", "agent_snapshot_monitoring")
 	serverManagementDisabled(c)
+}
+
+func (s ServersController) DisableServerRegistry(c *gin.Context) {
+	if s.nodes == nil {
+		serverManagementDisabled(c)
+		return
+	}
+	serverID := c.Param("id")
+	if err := s.nodes.DisableServer(c.Request.Context(), serverID); err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"server_id": serverID, "status": "disabled"}})
+}
+
+func (s ServersController) EnableServerRegistry(c *gin.Context) {
+	if s.nodes == nil {
+		serverManagementDisabled(c)
+		return
+	}
+	serverID := c.Param("id")
+	if err := s.nodes.EnableServer(c.Request.Context(), serverID); err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"server_id": serverID, "status": "enabled"}})
+}
+
+func (s ServersController) ArchiveServerRegistry(c *gin.Context) {
+	if s.nodes == nil {
+		serverManagementDisabled(c)
+		return
+	}
+	serverID := c.Param("id")
+	if err := s.nodes.ArchiveServer(c.Request.Context(), serverID, "manual"); err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"server_id": serverID, "status": "archived"}})
+}
+
+func (s ServersController) RestoreServerRegistry(c *gin.Context) {
+	if s.nodes == nil {
+		serverManagementDisabled(c)
+		return
+	}
+	serverID := c.Param("id")
+	if err := s.nodes.RestoreServer(c.Request.Context(), serverID); err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"server_id": serverID, "status": "restored"}})
+}
+
+func (s ServersController) ArchiveStaleDiscoveredServers(c *gin.Context) {
+	if s.nodes == nil {
+		serverManagementDisabled(c)
+		return
+	}
+	count, err := s.nodes.ArchiveStaleDiscovered(c.Request.Context(), 7)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"archived_count": count}})
 }
 
 func (s ServersController) GetServer(c *gin.Context) {

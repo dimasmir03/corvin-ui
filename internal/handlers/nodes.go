@@ -22,6 +22,8 @@ func (h *NodesController) Register(r *gin.RouterGroup) {
 	r.GET("/", h.ListNodes)
 	r.GET("/:server_id", h.GetNode)
 	r.POST("/:server_id/refresh", h.RefreshNode)
+	r.POST("/:server_id/disable", h.DisableNode)
+	r.POST("/:server_id/enable", h.EnableNode)
 	r.POST("/:server_id/archive", h.ArchiveNode)
 	r.POST("/:server_id/restore", h.RestoreNode)
 	r.POST("/archive-stale-discovered", h.ArchiveStaleDiscovered)
@@ -78,6 +80,36 @@ func (h *NodesController) RefreshNode(c *gin.Context) {
 	}
 	logger.Info("http service call succeeded", "component", "http_api", "handler", "node_refresh", "operation", "refresh_node", "request_id", requestID, "server_id", serverID, "command_id", result.CommandID, "reason", "queued")
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *NodesController) DisableNode(c *gin.Context) {
+	requestID, _ := c.Get("request_id")
+	serverID := strings.TrimSpace(c.Param("server_id"))
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: "server_id is required"})
+		return
+	}
+	if err := h.nodes.DisableServer(c.Request.Context(), serverID); err != nil {
+		logger.Error("http service call failed", err, "component", "http_api", "handler", "node_disable", "operation", "disable_node", "request_id", requestID, "server_id", serverID)
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"server_id": serverID, "node_id": serverID, "status": "disabled"}})
+}
+
+func (h *NodesController) EnableNode(c *gin.Context) {
+	requestID, _ := c.Get("request_id")
+	serverID := strings.TrimSpace(c.Param("server_id"))
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: "server_id is required"})
+		return
+	}
+	if err := h.nodes.EnableServer(c.Request.Context(), serverID); err != nil {
+		logger.Error("http service call failed", err, "component", "http_api", "handler", "node_enable", "operation", "enable_node", "request_id", requestID, "server_id", serverID)
+		c.JSON(http.StatusInternalServerError, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: gin.H{"server_id": serverID, "node_id": serverID, "status": "enabled"}})
 }
 
 func (h *NodesController) ArchiveNode(c *gin.Context) {

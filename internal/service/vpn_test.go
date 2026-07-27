@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/models"
@@ -37,6 +38,7 @@ func newVPNServiceTestDB(t *testing.T) *gorm.DB {
 		&models.Vpn{},
 		&models.NodeState{},
 		&models.ServerRegistry{},
+		&models.ServerInbound{},
 		&models.NodeStateSnapshot{},
 		&models.EndpointGroup{},
 		&models.VPNClient{},
@@ -566,6 +568,27 @@ func TestRequestCreateVPNDoesNotUseLegacyServersTable(t *testing.T) {
 	}
 	if err := db.Where("endpoint_group = ?", jobsvc.EndpointGroupDirect).Delete(&models.ServerRegistry{}).Error; err != nil {
 		t.Fatalf("delete server registry: %v", err)
+	}
+
+	publisher := &captureJobPublisher{}
+	svc := newTestVPNService(db, publisher)
+	if _, err := svc.RequestCreateVPN(RequestCreateVPNInput{TgID: telegram.TgID, Protocol: jobsvc.VPNProfileVLESS}); !errors.Is(err, ErrNoMatchingServers) {
+		t.Fatalf("RequestCreateVPN err = %v, want ErrNoMatchingServers", err)
+	}
+	if len(publisher.messages) != 0 {
+		t.Fatalf("published messages = %d, want 0", len(publisher.messages))
+	}
+}
+
+func TestRequestCreateVPNExcludesDisabledAndArchivedServerRegistry(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	telegram := seedVPNServiceCreateData(t, db)
+	archivedAt := time.Now().UTC()
+	if err := db.Model(&models.ServerRegistry{}).Where("server_id = ?", "direct-1").Updates(map[string]any{"archived_at": &archivedAt, "archived_reason": "manual"}).Error; err != nil {
+		t.Fatalf("archive direct-1: %v", err)
+	}
+	if err := db.Model(&models.ServerRegistry{}).Where("server_id = ?", "direct-2").Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable direct-2: %v", err)
 	}
 
 	publisher := &captureJobPublisher{}
