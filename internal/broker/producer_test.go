@@ -2,6 +2,7 @@ package broker
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -23,6 +24,23 @@ func TestResultQueueValidJobResultCallsApply(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("job handler calls = %d, want 1", calls)
+	}
+}
+
+func TestRabbitConnectionRejectsPlainAMQP(t *testing.T) {
+	_, err := newRabbitConnection("amqp://guest:guest@127.0.0.1:5672/", "", "", "")
+	if err == nil {
+		t.Fatal("expected plain AMQP to be rejected")
+	}
+}
+
+func TestResultQueueHandlerErrorIsRequeued(t *testing.T) {
+	body := mustJSON(t, JobResultEvent{EventType: "job_result", JobID: 42, ServerID: "foreign-01", Status: "success"})
+	action := handleResultQueueMessage("corvin.job.results", body, func(event JobResultEvent) error {
+		return errors.New("database temporarily unavailable")
+	}, nil)
+	if action != rabbitmq.NackRequeue {
+		t.Fatalf("action = %v, want NackRequeue", action)
 	}
 }
 

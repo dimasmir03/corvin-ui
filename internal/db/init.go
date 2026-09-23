@@ -69,6 +69,12 @@ func Init(options DBOptions, w io.Writer) {
 }
 
 func migrate() error {
+	// Older versions enforced one VPN credential for the whole user. Credentials
+	// are now scoped to a device; keep one nullable legacy credential while
+	// allowing any number of device-specific credentials.
+	if err := DB.Exec("DROP INDEX IF EXISTS idx_vpn_clients_user_id").Error; err != nil {
+		return err
+	}
 	if err := DB.AutoMigrate(
 		&models.User{},
 		&models.NodeState{},
@@ -76,6 +82,15 @@ func migrate() error {
 		&models.ServerInbound{},
 		&models.NodeStateSnapshot{},
 		&models.EndpointGroup{},
+		&models.UserSubscription{},
+		&models.VPNRoutingSettings{},
+		&models.MobileDevice{},
+		&models.MobileLoginSession{},
+		&models.MobileSession{},
+		&models.MobileUsedRefreshToken{},
+		&models.MobileOperation{},
+		&models.MobileIdempotencyRecord{},
+		&models.UserServerAccess{},
 		&models.VPNClient{},
 		&models.VPNProfile{},
 		&models.VPNProfileNode{},
@@ -83,8 +98,6 @@ func migrate() error {
 		&models.Vpn{},
 		&models.Complaint{},
 		&models.Settings{},
-		&models.JobBatch{},
-		&models.Job{},
 		&models.AuditLog{},
 	); err != nil {
 		return err
@@ -99,6 +112,15 @@ func migrate() error {
 		return err
 	}
 	if err := DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_profile_nodes_profile_server_unique ON vpn_profile_nodes (vpn_profile_id, server_id) WHERE server_id IS NOT NULL AND server_id <> ''").Error; err != nil {
+		return err
+	}
+	if err := DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_clients_user_legacy_unique ON vpn_clients (user_id) WHERE device_id IS NULL").Error; err != nil {
+		return err
+	}
+	if err := DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_clients_user_device_unique ON vpn_clients (user_id, device_id) WHERE device_id IS NOT NULL AND device_id <> ''").Error; err != nil {
+		return err
+	}
+	if err := DB.Exec("UPDATE vpn_profile_nodes SET desired_state = 'enabled' WHERE desired_state IS NULL OR desired_state = ''").Error; err != nil {
 		return err
 	}
 	return DB.Exec(`

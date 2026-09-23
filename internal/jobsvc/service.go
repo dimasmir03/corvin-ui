@@ -28,6 +28,9 @@ const (
 	BatchTypeCollectNodeStats = "collect_node_stats"
 
 	ActionCreateClient     = "create_client"
+	ActionEnableClient     = "enable_client"
+	ActionDisableClient    = "disable_client"
+	ActionDeleteClient     = "delete_client"
 	ActionProbeNode        = "probe_node"
 	ActionCollectNodeStats = "collect_node_stats"
 

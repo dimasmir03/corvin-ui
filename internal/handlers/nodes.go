@@ -21,12 +21,36 @@ func (h *NodesController) Register(r *gin.RouterGroup) {
 	r.GET("", h.ListNodes)
 	r.GET("/", h.ListNodes)
 	r.GET("/:server_id", h.GetNode)
+	r.PUT("/:server_id/connection", h.UpdateConnectionSettings)
 	r.POST("/:server_id/refresh", h.RefreshNode)
 	r.POST("/:server_id/disable", h.DisableNode)
 	r.POST("/:server_id/enable", h.EnableNode)
 	r.POST("/:server_id/archive", h.ArchiveNode)
 	r.POST("/:server_id/restore", h.RestoreNode)
 	r.POST("/archive-stale-discovered", h.ArchiveStaleDiscovered)
+}
+
+func (h *NodesController) UpdateConnectionSettings(c *gin.Context) {
+	serverID := strings.TrimSpace(c.Param("server_id"))
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: "server_id is required"})
+		return
+	}
+	var input service.ServerConnectionSettingsInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	node, err := h.nodes.UpdateConnectionSettings(c.Request.Context(), serverID, input)
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "record not found") {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, Response{Success: false, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, Response{Success: true, Obj: node})
 }
 
 func (h *NodesController) ListNodes(c *gin.Context) {

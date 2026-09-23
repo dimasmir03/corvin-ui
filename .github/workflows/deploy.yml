@@ -1,0 +1,64 @@
+name: Deploy panel
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to deploy (for example v1.0.0)
+        required: true
+        type: string
+      architecture:
+        description: Server architecture
+        required: true
+        default: amd64
+        type: choice
+        options: [amd64, arm64]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-panel
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.version }}
+
+      - name: Connect runner to the private tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upgrade and verify panel
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_ARCH: ${{ inputs.architecture }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          gh release download "$RELEASE_VERSION" --pattern "corvin-ui-linux-$RELEASE_ARCH.tar.gz" --pattern "corvin-ui-linux-$RELEASE_ARCH.tar.gz.sha256"
+          scp -o BatchMode=yes ./corvin-ui.sh "$DEPLOY_USER@$DEPLOY_HOST:/tmp/corvin-ui-upgrade"
+          scp -o BatchMode=yes "corvin-ui-linux-$RELEASE_ARCH.tar.gz" "corvin-ui-linux-$RELEASE_ARCH.tar.gz.sha256" "$DEPLOY_USER@$DEPLOY_HOST:/tmp/"
+          ssh -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" "chmod +x /tmp/corvin-ui-upgrade && sudo env CORVIN_UPGRADE_ARCHIVE='/tmp/corvin-ui-linux-$RELEASE_ARCH.tar.gz' CORVIN_UPGRADE_CHECKSUM='/tmp/corvin-ui-linux-$RELEASE_ARCH.tar.gz.sha256' /tmp/corvin-ui-upgrade upgrade '$RELEASE_VERSION'"
+          ssh -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" "sudo corvin-ui doctor"

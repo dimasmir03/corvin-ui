@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/config"
@@ -17,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
 	"github.com/wagslane/go-rabbitmq"
+	"gorm.io/gorm"
 )
 
 type Server struct {
@@ -24,6 +26,8 @@ type Server struct {
 
 	StorageRepo    *repository.StorageRepo
 	ServersService *repository.ServerRepo
+	VPNService     *service.VPNService
+	MobileService  *service.MobileService
 
 	TelegramController   *handlers.TelegramController
 	ComplaintsController *handlers.ComplaintsController
@@ -32,8 +36,8 @@ type Server struct {
 	PanelController      *handlers.PanelController
 	VpnController        *handlers.VpnController
 	MediaController      *handlers.MediaController
-	JobsController       *handlers.JobsController
 	NodesController      *handlers.NodesController
+	MobileController     *handlers.MobileController
 
 	telegramBot      *telegrambot.Bot
 	telegramNotifier *telegrambot.Notifier
@@ -69,21 +73,31 @@ func NewServer(cfg config.Config) (*Server, error) {
 	logger := projectlogger.Default()
 	auditLogger := audit.NewLogger(repository.NewAuditRepo(db.DB))
 	usersService := service.NewUsersService(teleRepo, auditLogger)
-	jobService := jobsvc.NewService(
+	var vpnPublisher service.VPNCommandPublisher
+	var snapshotPublisher service.SnapshotCommandPublisher
+	if broker.GlobalProducer != nil {
+		vpnPublisher = broker.GlobalProducer
+		snapshotPublisher = broker.GlobalProducer
+	}
+	// Kept only for applying results from commands published by pre-migration
+	// versions. New provisioning never writes job_batches or jobs.
+	legacyJobService := jobsvc.NewService(
 		repository.NewJobsRepo(db.DB),
 		serversRepo,
 		auditLogger,
 		broker.GlobalProducer,
 	)
-	vpnService := service.NewVPNService(vpnRepo, teleRepo, jobService, auditLogger)
+	vpnService := service.NewVPNService(vpnRepo, teleRepo, vpnPublisher)
+	mobileService := service.NewMobileService(repository.NewMobileRepo(db.DB), vpnRepo, vpnService, cfg.Mobile)
 	supportService := service.NewSupportService(teleRepo, complaintRepo, storageRepo)
-	nodeService := service.NewNodeService(nodeRepo, broker.GlobalProducer)
+	nodeService := service.NewNodeService(nodeRepo, snapshotPublisher)
 
 	logger.Info("telegram bot init started", "component", "startup", "operation", "telegram_bot_init", "telegram_enabled", cfg.Telegram.Enabled, "telegram_proxy_enabled", cfg.Telegram.ProxyURL != "")
 	tgBot, err := telegrambot.New(cfg.Telegram, telegrambot.Deps{
 		Users:   usersService,
 		VPN:     vpnService,
 		Support: supportService,
+		Mobile:  mobileService,
 		Logger:  logger,
 	})
 	if err != nil {
@@ -101,17 +115,19 @@ func NewServer(cfg config.Config) (*Server, error) {
 
 	s := &Server{
 		ServersService: serverService,
+		VPNService:     vpnService,
+		MobileService:  mobileService,
 		StorageRepo:    storageRepo,
 
-		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo, usersService, vpnService, jobService, auditLogger),
+		TelegramController:   handlers.NewTelegramController(storageRepo, teleRepo, usersService, vpnService),
 		ComplaintsController: handlers.NewComplaintsController(complaintRepo),
 		UserController:       handlers.NewUserController(userRepo, vpnService, auditLogger),
-		ServersController:    handlers.NewServersController(serversRepo, jobService, auditLogger, nodeService),
+		ServersController:    handlers.NewServersController(serversRepo, nodeService),
 		PanelController:      handlers.NewPanelController(),
-		VpnController:        handlers.NewVpnController(vpnRepo),
+		VpnController:        handlers.NewVpnController(vpnRepo, vpnService),
 		MediaController:      handlers.NewMediaController(storageRepo),
-		JobsController:       handlers.NewJobsController(jobService),
 		NodesController:      handlers.NewNodesController(nodeService),
+		MobileController:     handlers.NewMobileController(mobileService),
 
 		telegramBot:      tgBot,
 		telegramNotifier: tgNotifier,
@@ -142,13 +158,26 @@ func NewServer(cfg config.Config) (*Server, error) {
 		consumer, err := broker.GlobalProducer.StartResultConsumer(
 			cfg.RabbitMQ.ResultQueue,
 			func(event broker.JobResultEvent) error {
-				_, job, err := jobService.ApplyResult(event)
-				if err != nil {
-					logger.Error("job result apply failed", err, "job_id", event.JobID, "batch_id", event.BatchID)
-					return err
+				var notification *service.VPNReadyNotification
+				var err error
+				if event.ProfileID != 0 && event.BatchID == 0 {
+					// New provisioning flow: vpn_profile_nodes is the command ledger
+					// and domain state. No jobs/job_batches lookup is required.
+					notification, err = vpnService.ApplyCommandResult(context.Background(), event)
+				} else {
+					// Temporary compatibility for commands published by older panel
+					// versions before the profile-node migration.
+					_, job, legacyErr := legacyJobService.ApplyResult(event)
+					if legacyErr != nil {
+						if errors.Is(legacyErr, gorm.ErrRecordNotFound) {
+							logger.Warn("legacy job result ignored", "job_id", event.JobID, "batch_id", event.BatchID, "reason", "job_not_found")
+							return nil
+						}
+						logger.Error("legacy job result apply failed", legacyErr, "job_id", event.JobID, "batch_id", event.BatchID)
+						return legacyErr
+					}
+					notification, err = vpnService.ApplyAgentCreateResult(job, event)
 				}
-
-				notification, err := vpnService.ApplyAgentCreateResult(job, event)
 				if err != nil {
 					logger.Error("vpn agent result apply failed", err, "job_id", event.JobID, "batch_id", event.BatchID)
 					return err
@@ -195,6 +224,25 @@ func (s *Server) CronStart() {
 	s.Cron.AddFunc("@daily", func() {
 		s.ServersService.ClearStats()
 	})
+	if s.VPNService != nil && s.VPNService.CanPublishCommands() {
+		s.Cron.AddFunc("@every 30s", func() {
+			published, err := s.VPNService.ReconcilePending(context.Background(), 100)
+			if err != nil {
+				projectlogger.Error("vpn provisioning reconcile failed", err, "component", "vpn_reconciler", "operation", "reconcile")
+				return
+			}
+			if published > 0 {
+				projectlogger.Info("vpn provisioning reconciled", "component", "vpn_reconciler", "operation", "reconcile", "published_count", published)
+			}
+		})
+	}
+	if s.MobileService != nil {
+		s.Cron.AddFunc("@hourly", func() {
+			if err := s.MobileService.Cleanup(); err != nil {
+				projectlogger.Error("mobile cleanup failed", err, "component", "mobile_cleanup")
+			}
+		})
+	}
 
 	s.Cron.Start()
 }

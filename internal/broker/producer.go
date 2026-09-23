@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"vpnpanel/internal/logger"
@@ -27,29 +28,7 @@ type Producer struct {
 }
 
 func NewProducer(url, exchangeComplaints, exchangeUsers, exchangeCommands, certfile, keyfile, cafile string) (*Producer, error) {
-	rootCAs, err := loadRootCAs(cafile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load root CAs: %w", err)
-	}
-
-	cert, err := tls.LoadX509KeyPair(certfile, keyfile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load client certificate: %w", err)
-	}
-
-	tlsConfig := &tls.Config{
-		RootCAs:      rootCAs,
-		Certificates: []tls.Certificate{cert},
-		ServerName:   "rabbitmq", // Optional
-	}
-
-	conn, err := rabbitmq.NewConn(
-		url,
-		rabbitmq.WithConnectionOptionsLogging,
-		rabbitmq.WithConnectionOptionsConfig(rabbitmq.Config{
-			TLSClientConfig: tlsConfig,
-		}),
-	)
+	conn, err := newRabbitConnection(url, certfile, keyfile, cafile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
@@ -115,6 +94,39 @@ func NewProducer(url, exchangeComplaints, exchangeUsers, exchangeCommands, certf
 	}, nil
 }
 
+func newRabbitConnection(rawURL, certfile, keyfile, cafile string) (*rabbitmq.Conn, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid RabbitMQ URL: %w", err)
+	}
+	if !strings.EqualFold(parsed.Scheme, "amqps") {
+		return nil, fmt.Errorf("RabbitMQ URL must use amqps://")
+	}
+
+	rootCAs, err := loadRootCAs(cafile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load root CAs: %w", err)
+	}
+	cert, err := tls.LoadX509KeyPair(certfile, keyfile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load client certificate: %w", err)
+	}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      rootCAs,
+		// Existing Corvin certificates are issued for the RabbitMQ service name,
+		// including when the systemd panel reaches it through localhost:1765.
+		ServerName: "rabbitmq",
+		MinVersion: tls.VersionTLS12,
+	}
+
+	return rabbitmq.NewConn(
+		rawURL,
+		rabbitmq.WithConnectionOptionsLogging,
+		rabbitmq.WithConnectionOptionsConfig(rabbitmq.Config{TLSClientConfig: tlsConfig}),
+	)
+}
+
 func (p *Producer) PublishComplaintReply(msg any) error {
 	return p.publish(p.publisherComplaints, p.exchangeComplaints, msg)
 }
@@ -124,12 +136,9 @@ func (p *Producer) PublishCreateUser(msg any) error {
 }
 
 func (p *Producer) PublishJob(msg JobTask) error {
-	routingKey := ""
-	if msg.EventType == "create_client" || msg.Action == "create_client" {
-		serverID := effectiveJobTaskServerID(msg)
-		routingKey = createClientRoutingKey(msg)
-		logger.Info("create_client command routing resolved", "component", "rabbitmq", "operation", "publish", "exchange", p.exchangeJobs, "routing_key", routingKey, "job_id", msg.JobID, "batch_id", msg.BatchID, "profile_id", msg.ProfileID, "server_id", serverID, "profile", msg.Profile, "target_group", msg.TargetGroup, "protocol", msg.Protocol, "client_code", msg.ClientCode)
-	}
+	serverID := effectiveJobTaskServerID(msg)
+	routingKey := createClientRoutingKey(msg)
+	logger.Info("client command routing resolved", "component", "rabbitmq", "operation", "publish", "exchange", p.exchangeJobs, "routing_key", routingKey, "command_type", msg.CommandType, "job_id", msg.JobID, "batch_id", msg.BatchID, "profile_id", msg.ProfileID, "server_id", serverID, "profile", msg.Profile, "target_group", msg.TargetGroup, "protocol", msg.Protocol, "client_code", msg.ClientCode)
 	return p.publishWithRoutingKey(p.publisherJobs, p.exchangeJobs, routingKey, msg)
 }
 
@@ -264,8 +273,8 @@ func handleResultQueueJobResult(queue string, body []byte, handler JobResultHand
 
 	if err := handler(event); err != nil {
 		logger.Error("rabbit message handler failed", err, "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID)
-		logger.Info("rabbit message ack", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "reason", "legacy_ack_after_handler_error")
-		return rabbitmq.Ack
+		logger.Info("rabbit message requeued", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "reason", "handler_error")
+		return rabbitmq.NackRequeue
 	}
 
 	logger.Info("rabbit message handler succeeded", "component", "rabbitmq", "operation", "consume", "queue", queue, "event_type", "job_result", "job_id", event.JobID, "batch_id", event.BatchID, "profile_id", event.ProfileID, "server_id", event.EffectiveServerID(), "legacy_node_id", event.NodeID)

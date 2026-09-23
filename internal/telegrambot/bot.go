@@ -15,6 +15,7 @@ type Deps struct {
 	Users   *service.UsersService
 	VPN     *service.VPNService
 	Support *service.SupportService
+	Mobile  *service.MobileService
 	Logger  *projectlogger.Logger
 }
 

@@ -54,6 +54,20 @@ type NodeRecord struct {
 	Inbounds []models.ServerInbound
 }
 
+type ServerConnectionSettings struct {
+	DisplayName string
+	CountryCode string
+	CountryName string
+	City        string
+	PublicHost  string
+	PublicPort  int
+	Security    string
+	Network     string
+	SNI         string
+	Path        string
+	Flow        string
+}
+
 func NewNodeRepo(db *gorm.DB) *NodeRepo {
 	return &NodeRepo{DB: db}
 }
@@ -137,6 +151,24 @@ func (r *NodeRepo) GetByServerID(serverID string) (models.NodeState, error) {
 
 func (r *NodeRepo) GetByNodeID(nodeID string) (models.NodeState, error) {
 	return r.GetByServerID(nodeID)
+}
+
+func (r *NodeRepo) UpdateConnectionSettings(serverID string, settings ServerConnectionSettings) error {
+	return r.DB.Model(&models.ServerRegistry{}).
+		Where("server_id = ?", serverID).
+		Updates(map[string]any{
+			"display_name": settings.DisplayName,
+			"country_code": settings.CountryCode,
+			"country_name": settings.CountryName,
+			"city":         settings.City,
+			"public_host":  settings.PublicHost,
+			"public_port":  settings.PublicPort,
+			"security":     settings.Security,
+			"network":      settings.Network,
+			"sni":          settings.SNI,
+			"path":         settings.Path,
+			"flow":         settings.Flow,
+		}).Error
 }
 
 func (r *NodeRepo) ApplySnapshot(update NodeSnapshotUpdate) (models.NodeState, bool, error) {

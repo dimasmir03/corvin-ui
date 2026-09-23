@@ -25,6 +25,13 @@ func (b *Bot) handleStart(c telebot.Context) error {
 		b.logger.Error("telegram start handler failed", err, "tg_id", sender.ID)
 		return b.send(c, msgRegistrationFailed)
 	}
+	if message := c.Message(); message != nil && strings.HasPrefix(message.Payload, "login_") && b.deps.Mobile != nil {
+		if err := b.deps.Mobile.ApproveTelegramLogin(strings.TrimPrefix(message.Payload, "login_"), sender.ID); err != nil {
+			b.logger.Error("mobile login approval failed", err, "tg_id", sender.ID)
+			return b.send(c, "Не удалось подтвердить вход. Запрос мог истечь — начните вход в приложении заново.")
+		}
+		return b.send(c, "Вход в Corvin Mobile подтверждён. Вернитесь в приложение.")
+	}
 
 	if err := b.send(c, fmt.Sprintf(msgStart, displayName(sender)), startMenu()); err != nil {
 		b.logger.Error("telegram send failed", err, "tg_id", sender.ID)

@@ -55,6 +55,16 @@ type NodeView struct {
 	ExpectedProtocol string            `json:"expected_protocol"`
 	ReportedProtocol string            `json:"reported_protocol"`
 	Protocol         string            `json:"protocol"`
+	CountryCode      string            `json:"country_code"`
+	CountryName      string            `json:"country_name"`
+	City             string            `json:"city"`
+	PublicHost       string            `json:"public_host"`
+	PublicPort       int               `json:"public_port"`
+	Security         string            `json:"security"`
+	Network          string            `json:"network"`
+	SNI              string            `json:"sni"`
+	Path             string            `json:"path"`
+	Flow             string            `json:"flow"`
 	Source           string            `json:"source"`
 	Enabled          bool              `json:"enabled"`
 	ArchivedAt       *time.Time        `json:"archived_at,omitempty"`
@@ -78,6 +88,20 @@ type NodeView struct {
 	FirstSeenAt      time.Time         `json:"first_seen_at"`
 	LastSeenAt       time.Time         `json:"last_seen"`
 	LastSnapshotAt   *time.Time        `json:"last_snapshot_at,omitempty"`
+}
+
+type ServerConnectionSettingsInput struct {
+	DisplayName string `json:"display_name"`
+	CountryCode string `json:"country_code"`
+	CountryName string `json:"country_name"`
+	City        string `json:"city"`
+	PublicHost  string `json:"public_host"`
+	PublicPort  int    `json:"public_port"`
+	Security    string `json:"security"`
+	Network     string `json:"network"`
+	SNI         string `json:"sni"`
+	Path        string `json:"path"`
+	Flow        string `json:"flow"`
 }
 
 type NodeService struct {
@@ -247,6 +271,62 @@ func (s *NodeService) GetNode(ctx context.Context, serverID string) (NodeView, e
 	return s.nodeView(record), nil
 }
 
+func (s *NodeService) UpdateConnectionSettings(ctx context.Context, serverID string, input ServerConnectionSettingsInput) (NodeView, error) {
+	_ = ctx
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return NodeView{}, fmt.Errorf("server_id is required")
+	}
+	if _, err := s.nodeRepo.GetRecordByServerID(serverID); err != nil {
+		return NodeView{}, err
+	}
+	input.DisplayName = strings.TrimSpace(input.DisplayName)
+	input.CountryCode = strings.ToUpper(strings.TrimSpace(input.CountryCode))
+	input.CountryName = strings.TrimSpace(input.CountryName)
+	input.City = strings.TrimSpace(input.City)
+	input.PublicHost = strings.TrimSpace(input.PublicHost)
+	input.Security = strings.ToLower(strings.TrimSpace(input.Security))
+	input.Network = strings.ToLower(strings.TrimSpace(input.Network))
+	input.SNI = strings.TrimSpace(input.SNI)
+	input.Path = strings.TrimSpace(input.Path)
+	input.Flow = strings.TrimSpace(input.Flow)
+	if len(input.CountryCode) > 2 {
+		return NodeView{}, fmt.Errorf("country_code must contain at most 2 characters")
+	}
+	if input.PublicHost == "" {
+		return NodeView{}, fmt.Errorf("public_host is required")
+	}
+	if input.PublicPort < 1 || input.PublicPort > 65535 {
+		return NodeView{}, fmt.Errorf("public_port must be between 1 and 65535")
+	}
+	if input.DisplayName == "" {
+		input.DisplayName = serverID
+	}
+	if input.Security == "" {
+		input.Security = "tls"
+	}
+	if input.Network == "" {
+		input.Network = "tcp"
+	}
+	if err := s.nodeRepo.UpdateConnectionSettings(serverID, repository.ServerConnectionSettings{
+		DisplayName: input.DisplayName,
+		CountryCode: input.CountryCode,
+		CountryName: input.CountryName,
+		City:        input.City,
+		PublicHost:  input.PublicHost,
+		PublicPort:  input.PublicPort,
+		Security:    input.Security,
+		Network:     input.Network,
+		SNI:         input.SNI,
+		Path:        input.Path,
+		Flow:        input.Flow,
+	}); err != nil {
+		return NodeView{}, err
+	}
+	logger.Info("server connection settings updated", "component", "node_service", "operation", "update_connection_settings", "server_id", serverID, "public_host", input.PublicHost, "public_port", input.PublicPort)
+	return s.GetNode(ctx, serverID)
+}
+
 func (s *NodeService) DisableServer(ctx context.Context, serverID string) error {
 	_ = ctx
 	serverID = strings.TrimSpace(serverID)
@@ -330,6 +410,16 @@ func (s *NodeService) nodeView(record repository.NodeRecord) NodeView {
 		ExpectedProtocol: fallbackString(registry.ExpectedProtocol, models.ServerStatusUnknown),
 		ReportedProtocol: models.ServerStatusUnknown,
 		Protocol:         models.ServerStatusUnknown,
+		CountryCode:      registry.CountryCode,
+		CountryName:      registry.CountryName,
+		City:             registry.City,
+		PublicHost:       registry.PublicHost,
+		PublicPort:       registry.PublicPort,
+		Security:         registry.Security,
+		Network:          registry.Network,
+		SNI:              registry.SNI,
+		Path:             registry.Path,
+		Flow:             registry.Flow,
 		Source:           fallbackString(registry.Source, models.NodeSourceDiscovered),
 		Enabled:          registry.Enabled,
 		ArchivedAt:       registry.ArchivedAt,

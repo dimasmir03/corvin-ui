@@ -477,3 +477,28 @@ func TestServersTemplatePutsNameBeforeServerID(t *testing.T) {
 		t.Fatalf("Name column must appear before Server ID")
 	}
 }
+
+func TestUpdateConnectionSettingsPersistsPublicEndpoint(t *testing.T) {
+	db := newVPNServiceTestDB(t)
+	if err := db.Create(&models.ServerRegistry{ServerID: "direct-1", DisplayName: "direct-1", EndpointGroup: "direct", ExpectedProtocol: "vless", Source: models.NodeSourceDiscovered, Enabled: true}).Error; err != nil {
+		t.Fatalf("create registry: %v", err)
+	}
+	svc := newTestNodeService(repository.NewNodeRepo(db), nil, time.Now())
+	view, err := svc.UpdateConnectionSettings(context.Background(), "direct-1", ServerConnectionSettingsInput{
+		DisplayName: "Amsterdam 1",
+		CountryCode: "nl",
+		CountryName: "Netherlands",
+		City:        "Amsterdam",
+		PublicHost:  "nl1.example.com",
+		PublicPort:  8443,
+		Security:    "TLS",
+		Network:     "TCP",
+		SNI:         "cdn.example.com",
+	})
+	if err != nil {
+		t.Fatalf("UpdateConnectionSettings: %v", err)
+	}
+	if view.DisplayName != "Amsterdam 1" || view.CountryCode != "NL" || view.PublicHost != "nl1.example.com" || view.PublicPort != 8443 || view.Security != "tls" || view.Network != "tcp" {
+		t.Fatalf("unexpected connection settings: %#v", view)
+	}
+}

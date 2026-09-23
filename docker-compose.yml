@@ -7,6 +7,7 @@ services:
     <<: *corvin-env
     container_name: corvin-ui
     image: ghcr.io/dimasmir03/corvin-ui:latest
+    profiles: ["container-app"]
     depends_on:
       - pg
       - minio
@@ -22,6 +23,8 @@ services:
       TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS:-}
+    volumes:
+      - /opt/corvin-ui/cert:/opt/corvin-ui/cert:ro
     restart: unless-stopped
 
   pg:
@@ -43,7 +46,7 @@ services:
     container_name: minio
     image: minio/minio:latest
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
@@ -59,15 +62,15 @@ services:
     container_name: rabbitmq
     image: rabbitmq:management-alpine
     ports:
-      - "1765:5671" # AMQP over TLS
+      - "1765:5671"
       - "127.0.0.1:15672:15672" # RabbitMQ management UI
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-      - /etc/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
-      - /etc/ssl/corvin-ui:/etc/rabbitmq/certs
+      - /etc/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - /etc/ssl/corvin-ui:/etc/rabbitmq/certs:ro
     command: ["rabbitmq-server"]
     restart: always
 
@@ -75,16 +78,17 @@ services:
     <<: *corvin-env
     container_name: bot
     image: ghcr.io/dimasmir03/vpnbot:latest
+    profiles: ["bot"]
     depends_on:
       - rabbitmq
       - minio
       - pg
     environment:
-      RABBITMQ_URL: ${RABBITMQ_CONTAINER_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
       BASE_URL: ${BASE_URL}
     volumes:
-      - /etc/ssl/corvin-ui:/app/cert:ro
       - /opt/bot/.env:/app/.env
+      - /etc/ssl/corvin-ui:/app/cert:ro
     restart: always
     network_mode: host
 

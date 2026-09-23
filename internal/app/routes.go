@@ -29,6 +29,9 @@ func (s *Server) Routes() *gin.Engine {
 
 	r.GET("/health", s.Health)
 	r.GET("/ready", s.Ready)
+	if s.Config.Mobile.Enabled && s.MobileController != nil {
+		s.MobileController.Register(r.Group("/api/mobile/v1"))
+	}
 
 	if err := mountStatic(r); err != nil {
 		logger.Printf("WARN: failed to mount static files: %v", err)
@@ -58,7 +61,6 @@ func (s *Server) Routes() *gin.Engine {
 	s.TelegramController.Register(api.Group("/telegram"))
 	s.ComplaintsController.Register(api.Group("/complaints"))
 	s.MediaController.Register(api.Group("/media"))
-	s.JobsController.Register(api.Group("/jobs"))
 	s.NodesController.Register(api.Group("/nodes"))
 
 	return r

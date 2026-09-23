@@ -4,24 +4,49 @@ on:
   workflow_dispatch:
   release:
     types: [published]
-  push:
-    tags:
-      - "v*.*.*"
-    paths:
-      - '**.js'
-      - '**.css'
-      - '**.html'
-      - '**.sh'
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'corvin-ui.service'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: corvinvpn
+          POSTGRES_PASSWORD: integration-password
+          POSTGRES_DB: corvinvpn_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U corvinvpn -d corvinvpn_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - name: PostgreSQL migration integration test
+        env:
+          TEST_POSTGRES_DSN: host=127.0.0.1 port=5432 user=corvinvpn password=integration-password dbname=corvinvpn_test sslmode=disable
+        run: go test -count=1 -tags=integration_postgres ./internal/db
+
   build:
+    needs: test
     permissions:
       contents: write
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - amd64
@@ -78,12 +103,15 @@ jobs:
           cp corvinui-release corvin-ui/
           cp corvin-ui.service corvin-ui/
           cp corvin-ui.sh corvin-ui/
+          cp docker-compose.yml corvin-ui/
           mv corvin-ui/corvinui-release corvin-ui/corvin-ui
           mkdir corvin-ui/bin
           cd ..
           
       - name: Package
-        run: tar -zcvf corvin-ui-linux-${{ matrix.platform }}.tar.gz corvin-ui
+        run: |
+          tar -zcvf corvin-ui-linux-${{ matrix.platform }}.tar.gz corvin-ui
+          sha256sum corvin-ui-linux-${{ matrix.platform }}.tar.gz > corvin-ui-linux-${{ matrix.platform }}.tar.gz.sha256
 
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@v4
@@ -93,14 +121,23 @@ jobs:
 
       - name: Upload files to GH release
         uses: svenstaro/upload-release-action@v2
-        if: |
-          (github.event_name == 'release' && github.event.action == 'published') ||
-          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+        if: github.event_name == 'release' && github.event.action == 'published'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref }}
           file: corvin-ui-linux-${{ matrix.platform }}.tar.gz
           asset_name: corvin-ui-linux-${{ matrix.platform }}.tar.gz
+          overwrite: true
+          prerelease: false
+
+      - name: Upload checksum to GH release
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'release' && github.event.action == 'published'
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref }}
+          file: corvin-ui-linux-${{ matrix.platform }}.tar.gz.sha256
+          asset_name: corvin-ui-linux-${{ matrix.platform }}.tar.gz.sha256
           overwrite: true
           prerelease: false
 

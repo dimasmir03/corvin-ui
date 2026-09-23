@@ -10,11 +10,12 @@ Corvin UI — веб-панель управления VPN-инфраструк�
 - REST API для управления пользователями, серверами и VPN-профилями.
 - Telegram API для бота: создание пользователей, выдача VPN, прием и обновление жалоб.
 - Генерация VPN-ссылок VLESS и Trojan.
-- Сбор статистики online-пользователей по серверам через cron job.
+- Приём актуального состояния серверов из snapshot-событий corvin-agent.
 - Хранение файлов жалоб в MinIO.
 - Отправка событий в RabbitMQ.
 - Конфигурация через environment variables и systemd `EnvironmentFile`.
 - Безопасный режим по умолчанию: панель слушает только `127.0.0.1:8080`.
+- Versioned Mobile API `/api/mobile/v1` с Telegram PKCE, JWT/refresh rotation, устройствами и управляемым каталогом подключений.
 
 ## Быстрый старт
 
@@ -31,7 +32,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/dimasmir03/corvin-ui/main/inst
 - создает systemd service `corvin-ui`;
 - создает конфиг `/etc/corvin-ui/corvin-ui.env`;
 - генерирует случайные секреты для DB, RabbitMQ, MinIO и session cookie;
-- не перетирает существующий env-файл без подтверждения.
+- никогда не перетирает существующий env-файл при обновлении.
 
 После установки панель по умолчанию доступна только локально на сервере. Для доступа с рабочей машины используйте SSH tunnel:
 
@@ -44,6 +45,16 @@ ssh -L 8080:127.0.0.1:8080 root@SERVER_IP
 ```text
 http://127.0.0.1:8080
 ```
+
+Безопасное обновление конкретного release:
+
+```bash
+sudo corvin-ui upgrade v1.0.0
+```
+
+Команда проверяет checksum, делает PostgreSQL backup, запускает автоматические миграции, ждёт `/ready` и возвращает предыдущий бинарник, если новая версия не поднялась. Для полностью автоматического обновления через закрытую Tailscale-сеть предусмотрен ручной workflow `Deploy panel` в GitHub Actions.
+
+Mobile API по умолчанию выключен. Настройка и список ручек описаны в [docs/mobile-api.md](docs/mobile-api.md).
 
 ## Почему панель слушает localhost
 
@@ -136,6 +147,8 @@ journalctl -u corvin-ui -f
 Основные команды:
 
 ```bash
+sudo corvin-ui init
+sudo corvin-ui compose up -d
 corvin-ui start
 corvin-ui stop
 corvin-ui restart
@@ -146,10 +159,16 @@ corvin-ui settings update <field> <value>
 ```
 
 Команда `settings` работает с настройками, сохраненными в базе данных.
+`init` один раз создаёт общий env-файл с правами `600`, а `compose` всегда
+передаёт этот файл Docker Compose. Повторный `init` существующие секреты не
+перезаписывает.
 
 ## Docker Compose
 
-В репозитории есть [docker-compose.yml](./docker-compose.yml) для запуска инфраструктуры и контейнерного варианта панели.
+В репозитории есть [docker-compose.yml](./docker-compose.yml). По умолчанию он
+запускает только PostgreSQL, RabbitMQ и MinIO для systemd-версии панели.
+Контейнер панели включается отдельным profile `container-app`, бот — profile
+`bot`.
 
 Compose использует env-file:
 
@@ -169,10 +188,15 @@ docker compose --env-file .env.example up -d
 
 - панель: `127.0.0.1:8080:8080`
 - PostgreSQL: `127.0.0.1:5432:5432`
+- MinIO API: `127.0.0.1:9000:9000`
 - RabbitMQ management: `127.0.0.1:15672:15672`
 - MinIO console: `127.0.0.1:9001:9001`
 
-AMQP over TLS сейчас опубликован как `1765:5671`, потому что панель и бот используют RabbitMQ URL.
+RabbitMQ публикует только TLS listener: `1765:5671`. Панель и агенты подключаются
+через `amqps://`; конфигурация брокера берётся из `/etc/rabbitmq/rabbitmq.conf`,
+а сертификаты монтируются из `/etc/ssl/corvin-ui`. Пути `CERT_FILE`, `KEY_FILE`
+и `CA_FILE` задают клиентские сертификаты панели. Tailscale можно использовать
+как дополнительное сетевое ограничение, но он не отключает TLS RabbitMQ.
 
 ## HTTP routes
 

@@ -128,6 +128,16 @@ type ServerRegistry struct {
 	DisplayName      string     `gorm:"not null" json:"display_name"`
 	EndpointGroup    string     `gorm:"not null;default:unknown;index" json:"endpoint_group"`
 	ExpectedProtocol string     `gorm:"not null;default:unknown;index" json:"expected_protocol"`
+	CountryCode      string     `gorm:"index" json:"country_code"`
+	CountryName      string     `json:"country_name"`
+	City             string     `json:"city"`
+	PublicHost       string     `json:"public_host"`
+	PublicPort       int        `gorm:"not null;default:443" json:"public_port"`
+	Security         string     `json:"security"`
+	Network          string     `json:"network"`
+	SNI              string     `json:"sni"`
+	Path             string     `json:"path"`
+	Flow             string     `json:"flow"`
 	Source           string     `gorm:"not null;default:discovered;index" json:"source"`
 	Enabled          bool       `gorm:"not null;default:true;index" json:"enabled"`
 	ArchivedAt       *time.Time `gorm:"index" json:"archived_at,omitempty"`
@@ -198,7 +208,8 @@ type EndpointGroup struct {
 
 type VPNClient struct {
 	ID             uint      `gorm:"primary_key;autoIncrement" json:"id"`
-	UserID         uint      `gorm:"uniqueIndex;not null" json:"user_id"`
+	UserID         uint      `gorm:"not null;index" json:"user_id"`
+	DeviceID       *string   `gorm:"index" json:"device_id,omitempty"`
 	TelegramID     int64     `gorm:"index;not null" json:"telegram_id"`
 	ClientCode     string    `gorm:"uniqueIndex;not null" json:"client_code"`
 	Email          string    `gorm:"uniqueIndex;not null" json:"email"`
@@ -209,15 +220,142 @@ type VPNClient struct {
 }
 
 const (
-	VPNProfileStatusPending = "pending"
-	VPNProfileStatusActive  = "active"
-	VPNProfileStatusPartial = "partial"
-	VPNProfileStatusFailed  = "failed"
+	VPNProfileStatusPending  = "pending"
+	VPNProfileStatusActive   = "active"
+	VPNProfileStatusPartial  = "partial"
+	VPNProfileStatusFailed   = "failed"
+	VPNProfileStatusDisabled = "disabled"
 
-	VPNProfileNodeStatusPending = "pending"
-	VPNProfileNodeStatusSuccess = "success"
-	VPNProfileNodeStatusFailed  = "failed"
+	VPNProfileNodeStatusPending  = "pending"
+	VPNProfileNodeStatusSuccess  = "success"
+	VPNProfileNodeStatusFailed   = "failed"
+	VPNProfileNodeStatusDisabled = "disabled"
+	VPNProfileNodeStatusDeleted  = "deleted"
+
+	VPNConnectionDesiredEnabled  = "enabled"
+	VPNConnectionDesiredDisabled = "disabled"
+	VPNConnectionDesiredDeleted  = "deleted"
+
+	MobileDeviceStatusActive  = "active"
+	MobileDeviceStatusBlocked = "blocked"
+	MobileDeviceStatusRevoked = "revoked"
+
+	SubscriptionStatusActive  = "active"
+	SubscriptionStatusTrial   = "trial"
+	SubscriptionStatusExpired = "expired"
+	SubscriptionStatusBlocked = "blocked"
+	SubscriptionStatusNone    = "none"
+
+	AutoServerModeAutomatic = "automatic"
+	AutoServerModePinned    = "pinned"
 )
+
+type UserSubscription struct {
+	ID          uint       `gorm:"primary_key;autoIncrement" json:"id"`
+	UserID      uint       `gorm:"uniqueIndex;not null" json:"user_id"`
+	Status      string     `gorm:"not null;default:active;index" json:"status"`
+	TariffName  string     `gorm:"not null;default:default" json:"tariff_name"`
+	ExpiresAt   *time.Time `gorm:"index" json:"expires_at,omitempty"`
+	DeviceLimit int        `gorm:"not null;default:1" json:"device_limit"`
+	CreatedAt   time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+// VPNRoutingSettings controls the virtual "auto" connection globally. A
+// concrete server selection from the client never uses these settings.
+type VPNRoutingSettings struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	AutoMode     string    `gorm:"not null;default:automatic" json:"auto_mode"`
+	AutoServerID string    `gorm:"index" json:"auto_server_id,omitempty"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+type MobileDevice struct {
+	ID         string     `gorm:"primaryKey;size:64" json:"id"`
+	UserID     uint       `gorm:"not null;index" json:"user_id"`
+	InstallID  string     `gorm:"not null;uniqueIndex" json:"install_id"`
+	DeviceName string     `gorm:"not null" json:"device_name"`
+	Platform   string     `gorm:"not null;index" json:"platform"`
+	Status     string     `gorm:"not null;default:active;index" json:"status"`
+	LastSeenAt time.Time  `gorm:"not null;index" json:"last_seen_at"`
+	RevokedAt  *time.Time `gorm:"index" json:"revoked_at,omitempty"`
+	CreatedAt  time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt  time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+type MobileLoginSession struct {
+	ID                string     `gorm:"primaryKey;size:64" json:"id"`
+	ApprovalTokenHash string     `gorm:"uniqueIndex;not null" json:"-"`
+	CodeChallenge     string     `gorm:"not null" json:"-"`
+	InstallID         string     `gorm:"not null;index" json:"-"`
+	Platform          string     `gorm:"not null" json:"platform"`
+	AppVersion        string     `gorm:"not null" json:"app_version"`
+	DeviceName        string     `gorm:"not null" json:"device_name"`
+	Status            string     `gorm:"not null;index" json:"status"`
+	UserID            *uint      `gorm:"index" json:"user_id,omitempty"`
+	ExpiresAt         time.Time  `gorm:"not null;index" json:"expires_at"`
+	ApprovedAt        *time.Time `json:"approved_at,omitempty"`
+	ExchangedAt       *time.Time `json:"exchanged_at,omitempty"`
+	CreatedAt         time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt         time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+type MobileSession struct {
+	ID               string     `gorm:"primaryKey;size:64" json:"id"`
+	UserID           uint       `gorm:"not null;index" json:"user_id"`
+	DeviceID         string     `gorm:"not null;index" json:"device_id"`
+	InstallID        string     `gorm:"not null;index" json:"install_id"`
+	RefreshTokenHash string     `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt        time.Time  `gorm:"not null;index" json:"expires_at"`
+	LastUsedAt       time.Time  `gorm:"not null;index" json:"last_used_at"`
+	RevokedAt        *time.Time `gorm:"index" json:"revoked_at,omitempty"`
+	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+type MobileUsedRefreshToken struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	SessionID string    `gorm:"not null;index" json:"session_id"`
+	TokenHash string    `gorm:"uniqueIndex;not null" json:"-"`
+	UsedAt    time.Time `gorm:"not null;index" json:"used_at"`
+}
+
+type MobileOperation struct {
+	ID             string    `gorm:"primaryKey;size:64" json:"operation_id"`
+	UserID         uint      `gorm:"not null;index" json:"user_id"`
+	DeviceID       string    `gorm:"not null;index" json:"device_id"`
+	ServerID       string    `gorm:"not null;index" json:"server_id"`
+	ResolvedServer string    `gorm:"index" json:"resolved_server_id,omitempty"`
+	Protocol       string    `gorm:"not null;index" json:"protocol"`
+	Status         string    `gorm:"not null;index" json:"status"`
+	LastErrorCode  string    `json:"last_error_code,omitempty"`
+	LastError      string    `json:"last_error,omitempty"`
+	ExpiresAt      time.Time `gorm:"not null;index" json:"expires_at"`
+	CreatedAt      time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+type MobileIdempotencyRecord struct {
+	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	DeviceID    string    `gorm:"not null;uniqueIndex:idx_mobile_idempotency" json:"device_id"`
+	Key         string    `gorm:"not null;uniqueIndex:idx_mobile_idempotency" json:"key"`
+	RequestHash string    `gorm:"not null" json:"-"`
+	OperationID string    `gorm:"not null;index" json:"operation_id"`
+	ExpiresAt   time.Time `gorm:"not null;index" json:"expires_at"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+type UserServerAccess struct {
+	ID          uint       `gorm:"primary_key;autoIncrement" json:"id"`
+	UserID      uint       `gorm:"not null;index;uniqueIndex:idx_user_server_access_unique" json:"user_id"`
+	ServerID    string     `gorm:"not null;index;uniqueIndex:idx_user_server_access_unique" json:"server_id"`
+	Enabled     bool       `gorm:"not null;index" json:"enabled"`
+	AllowVLESS  bool       `gorm:"column:allow_vless;not null" json:"allow_vless"`
+	AllowTrojan bool       `gorm:"not null" json:"allow_trojan"`
+	ValidUntil  *time.Time `gorm:"index" json:"valid_until,omitempty"`
+	CreatedAt   time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+}
 
 type VPNProfile struct {
 	ID            uint             `gorm:"primary_key;autoIncrement" json:"id"`
@@ -236,17 +374,22 @@ type VPNProfile struct {
 }
 
 type VPNProfileNode struct {
-	ID           uint       `gorm:"primary_key;autoIncrement" json:"id"`
-	VPNProfileID uint       `gorm:"index;not null;uniqueIndex:idx_vpn_profile_server_unique" json:"vpn_profile_id"`
-	ServerID     string     `gorm:"index;uniqueIndex:idx_vpn_profile_server_unique" json:"server_id"`
-	NodeID       string     `gorm:"index" json:"node_id,omitempty"`
-	Protocol     string     `gorm:"not null;index" json:"protocol"`
-	Status       string     `gorm:"not null;index" json:"status"`
-	InboundID    *int       `json:"inbound_id,omitempty"`
-	LastError    string     `json:"last_error"`
-	AppliedAt    *time.Time `json:"applied_at,omitempty"`
-	CreatedAt    time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt    time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	ID              uint       `gorm:"primary_key;autoIncrement" json:"id"`
+	VPNProfileID    uint       `gorm:"index;not null;uniqueIndex:idx_vpn_profile_server_unique" json:"vpn_profile_id"`
+	ServerID        string     `gorm:"index;uniqueIndex:idx_vpn_profile_server_unique" json:"server_id"`
+	NodeID          string     `gorm:"index" json:"node_id,omitempty"`
+	Protocol        string     `gorm:"not null;index" json:"protocol"`
+	Status          string     `gorm:"not null;index" json:"status"`
+	DesiredState    string     `gorm:"not null;default:enabled;index" json:"desired_state"`
+	PendingAction   string     `gorm:"index" json:"pending_action,omitempty"`
+	InboundID       *int       `json:"inbound_id,omitempty"`
+	Attempts        int        `gorm:"not null;default:0" json:"attempts"`
+	LastPublishedAt *time.Time `gorm:"index" json:"last_published_at,omitempty"`
+	NextAttemptAt   *time.Time `gorm:"index" json:"next_attempt_at,omitempty"`
+	LastError       string     `json:"last_error"`
+	AppliedAt       *time.Time `json:"applied_at,omitempty"`
+	CreatedAt       time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt       time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 type Telegram struct {

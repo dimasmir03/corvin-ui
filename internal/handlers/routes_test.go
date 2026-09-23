@@ -11,5 +11,6 @@ func TestNodeAndServerRouteRegistrationDoesNotPanic(t *testing.T) {
 	r := gin.New()
 	api := r.Group("/api")
 	NewNodesController(nil).Register(api.Group("/nodes"))
-	NewServersController(nil, nil, nil, nil).Register(api.Group("/servers"))
+	NewServersController(nil, nil).Register(api.Group("/servers"))
+	NewVpnController(nil, nil).Register(api.Group("/vpn"))
 }

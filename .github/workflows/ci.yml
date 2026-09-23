@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: corvinvpn
+          POSTGRES_PASSWORD: integration-password
+          POSTGRES_DB: corvinvpn_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U corvinvpn -d corvinvpn_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Vet
+        run: go vet ./...
+      - name: Unit and integration tests
+        run: go test -race -count=1 ./...
+      - name: PostgreSQL migration integration test
+        env:
+          TEST_POSTGRES_DSN: host=127.0.0.1 port=5432 user=corvinvpn password=integration-password dbname=corvinvpn_test sslmode=disable
+        run: go test -count=1 -tags=integration_postgres ./internal/db
+      - name: Build
+        run: CGO_ENABLED=1 go build -trimpath ./cmd/vpnpanel

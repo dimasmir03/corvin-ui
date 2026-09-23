@@ -163,7 +163,6 @@ func telegramCommandName(c telebot.Context, fallback string) string {
 
 func (b *Bot) contextLogArgs(c telebot.Context) []any {
 	args := make([]any, 0, 12)
-	args = append(args)
 	if sender := c.Sender(); sender != nil {
 		args = append(args, "tg_id", sender.ID)
 	}

@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-	"vpnpanel/internal/audit"
-	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/logger"
 	"vpnpanel/internal/models"
 	"vpnpanel/internal/repository"
@@ -17,13 +15,11 @@ import (
 
 type ServersController struct {
 	Repo  *repository.ServerRepo
-	jobs  *jobsvc.Service
-	audit *audit.Logger
 	nodes *service.NodeService
 }
 
-func NewServersController(repo *repository.ServerRepo, jobs *jobsvc.Service, auditLogger *audit.Logger, nodes ...*service.NodeService) *ServersController {
-	controller := &ServersController{Repo: repo, jobs: jobs, audit: auditLogger}
+func NewServersController(repo *repository.ServerRepo, nodes ...*service.NodeService) *ServersController {
+	controller := &ServersController{Repo: repo}
 	if len(nodes) > 0 {
 		controller.nodes = nodes[0]
 	}

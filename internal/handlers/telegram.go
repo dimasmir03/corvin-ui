@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"vpnpanel/internal/audit"
 	"vpnpanel/internal/broker"
 	"vpnpanel/internal/handlers/response"
-	"vpnpanel/internal/jobsvc"
 	"vpnpanel/internal/repository"
 	"vpnpanel/internal/service"
 
@@ -21,8 +19,6 @@ type TelegramController struct {
 	usersService *service.UsersService
 	vpnService   *service.VPNService
 	storage      *repository.StorageRepo
-	jobs         *jobsvc.Service
-	audit        *audit.Logger
 }
 
 func NewTelegramController(
@@ -30,16 +26,12 @@ func NewTelegramController(
 	teleRepo *repository.TelegramRepo,
 	usersService *service.UsersService,
 	vpnService *service.VPNService,
-	jobs *jobsvc.Service,
-	auditLogger *audit.Logger,
 ) *TelegramController {
 	return &TelegramController{
 		storage:      repo,
 		teleRepo:     teleRepo,
 		usersService: usersService,
 		vpnService:   vpnService,
-		jobs:         jobs,
-		audit:        auditLogger,
 	}
 }
 
@@ -130,19 +122,12 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 		return
 	}
 
-	vpn, err := s.vpnService.CreateVPN(service.CreateVPNInput{TgID: dto.TgID})
+	result, err := s.vpnService.RequestCreateVPN(service.RequestCreateVPNInput{TgID: dto.TgID, Protocol: "all"})
 	if err != nil {
-		if service.IsVPNFlowError(err, service.VPNErrorKindJobs) {
-			c.JSON(http.StatusInternalServerError, response.Response{
-				Success: false,
-				Msg:     "Failed to create vpn jobs:" + err.Error(),
-			})
-			return
-		}
 		if service.IsVPNFlowError(err, service.VPNErrorKindBroker) {
 			c.JSON(http.StatusInternalServerError, response.Response{
 				Success: false,
-				Msg:     "Failed to send create user task in broker:" + err.Error(),
+				Msg:     "Failed to publish VPN command:" + err.Error(),
 			})
 			return
 		}
@@ -150,13 +135,20 @@ func (s TelegramController) CreateVpn(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, Response{
+	overview, _ := s.vpnService.GetLinkOverview(dto.TgID)
+	statusCode := http.StatusAccepted
+	message := "vpn provisioning started"
+	if result.CommandsCount == 0 {
+		statusCode = http.StatusOK
+		message = "vpn already active"
+	}
+	c.JSON(statusCode, Response{
 		Success: true,
-		Msg:     "vpn created",
+		Msg:     message,
 		Obj: response.VpnResult{
 			TgID:       dto.TgID,
-			VlessLink:  vpn.VlessLink,
-			TrojanLink: vpn.TrojanLink,
+			VlessLink:  usableProfileLink(overview.Profiles["vless"]),
+			TrojanLink: usableProfileLink(overview.Profiles["trojan"]),
 		},
 	})
 }
@@ -170,22 +162,15 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 		return
 	}
 
-	_, err := s.vpnService.CreateVPNProtocol(service.CreateVPNProtocolInput{
+	result, err := s.vpnService.RequestCreateVPN(service.RequestCreateVPNInput{
 		TgID:     dto.TgID,
 		Protocol: protocol,
 	})
 	if err != nil {
-		if service.IsVPNFlowError(err, service.VPNErrorKindJobs) {
-			c.JSON(http.StatusInternalServerError, response.Response{
-				Success: false,
-				Msg:     "Failed to create vpn jobs:" + err.Error(),
-			})
-			return
-		}
 		if service.IsVPNFlowError(err, service.VPNErrorKindBroker) {
 			c.JSON(http.StatusInternalServerError, response.Response{
 				Success: false,
-				Msg:     "Failed to send create user task in broker:" + err.Error(),
+				Msg:     "Failed to publish VPN command:" + err.Error(),
 			})
 			return
 		}
@@ -193,9 +178,15 @@ func (s TelegramController) CreateVpnProtocol(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, Response{
+	statusCode := http.StatusAccepted
+	message := "vpn provisioning started"
+	if result.CommandsCount == 0 {
+		statusCode = http.StatusOK
+		message = "vpn already active"
+	}
+	c.JSON(statusCode, Response{
 		Success: true,
-		Msg:     "vpn created",
+		Msg:     message,
 	})
 }
 
@@ -206,7 +197,7 @@ func (s TelegramController) GetVpn(c *gin.Context) {
 		return
 	}
 
-	vpn, err := s.vpnService.GetVPNByTelegramID(tgID)
+	overview, err := s.vpnService.GetLinkOverview(tgID)
 	if err != nil {
 		c.JSON(http.StatusOK, Response{false, err.Error(), nil})
 		return
@@ -217,8 +208,8 @@ func (s TelegramController) GetVpn(c *gin.Context) {
 		Msg:     "",
 		Obj: response.VpnResult{
 			TgID:       tgID,
-			VlessLink:  vpn.VlessLink,
-			TrojanLink: vpn.TrojanLink,
+			VlessLink:  usableProfileLink(overview.Profiles["vless"]),
+			TrojanLink: usableProfileLink(overview.Profiles["trojan"]),
 		},
 	})
 }
@@ -232,7 +223,7 @@ func (s TelegramController) GetVpnLinkByProtocol(c *gin.Context) {
 
 	protocol := c.Param("protocol")
 
-	link, err := s.vpnService.GetVPNLinkByProtocol(tgID, protocol)
+	result, err := s.vpnService.GetProtocolLink(tgID, protocol)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusNotFound, Response{
 			false,
@@ -254,9 +245,16 @@ func (s TelegramController) GetVpnLinkByProtocol(c *gin.Context) {
 		Success: true,
 		Msg:     "",
 		Obj: map[string]interface{}{
-			"link": link, // "" или ссылка
+			"link": result.Link,
 		},
 	})
+}
+
+func usableProfileLink(profile service.LinkProfileView) string {
+	if profile.Usable {
+		return profile.FinalLink
+	}
+	return ""
 }
 
 func (s TelegramController) GetAllUsers(c *gin.Context) {

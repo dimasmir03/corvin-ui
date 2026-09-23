@@ -76,6 +76,19 @@ func TestValidateRequiresTelegramTokenWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestValidateMobileAPIConfiguration(t *testing.T) {
+	cfg := Config{HTTP: HTTPConfig{Addr: "127.0.0.1:8080"}, Auth: AuthConfig{Mode: AuthModeNone}, Mobile: MobileConfig{Enabled: true, JWTSecret: "short", AccessTTL: 900, RefreshTTLHours: 24, LoginTTLMinutes: 10}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected short mobile JWT secret to fail")
+	}
+	cfg.Mobile.JWTSecret = "01234567890123456789012345678901"
+	cfg.Mobile.TelegramBotUsername = "corvin_bot"
+	cfg.Mobile.PublicBaseURL = "https://panel.example.com"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid mobile config rejected: %v", err)
+	}
+}
+
 func TestLoadDefaultsRabbitMQTopology(t *testing.T) {
 	keys := []string{"AMQP_EXCHANGE_COMMANDS", "RABBITMQ_EVENTS_EXCHANGE", "RABBITMQ_EVENTS_QUEUE", "RABBITMQ_EVENTS_ROUTING_KEY"}
 	originals := map[string]*string{}

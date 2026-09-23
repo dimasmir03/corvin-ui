@@ -291,19 +291,12 @@ func (b *Bot) requestCreateVPN(c telebot.Context, protocol string) error {
 		TgID:     sender.ID,
 		Protocol: protocol,
 	})
-	if errors.Is(err, service.ErrVPNAlreadyExists) {
-		b.logger.Info("telegram vpn already exists", "tg_id", sender.ID, "protocol", protocol)
-		if vpn, getErr := b.deps.VPN.GetVPNByTelegramID(sender.ID); getErr == nil {
-			return b.send(c, fmt.Sprintf(msgVPNAlreadyExists, buildVPNStatus(vpn.VlessLink, vpn.TrojanLink)), vpnMenu(hasVPNLink(vpn.VlessLink), hasVPNLink(vpn.TrojanLink)))
-		}
-		return b.send(c, "✅ VPN уже создан", vpnMenu(false, false))
-	}
 	if errors.Is(err, service.ErrUnsupportedProtocol) {
 		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol)
 		return b.send(c, msgVPNUnsupportedProtocol)
 	}
-	if errors.Is(err, service.ErrNoMatchingServers) || errors.Is(err, service.ErrNoJobsQueued) {
-		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol, "reason", "jobs_not_queued")
+	if errors.Is(err, service.ErrNoMatchingServers) || errors.Is(err, service.ErrNoCommandsQueued) {
+		b.logger.Error("telegram vpn create request failed", err, "tg_id", sender.ID, "protocol", protocol, "reason", "commands_not_queued")
 		return b.send(c, msgVPNCreateFailed)
 	}
 	if err != nil {
@@ -311,12 +304,12 @@ func (b *Bot) requestCreateVPN(c telebot.Context, protocol string) error {
 		return b.send(c, msgVPNCreateFailed)
 	}
 
-	if result.JobsCount == 0 && hasVPNLink(result.FinalLink) && result.Protocol != "all" && !strings.Contains(result.Protocol, ",") {
+	if result.CommandsCount == 0 && hasVPNLink(result.FinalLink) && result.Protocol != "all" && !strings.Contains(result.Protocol, ",") {
 		b.logger.Info("telegram vpn existing link returned", "tg_id", sender.ID, "protocol", result.Protocol, "reason", "profile_already_active")
 		return b.send(c, formatLinkMessage(result.Protocol, result.FinalLink))
 	}
 
-	b.logger.Info("telegram vpn create request queued", "tg_id", sender.ID, "protocol", result.Protocol, "batch_id", result.BatchID, "job_id", result.JobID, "jobs_count", result.JobsCount)
+	b.logger.Info("telegram vpn create request queued", "tg_id", sender.ID, "protocol", result.Protocol, "command_id", result.CommandID, "commands_count", result.CommandsCount)
 	return b.send(c, msgVPNCreateRequested)
 }
 

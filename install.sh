@@ -19,21 +19,15 @@ create_env_file() {
   mkdir -p "${ENV_DIR}"
 
   if [ -f "${ENV_FILE}" ]; then
-    echo "Config already exists: ${ENV_FILE}"
-    read -r -p "Overwrite it and generate new secrets? [y/N]: " answer
-    case "${answer}" in
-      y|Y|yes|YES) ;;
-      *)
-        echo "Keeping existing config."
-        return
-        ;;
-    esac
+    echo "Keeping existing config: ${ENV_FILE}"
+    return
   fi
 
   DB_PASSWORD=$(random_secret 32)
   RABBITMQ_PASSWORD=$(random_secret 32)
   MINIO_SECRET_KEY=$(random_secret 40)
   SESSION_SECRET=$(random_secret 64)
+	MOBILE_JWT_SECRET=$(random_secret 64)
 
   cat > "${ENV_FILE}" <<EOF
 HTTP_ADDR=127.0.0.1:8080
@@ -68,6 +62,17 @@ MINIO_BUCKET=complaints
 
 SESSION_SECRET=${SESSION_SECRET}
 
+MOBILE_API_ENABLED=false
+MOBILE_JWT_SECRET=${MOBILE_JWT_SECRET}
+MOBILE_ACCESS_TTL_SECONDS=900
+MOBILE_REFRESH_TTL_HOURS=720
+MOBILE_LOGIN_TTL_MINUTES=10
+MOBILE_TELEGRAM_BOT_USERNAME=
+MOBILE_PUBLIC_BASE_URL=
+MOBILE_CONNECTIVITY_CHECK_URL=
+MOBILE_MIN_APP_VERSION=1.0.0
+MOBILE_TRUSTED_PROXIES=
+
 CERT_FILE=/opt/corvin-ui/cert/cert.pem
 KEY_FILE=/opt/corvin-ui/cert/key.pem
 CA_FILE=/opt/corvin-ui/cert/ca.pem
@@ -82,6 +87,33 @@ EOF
 install_cli_wrapper() {
   wget -O "/usr/bin/${APP_NAME}" "https://raw.githubusercontent.com/${REPO}/main/corvin-ui.sh"
   chmod +x "/usr/bin/${APP_NAME}"
+
+  mkdir -p "/opt/${APP_NAME}"
+  if [ -f "${INSTALL_DIR}/${APP_NAME}/docker-compose.yml" ]; then
+    cp "${INSTALL_DIR}/${APP_NAME}/docker-compose.yml" "/opt/${APP_NAME}/docker-compose.yml"
+  else
+    wget -O "/opt/${APP_NAME}/docker-compose.yml" "https://raw.githubusercontent.com/${REPO}/main/docker-compose.yml"
+  fi
+}
+
+ensure_mobile_env() {
+  if ! grep -q '^MOBILE_JWT_SECRET=' "${ENV_FILE}"; then
+    {
+      echo
+      echo "MOBILE_API_ENABLED=false"
+      echo "MOBILE_JWT_SECRET=$(random_secret 64)"
+      echo "MOBILE_ACCESS_TTL_SECONDS=900"
+      echo "MOBILE_REFRESH_TTL_HOURS=720"
+      echo "MOBILE_LOGIN_TTL_MINUTES=10"
+      echo "MOBILE_TELEGRAM_BOT_USERNAME="
+      echo "MOBILE_PUBLIC_BASE_URL="
+      echo "MOBILE_CONNECTIVITY_CHECK_URL="
+      echo "MOBILE_MIN_APP_VERSION=1.0.0"
+      echo "MOBILE_TRUSTED_PROXIES="
+    } >> "${ENV_FILE}"
+    chmod 600 "${ENV_FILE}"
+    echo "Added disabled Mobile API defaults to existing config"
+  fi
 }
 
 write_service_file() {
@@ -117,6 +149,7 @@ esac
 mkdir -p "${LOG_PATH}"
 mkdir -p "${INSTALL_DIR}"
 create_env_file
+ensure_mobile_env
 
 if [ "${VERSION}" = "latest" ]; then
   VERSION=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | cut -d '"' -f4)
@@ -129,7 +162,14 @@ chmod +x "${INSTALL_DIR}/${APP_NAME}/${APP_NAME}"
 echo "${VERSION}" > "${INSTALL_DIR}/VERSION"
 
 install_cli_wrapper
+/usr/bin/${APP_NAME} init
 write_service_file
+
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  /usr/bin/${APP_NAME} compose up -d
+else
+  echo "Docker Compose is not available; PostgreSQL, RabbitMQ and MinIO were not started."
+fi
 
 systemctl daemon-reload
 systemctl enable "${APP_NAME}"

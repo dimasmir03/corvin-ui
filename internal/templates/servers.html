@@ -30,6 +30,36 @@
    <div v-if="notice" class="alert alert-info py-2">[[ notice ]]</div>
    <div v-if="error" class="alert alert-danger py-2">[[ error ]]</div>
 
+   <div class="card mb-3">
+      <div class="card-header"><h2 class="h5 mb-0">Основное подключение Auto</h2></div>
+      <div class="card-body">
+         <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+               <label class="form-label">Режим</label>
+               <select class="form-select" v-model="autoRouting.auto_mode">
+                  <option value="pinned">Pinned — основной выбран вручную</option>
+                  <option value="automatic">Automatic — backend выбирает лучший</option>
+               </select>
+            </div>
+            <div class="col-md-5" v-if="autoRouting.auto_mode === 'pinned'">
+               <label class="form-label">Основной сервер</label>
+               <select class="form-select" v-model="autoRouting.auto_server_id">
+                  <option value="">Выберите сервер</option>
+                  <option v-for="node in nodes.filter(item => item.enabled && !item.archived_at)" :key="serverID(node)" :value="serverID(node)">
+                     [[ node.display_name || serverID(node) ]] ([[ serverID(node) ]])
+                  </option>
+               </select>
+            </div>
+            <div class="col-md-5 text-muted small" v-else>
+               Backend выбирает самый здоровый разрешённый пользователю сервер. Конкретный сервер, выбранный в приложении, этим режимом не переопределяется.
+            </div>
+            <div class="col-md-3 d-grid">
+               <button type="button" class="btn btn-primary" @click="saveAutoRouting">Сохранить Auto</button>
+            </div>
+         </div>
+      </div>
+   </div>
+
    <div class="info-box">
       <div class="info-box-content">
          <span class="info-box-text">Всего онлайна по snapshots</span>
@@ -102,10 +132,29 @@
                            <button type="button" class="btn btn-outline-primary" :disabled="refreshing[serverID(node)]" @click="refreshNode(serverID(node))">
                               [[ refreshing[serverID(node)] ? "Queued" : "Refresh" ]]
                            </button>
+                           <button type="button" class="btn btn-outline-secondary" @click="toggleConnection(serverID(node))">Connection</button>
                            <button type="button" class="btn btn-outline-warning" v-if="node.enabled" @click="serverAction(node, 'disable')">Disable</button>
                            <button type="button" class="btn btn-outline-success" v-else @click="serverAction(node, 'enable')">Enable</button>
                            <button type="button" class="btn btn-outline-danger" @click="serverAction(node, 'archive')">Archive</button>
                            <button type="button" class="btn btn-outline-success" v-if="node.archived_at" @click="serverAction(node, 'restore')">Restore</button>
+                        </div>
+                     </td>
+                  </tr>
+                  <tr v-if="connectionExpanded[serverID(node)]" :key="serverID(node) + '-connection'" class="table-light">
+                     <td colspan="14">
+                        <div class="row g-2 align-items-end">
+                           <div class="col-md-2"><label class="form-label small">Display name</label><input class="form-control form-control-sm" v-model.trim="node.display_name"></div>
+                           <div class="col-md-1"><label class="form-label small">Country</label><input class="form-control form-control-sm" maxlength="2" v-model.trim="node.country_code"></div>
+                           <div class="col-md-2"><label class="form-label small">Country name</label><input class="form-control form-control-sm" v-model.trim="node.country_name"></div>
+                           <div class="col-md-2"><label class="form-label small">City</label><input class="form-control form-control-sm" v-model.trim="node.city"></div>
+                           <div class="col-md-3"><label class="form-label small">Public host</label><input class="form-control form-control-sm" placeholder="vpn.example.com" v-model.trim="node.public_host"></div>
+                           <div class="col-md-1"><label class="form-label small">Port</label><input class="form-control form-control-sm" type="number" min="1" max="65535" v-model.number="node.public_port"></div>
+                           <div class="col-md-1 d-grid"><button class="btn btn-sm btn-primary" @click="saveConnection(node)">Save</button></div>
+                           <div class="col-md-2"><label class="form-label small">Security</label><input class="form-control form-control-sm" placeholder="tls" v-model.trim="node.security"></div>
+                           <div class="col-md-2"><label class="form-label small">Network</label><input class="form-control form-control-sm" placeholder="tcp" v-model.trim="node.network"></div>
+                           <div class="col-md-3"><label class="form-label small">SNI</label><input class="form-control form-control-sm" v-model.trim="node.sni"></div>
+                           <div class="col-md-3"><label class="form-label small">Path</label><input class="form-control form-control-sm" v-model.trim="node.path"></div>
+                           <div class="col-md-2"><label class="form-label small">Flow</label><input class="form-control form-control-sm" v-model.trim="node.flow"></div>
                         </div>
                      </td>
                   </tr>
@@ -159,6 +208,8 @@
             nodes: [],
             refreshing: {},
             expanded: {},
+            connectionExpanded: {},
+            autoRouting: { auto_mode: "automatic", auto_server_id: "" },
             notice: "",
             error: "",
             groupFilter: "all",
@@ -215,21 +266,67 @@
          matches(filter, value) {
             return !filter || filter === "all" || filter === value;
          },
-         loadAll() {
-            axios.get("/api/nodes")
-               .then((nodesResponse) => {
+         async loadAll() {
+            try {
+               const [nodesResponse, routingResponse] = await Promise.all([
+                  axios.get("/api/nodes"),
+                  axios.get("/api/vpn/auto-routing"),
+               ]);
                   this.nodes = nodesResponse.data.obj || [];
+                  this.autoRouting = routingResponse.data.obj || { auto_mode: "automatic", auto_server_id: "" };
                   this.error = "";
-               })
-               .catch((error) => {
-                  this.error = String(error);
-               });
+            } catch (error) {
+               this.error = String(error);
+            }
          },
          serverID(node) {
             return node.server_id || node.node_id || "-";
          },
          toggleInbounds(serverID) {
             this.$set(this.expanded, serverID, !this.expanded[serverID]);
+         },
+         toggleConnection(serverID) {
+            this.$set(this.connectionExpanded, serverID, !this.connectionExpanded[serverID]);
+         },
+         async saveAutoRouting() {
+            this.notice = "";
+            this.error = "";
+            try {
+               const payload = {
+                  auto_mode: this.autoRouting.auto_mode,
+                  auto_server_id: this.autoRouting.auto_mode === "pinned" ? this.autoRouting.auto_server_id : "",
+               };
+               const response = await axios.put("/api/vpn/auto-routing", payload);
+               this.autoRouting = response.data.obj;
+               this.notice = "Настройка Auto сохранена";
+            } catch (error) {
+               this.error = error.response?.data?.msg || String(error);
+            }
+         },
+         async saveConnection(node) {
+            const id = this.serverID(node);
+            this.notice = "";
+            this.error = "";
+            try {
+               const payload = {
+                  display_name: node.display_name,
+                  country_code: node.country_code,
+                  country_name: node.country_name,
+                  city: node.city,
+                  public_host: node.public_host,
+                  public_port: Number(node.public_port || 443),
+                  security: node.security,
+                  network: node.network,
+                  sni: node.sni,
+                  path: node.path,
+                  flow: node.flow,
+               };
+               await axios.put(`/api/nodes/${encodeURIComponent(id)}/connection`, payload);
+               this.notice = `Connection settings saved for ${id}`;
+               await this.loadAll();
+            } catch (error) {
+               this.error = error.response?.data?.msg || String(error);
+            }
          },
          inboundList(node) {
             return Array.isArray(node.inbounds) ? node.inbounds : [];

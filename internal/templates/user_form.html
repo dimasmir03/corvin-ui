@@ -29,6 +29,85 @@
     </div>
   </div>
 
+  <div class="card mb-4" v-if="isEdit">
+    <div class="card-header"><h3 class="card-title mb-0">Subscription and device limits</h3></div>
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Status</label>
+          <select class="form-select" v-model="vpn.subscription.status">
+            <option value="active">Active</option>
+            <option value="trial">Trial</option>
+            <option value="expired">Expired</option>
+            <option value="blocked">Blocked</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Tariff</label>
+          <input class="form-control" v-model.trim="vpn.subscription.tariff_name">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Device limit</label>
+          <input class="form-control" type="number" min="0" max="1000" v-model.number="vpn.subscription.device_limit">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Expires at</label>
+          <input class="form-control" type="datetime-local" v-model="subscriptionExpiresAt">
+        </div>
+        <div class="col-md-1 d-grid">
+          <button class="btn btn-primary" @click="saveSubscription" :disabled="savingSubscription">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4" v-if="isEdit">
+    <div class="card-header"><h3 class="card-title mb-0">Devices</h3></div>
+    <div class="card-body table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Device</th><th>Platform</th><th>Status</th><th>Last seen</th></tr></thead>
+        <tbody>
+          <tr v-for="device in vpn.devices" :key="device.id">
+            <td><div>[[ device.device_name ]]</div><div class="small text-muted font-monospace">[[ device.id ]]</div></td>
+            <td>[[ device.platform ]]</td>
+            <td><span class="badge" :class="statusClass(device.status)">[[ device.status ]]</span></td>
+            <td>[[ formatDate(device.last_seen_at) ]]</td>
+          </tr>
+          <tr v-if="!vpn.devices.length"><td colspan="4" class="text-muted text-center">Mobile devices have not been registered yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card mb-4" v-if="isEdit">
+    <div class="card-header"><h3 class="card-title mb-0">Server access</h3></div>
+    <div class="card-body">
+      <div class="alert alert-info py-2" v-if="vpn.servers.length && !vpn.servers.some(server => server.access_configured)">
+        Legacy mode: пока не сохранено ни одного правила, пользователю доступны все подходящие включённые серверы. Первое сохранённое правило переключит пользователя на явный allow-list.
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Server</th><th>Location</th><th>Available</th><th>VLESS</th><th>Trojan</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="server in vpn.servers" :key="server.server_id">
+              <td><div>[[ server.display_name || server.server_id ]]</div><div class="small text-muted font-monospace">[[ server.server_id ]]</div></td>
+              <td>[[ [server.country_name || server.country_code, server.city].filter(Boolean).join(', ') || '—' ]]</td>
+              <td><input class="form-check-input" type="checkbox" v-model="server.enabled" :disabled="!server.server_enabled"></td>
+              <td><input class="form-check-input" type="checkbox" v-model="server.allow_vless"></td>
+              <td><input class="form-check-input" type="checkbox" v-model="server.allow_trojan"></td>
+              <td class="text-end text-nowrap">
+                <button class="btn btn-sm btn-outline-primary me-1" @click="saveServerAccess(server)">Save access</button>
+                <button class="btn btn-sm btn-outline-success" @click="provisionServer(server)" :disabled="!server.enabled">Provision</button>
+              </td>
+            </tr>
+            <tr v-if="!vpn.servers.length"><td colspan="6" class="text-muted text-center">No discovered servers.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="card" v-if="isEdit">
     <div class="card-header d-flex align-items-center justify-content-between">
       <h3 class="card-title mb-0">VPN Profiles</h3>
@@ -91,8 +170,10 @@
                   <tr>
                     <th>Node</th>
                     <th>Status</th>
+                    <th>Desired</th>
                     <th>Protocol</th>
                     <th>Inbound</th>
+                    <th>Config</th>
                     <th>Last error</th>
                     <th>Applied</th>
                     <th>Updated</th>
@@ -102,14 +183,16 @@
                   <tr v-for="node in profile.nodes" :key="node.node_id">
                     <td class="font-monospace">[[ node.node_id ]]</td>
                     <td><span class="badge" :class="statusClass(node.status)">[[ node.status ]]</span></td>
+                    <td>[[ node.desired_state || 'enabled' ]]</td>
                     <td>[[ node.protocol ]]</td>
                     <td>[[ node.inbound_id || '—' ]]</td>
+                    <td><button v-if="node.config_link" class="btn btn-sm btn-outline-secondary" @click="copyLink(node.config_link)">Copy</button><span v-else>—</span></td>
                     <td class="text-danger text-break">[[ node.last_error || '—' ]]</td>
                     <td>[[ formatDate(node.applied_at) ]]</td>
                     <td>[[ formatDate(node.updated_at) ]]</td>
                   </tr>
                   <tr v-if="profile.nodes.length === 0">
-                    <td colspan="7" class="text-muted text-center">Node results отсутствуют.</td>
+                    <td colspan="9" class="text-muted text-center">Node results отсутствуют.</td>
                   </tr>
                 </tbody>
               </table>
@@ -142,9 +225,18 @@
     data() {
       return {
         user: initialUser,
-        vpn: { client: null, profiles: [] },
+        vpn: {
+          client: null,
+          clients: [],
+          profiles: [],
+          devices: [],
+          servers: [],
+          subscription: { status: "active", tariff_name: "default", device_limit: 1, expires_at: null }
+        },
         vpnLoading: false,
-        vpnError: ""
+        vpnError: "",
+        subscriptionExpiresAt: "",
+        savingSubscription: false
       };
     },
     computed: {
@@ -163,7 +255,13 @@
         try {
           const { data } = await axios.get(`/api/users/${this.user.id}/vpn`);
           if (!data.success) throw new Error(data.msg || "Failed to load VPN profiles");
-          this.vpn = data.obj || { client: null, profiles: [] };
+          this.vpn = data.obj || this.vpn;
+          this.vpn.clients = this.vpn.clients || [];
+          this.vpn.profiles = this.vpn.profiles || [];
+          this.vpn.devices = this.vpn.devices || [];
+          this.vpn.servers = this.vpn.servers || [];
+          this.vpn.subscription = this.vpn.subscription || { status: "active", tariff_name: "default", device_limit: 1, expires_at: null };
+          this.subscriptionExpiresAt = this.toLocalDateTime(this.vpn.subscription.expires_at);
         } catch (error) {
           this.vpnError = error.message || "Failed to load VPN profiles";
         } finally {
@@ -172,6 +270,53 @@
       },
       submitForm() {
         alert("User editing is not enabled yet.");
+      },
+      async saveSubscription() {
+        this.savingSubscription = true;
+        try {
+          const expiresAt = this.subscriptionExpiresAt ? new Date(this.subscriptionExpiresAt).toISOString() : null;
+          const { data } = await axios.put(`/api/users/${this.user.id}/subscription`, {
+            status: this.vpn.subscription.status,
+            tariff_name: this.vpn.subscription.tariff_name,
+            device_limit: Number(this.vpn.subscription.device_limit || 0),
+            expires_at: expiresAt
+          });
+          if (!data.success) throw new Error(data.msg || "Failed to save subscription");
+          this.vpn.subscription = data.obj;
+          this.subscriptionExpiresAt = this.toLocalDateTime(this.vpn.subscription.expires_at);
+        } catch (error) {
+          alert(error.response?.data?.msg || error.message || "Failed to save subscription");
+        } finally {
+          this.savingSubscription = false;
+        }
+      },
+      async saveServerAccess(server) {
+        try {
+          const { data } = await axios.put(`/api/users/${this.user.id}/servers/${encodeURIComponent(server.server_id)}`, {
+            enabled: !!server.enabled,
+            allow_vless: !!server.allow_vless,
+            allow_trojan: !!server.allow_trojan,
+            valid_until: server.valid_until || null
+          });
+          if (!data.success) throw new Error(data.msg || "Failed to save server access");
+          await this.fetchVPNDetails();
+        } catch (error) {
+          alert(error.response?.data?.msg || error.message || "Failed to save server access");
+        }
+      },
+      async provisionServer(server) {
+        const protocol = server.protocol === "trojan" ? "trojan" : "vless";
+        if ((protocol === "vless" && !server.allow_vless) || (protocol === "trojan" && !server.allow_trojan)) {
+          alert(`Protocol ${protocol} is not allowed for this user on this server.`);
+          return;
+        }
+        try {
+          const { data } = await axios.post(`/api/users/${this.user.id}/servers/${encodeURIComponent(server.server_id)}/provision`, { protocol });
+          if (!data.success) throw new Error(data.msg || "Failed to provision connection");
+          await this.fetchVPNDetails();
+        } catch (error) {
+          alert(error.response?.data?.msg || error.message || "Failed to provision connection");
+        }
       },
       profileTitle(profile) {
         if (profile.profile === "vless") return "VLESS / Direct";
@@ -186,9 +331,13 @@
           case "partial":
             return "bg-warning text-dark";
           case "failed":
+          case "blocked":
+          case "revoked":
             return "bg-danger";
           case "pending":
             return "bg-secondary";
+          case "disabled":
+            return "bg-dark";
           default:
             return "bg-light text-dark";
         }
@@ -196,6 +345,12 @@
       formatDate(value) {
         if (!value) return "—";
         return new Date(value).toLocaleString();
+      },
+      toLocalDateTime(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        const offset = date.getTimezoneOffset() * 60000;
+        return new Date(date.getTime() - offset).toISOString().slice(0, 16);
       },
       async copyLink(link) {
         if (!link) return;

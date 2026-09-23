@@ -18,6 +18,7 @@ type Config struct {
 	Telegram              TelegramConfig
 	MinIO                 MinIOConfig
 	Session               SessionConfig
+	Mobile                MobileConfig
 	Defaults              DefaultsConfig
 	OnlineCollectInterval string
 }
@@ -66,6 +67,22 @@ type MinIOConfig struct {
 
 type SessionConfig struct {
 	Secret string
+}
+
+type MobileConfig struct {
+	Enabled              bool
+	JWTSecret            string
+	AccessTTL            int
+	RefreshTTLHours      int
+	LoginTTLMinutes      int
+	TelegramBotUsername  string
+	PublicBaseURL        string
+	ConnectivityCheckURL string
+	MinAppVersion        string
+	PaymentsURL          string
+	SupportURL           string
+	PrivacyURL           string
+	TrustedProxies       []string
 }
 
 type DefaultsConfig struct {
@@ -118,6 +135,21 @@ func Load() (Config, error) {
 		Session: SessionConfig{
 			Secret: getEnv("SESSION_SECRET", ""),
 		},
+		Mobile: MobileConfig{
+			Enabled:              getEnvBool("MOBILE_API_ENABLED", false),
+			JWTSecret:            getEnv("MOBILE_JWT_SECRET", getEnv("SESSION_SECRET", "")),
+			AccessTTL:            getEnvInt("MOBILE_ACCESS_TTL_SECONDS", 900),
+			RefreshTTLHours:      getEnvInt("MOBILE_REFRESH_TTL_HOURS", 720),
+			LoginTTLMinutes:      getEnvInt("MOBILE_LOGIN_TTL_MINUTES", 10),
+			TelegramBotUsername:  strings.TrimPrefix(getEnv("MOBILE_TELEGRAM_BOT_USERNAME", ""), "@"),
+			PublicBaseURL:        strings.TrimRight(getEnv("MOBILE_PUBLIC_BASE_URL", ""), "/"),
+			ConnectivityCheckURL: getEnv("MOBILE_CONNECTIVITY_CHECK_URL", ""),
+			MinAppVersion:        getEnv("MOBILE_MIN_APP_VERSION", "1.0.0"),
+			PaymentsURL:          getEnv("MOBILE_PAYMENTS_URL", ""),
+			SupportURL:           getEnv("MOBILE_SUPPORT_URL", ""),
+			PrivacyURL:           getEnv("MOBILE_PRIVACY_URL", ""),
+			TrustedProxies:       getEnvStringSlice("MOBILE_TRUSTED_PROXIES"),
+		},
 		Defaults: DefaultsConfig{
 			AMQPExchangeComplaints: getEnv("AMQP_EXCHANGE_COMPLAINTS", "vpn.complaints"),
 			AMQPExchangeUsers:      getEnv("AMQP_EXCHANGE_USERS", "vpn.users"),
@@ -151,6 +183,20 @@ func (c Config) Validate() error {
 
 	if c.Telegram.Enabled && strings.TrimSpace(c.Telegram.Token) == "" {
 		return fmt.Errorf("TELEGRAM_BOT_TOKEN is required when TELEGRAM_ENABLED=true")
+	}
+	if c.Mobile.Enabled {
+		if len(c.Mobile.JWTSecret) < 32 {
+			return fmt.Errorf("MOBILE_JWT_SECRET (or SESSION_SECRET fallback) must contain at least 32 characters when MOBILE_API_ENABLED=true")
+		}
+		if c.Mobile.AccessTTL < 60 || c.Mobile.RefreshTTLHours < 1 || c.Mobile.LoginTTLMinutes < 1 {
+			return fmt.Errorf("mobile token TTL values are invalid")
+		}
+		if strings.TrimSpace(c.Mobile.TelegramBotUsername) == "" {
+			return fmt.Errorf("MOBILE_TELEGRAM_BOT_USERNAME is required when MOBILE_API_ENABLED=true")
+		}
+		if strings.TrimSpace(c.Mobile.ConnectivityCheckURL) == "" && strings.TrimSpace(c.Mobile.PublicBaseURL) == "" {
+			return fmt.Errorf("MOBILE_PUBLIC_BASE_URL or MOBILE_CONNECTIVITY_CHECK_URL is required when MOBILE_API_ENABLED=true")
+		}
 	}
 
 	return nil
@@ -242,6 +288,21 @@ func getEnvInt64Slice(key string) []int64 {
 			continue
 		}
 		result = append(result, parsed)
+	}
+	return result
+}
+
+func getEnvStringSlice(key string) []string {
+	value := strings.TrimSpace(getEnv(key, ""))
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			result = append(result, part)
+		}
 	}
 	return result
 }
